@@ -574,7 +574,14 @@ def save_outputs(
     try:
         export_df.to_excel(xlsx_path, index=False)
     except ModuleNotFoundError:
-        export_df.to_csv(xlsx_path, index=False, encoding="utf-8-sig")
+        try:
+            import xlsxwriter  # type: ignore  # noqa: F401
+        except ModuleNotFoundError:
+            csv_fallback_path = xlsx_path.with_suffix(".csv")
+            export_df.to_csv(csv_fallback_path, index=False, encoding="utf-8-sig")
+            return csv_path, csv_fallback_path
+        with pd.ExcelWriter(xlsx_path, engine="xlsxwriter") as writer:
+            export_df.to_excel(writer, index=False)
     return csv_path, xlsx_path
 
 
