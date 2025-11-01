@@ -11,6 +11,7 @@ from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import pandas as pd
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -186,11 +187,15 @@ class DashboardPage(QWidget):
         self.status_label = QLabel("Ingen SAF-T fil er lastet inn ennå.")
         self.status_label.setObjectName("statusLabel")
         self.status_label.setWordWrap(True)
+        status_font = self.status_label.font()
+        status_font.setPixelSize(14)
+        self.status_label.setFont(status_font)
         self.status_card.add_widget(self.status_label)
 
         self.validation_label = QLabel("Ingen XSD-validering er gjennomført.")
         self.validation_label.setObjectName("statusLabel")
         self.validation_label.setWordWrap(True)
+        self.validation_label.setFont(QFont(status_font))
         self.status_card.add_widget(self.validation_label)
         layout.addWidget(self.status_card)
 
