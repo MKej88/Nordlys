@@ -140,6 +140,44 @@ class CardFrame(QFrame):
         self.body_layout.addLayout(sub_layout)
 
 
+class MetricWidget(QFrame):
+    """Viser et nøkkeltall med kort kontekst."""
+
+    def __init__(self, title: str) -> None:
+        super().__init__()
+        self.setObjectName("metric")
+        self.setFrameShape(QFrame.StyledPanel)
+        self.setFrameShadow(QFrame.Raised)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setSpacing(6)
+
+        self.title_label = QLabel(title)
+        self.title_label.setObjectName("metricTitle")
+        layout.addWidget(self.title_label)
+
+        self.value_label = QLabel("—")
+        self.value_label.setObjectName("metricValue")
+        layout.addWidget(self.value_label)
+
+        self.context_label = QLabel()
+        self.context_label.setObjectName("metricContext")
+        self.context_label.setWordWrap(True)
+        layout.addWidget(self.context_label)
+        layout.addStretch(1)
+
+    def set_value(self, value: str, context: Optional[str] = None) -> None:
+        self.value_label.setText(value)
+        if context:
+            self.context_label.setText(context)
+            self.context_label.show()
+        else:
+            self.context_label.clear()
+            self.context_label.hide()
+
+
 class DashboardPage(QWidget):
     """Viser nøkkeltall og topp kunder."""
 
@@ -151,12 +189,61 @@ class DashboardPage(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(24)
 
-        self.status_card = CardFrame("Status", "Hurtigoversikt over siste import og anbefalinger.")
+        self.status_card = CardFrame(
+            "Status",
+            "Hurtigoversikt over siste import, aktivitet og anbefalinger.",
+        )
         self.status_label = QLabel("Ingen SAF-T fil er lastet inn ennå.")
         self.status_label.setObjectName("statusLabel")
         self.status_label.setWordWrap(True)
         self.status_card.add_widget(self.status_label)
         layout.addWidget(self.status_card)
+
+        self.company_card = CardFrame(
+            "Selskapsoversikt",
+            "Nøkkelinformasjon hentet fra SAF-T headeren.",
+        )
+        company_grid = QGridLayout()
+        company_grid.setHorizontalSpacing(32)
+        company_grid.setVerticalSpacing(12)
+        self._company_fields: Dict[str, QLabel] = {}
+        for row, (label_text, key) in enumerate(
+            [
+                ("Foretak", "company_name"),
+                ("Organisasjonsnummer", "orgnr"),
+                ("Regnskapsår", "fiscal_year"),
+                ("Periode", "period"),
+                ("Filversjon", "file_version"),
+            ]
+        ):
+            label = QLabel(label_text)
+            label.setObjectName("companyLabel")
+            value = QLabel("—")
+            value.setObjectName("companyValue")
+            company_grid.addWidget(label, row, 0)
+            company_grid.addWidget(value, row, 1)
+            self._company_fields[key] = value
+        company_grid.setColumnStretch(1, 1)
+        self.company_card.add_layout(company_grid)
+        layout.addWidget(self.company_card)
+
+        self.kpi_card = CardFrame(
+            "Resultatindikatorer",
+            "Viser lønnsomhet og marginer basert på importerte data.",
+        )
+        metric_layout = QHBoxLayout()
+        metric_layout.setSpacing(16)
+        metric_layout.setContentsMargins(0, 0, 0, 0)
+        self._metrics = {
+            "revenue": MetricWidget("Driftsinntekter"),
+            "ebitda": MetricWidget("EBITDA"),
+            "ebit": MetricWidget("EBIT"),
+            "result": MetricWidget("Årsresultat"),
+        }
+        for metric in self._metrics.values():
+            metric_layout.addWidget(metric)
+        self.kpi_card.add_layout(metric_layout)
+        layout.addWidget(self.kpi_card)
 
         self.summary_card = CardFrame("Finansiell oversikt", "Oppsummerte nøkkeltall fra SAF-T.")
         self.summary_table = _create_table_widget()
@@ -164,6 +251,17 @@ class DashboardPage(QWidget):
         self.summary_table.setHorizontalHeaderLabels(["Nøkkel", "Beløp"])
         self.summary_card.add_widget(self.summary_table)
         layout.addWidget(self.summary_card)
+
+        self.focus_card = CardFrame(
+            "Foreslåtte fokusområder",
+            "Automatisk prioritering av revisjonsområder basert på nøkkeltall.",
+        )
+        self.focus_list = QListWidget()
+        self.focus_list.setObjectName("focusList")
+        self.focus_list.setSelectionMode(QAbstractItemView.NoSelection)
+        self.focus_list.setFocusPolicy(Qt.NoFocus)
+        self.focus_card.add_widget(self.focus_list)
+        layout.addWidget(self.focus_card)
 
         self.top_card = CardFrame("Topp kunder", "Identifiser kunder med høyest omsetning.")
         controls = QHBoxLayout()
@@ -196,6 +294,9 @@ class DashboardPage(QWidget):
         layout.addStretch(1)
 
         self.set_controls_enabled(False)
+        self.update_company_info(None)
+        self.update_metrics(None)
+        self.update_focus(None)
 
     def _handle_calc_clicked(self) -> None:
         rows = self._on_calc_top(self.source_combo.currentText(), int(self.top_spin.value()))
@@ -208,6 +309,8 @@ class DashboardPage(QWidget):
     def update_summary(self, summary: Optional[Dict[str, float]]) -> None:
         if not summary:
             self.summary_table.setRowCount(0)
+            self.update_metrics(None)
+            self.update_focus(None)
             return
         rows = [
             ("Driftsinntekter (3xxx)", summary.get("driftsinntekter")),
@@ -225,6 +328,8 @@ class DashboardPage(QWidget):
             ("Balanseavvik", summary.get("balanse_diff")),
         ]
         _populate_table(self.summary_table, ["Nøkkel", "Beløp"], rows, money_cols={1})
+        self.update_metrics(summary)
+        self.update_focus(summary)
 
     def set_top_customers(self, rows: Iterable[Tuple[str, str, int, float]]) -> None:
         _populate_table(
@@ -241,6 +346,78 @@ class DashboardPage(QWidget):
         self.calc_button.setEnabled(enabled)
         self.top_spin.setEnabled(enabled)
         self.source_combo.setEnabled(enabled)
+
+    def update_company_info(self, header: Optional[SaftHeader]) -> None:
+        if header is None:
+            values = {
+                "company_name": "Ingen SAF-T importert",
+                "orgnr": "—",
+                "fiscal_year": "—",
+                "period": "—",
+                "file_version": "—",
+            }
+        else:
+            period = "—"
+            if header.period_start or header.period_end:
+                period = f"{header.period_start or 'ukjent'} – {header.period_end or 'ukjent'}"
+            values = {
+                "company_name": header.company_name or "—",
+                "orgnr": header.orgnr or "—",
+                "fiscal_year": header.fiscal_year or "—",
+                "period": period,
+                "file_version": header.file_version or "—",
+            }
+        for key, label in self._company_fields.items():
+            label.setText(values.get(key, "—"))
+
+    def update_metrics(self, summary: Optional[Dict[str, float]]) -> None:
+        if not summary:
+            for widget in self._metrics.values():
+                widget.set_value("—")
+            return
+
+        revenue = summary.get("driftsinntekter") or 0.0
+        ebitda = summary.get("ebitda")
+        ebit = summary.get("ebit")
+        result = summary.get("arsresultat")
+
+        self._metrics["revenue"].set_value(format_currency(revenue), "Sum driftsinntekter")
+
+        def margin_text(value: Optional[float]) -> Optional[str]:
+            if value is None:
+                return None
+            if not revenue:
+                return None
+            return f"Margin: {value / revenue * 100:.1f} %"
+
+        self._metrics["ebitda"].set_value(format_currency(ebitda), margin_text(ebitda))
+        self._metrics["ebit"].set_value(format_currency(ebit), margin_text(ebit))
+        self._metrics["result"].set_value(format_currency(result), margin_text(result))
+
+    def update_focus(self, summary: Optional[Dict[str, float]]) -> None:
+        self.focus_list.clear()
+        if not summary:
+            self.focus_list.addItem("Importer en SAF-T fil for å se foreslåtte kontrollpunkter.")
+            return
+
+        drivers = [
+            ("rev.salg", "Driftsinntekter", summary.get("driftsinntekter")),
+            ("rev.innkjop", "Varekostnad", summary.get("varekostnad")),
+            ("rev.lonn", "Lønnskostnader", summary.get("lonn")),
+            ("rev.kostnad", "Andre driftskostnader", summary.get("andre_drift")),
+        ]
+
+        ranked = sorted(
+            ((key, label, abs(value or 0.0), value or 0.0) for key, label, value in drivers),
+            key=lambda item: item[2],
+            reverse=True,
+        )
+
+        for key, label, _, original_value in ranked[:3]:
+            tasks = REVISION_TASKS.get(key, [])
+            detail = tasks[0] if tasks else "Ingen forslag registrert."
+            amount = format_currency(original_value)
+            self.focus_list.addItem(f"{label}: {amount} – {detail}")
 
 
 class DataFramePage(QWidget):
@@ -531,8 +708,11 @@ class NordlysWindow(QMainWindow):
         info_grid.setVerticalSpacing(8)
 
         self.lbl_company = QLabel("Selskap: –")
+        self.lbl_company.setObjectName("infoField")
         self.lbl_orgnr = QLabel("Org.nr: –")
+        self.lbl_orgnr.setObjectName("infoField")
         self.lbl_period = QLabel("Periode: –")
+        self.lbl_period.setObjectName("infoField")
         info_grid.addWidget(self.lbl_company, 0, 0)
         info_grid.addWidget(self.lbl_orgnr, 0, 1)
         info_grid.addWidget(self.lbl_period, 0, 2)
@@ -632,29 +812,42 @@ class NordlysWindow(QMainWindow):
     def _apply_styles(self) -> None:
         self.setStyleSheet(
             """
-            QWidget { font-family: 'Segoe UI', 'Helvetica Neue', Arial; font-size: 13px; }
-            QMainWindow { background-color: #f5f7fb; }
-            #navPanel { background-color: #111827; color: #e5e7eb; }
-            #logoLabel { font-size: 22px; font-weight: 700; color: #f9fafb; }
-            #navTree { background: transparent; border: none; color: #d1d5db; font-size: 14px; }
-            #navTree::item { height: 32px; }
-            #navTree::item:selected { background-color: #2563eb; color: white; border-radius: 6px; }
-            #navTree::item:hover { background-color: rgba(37, 99, 235, 0.25); }
-            QPushButton { background-color: #2563eb; color: white; border-radius: 6px; padding: 8px 16px; }
-            QPushButton:disabled { background-color: #9ca3af; color: #f3f4f6; }
+            QWidget { font-family: 'Inter', 'Segoe UI', 'Helvetica Neue', Arial; font-size: 13px; color: #0f172a; }
+            QMainWindow { background-color: #f4f6fb; }
+            QStatusBar { background-color: #e2e8f0; border-top: 1px solid #cbd5f5; color: #0f172a; }
+            #navPanel { background-color: #0f172a; color: #e2e8f0; }
+            #logoLabel { font-size: 24px; font-weight: 700; letter-spacing: 0.08em; color: #f8fafc; }
+            #navTree { background: transparent; border: none; color: #cbd5f5; font-size: 14px; font-weight: 500; }
+            #navTree::item { height: 34px; padding: 4px 8px; }
+            #navTree::item:selected { background-color: #2563eb; color: #f8fafc; border-radius: 8px; }
+            #navTree::item:hover { background-color: rgba(37, 99, 235, 0.28); }
+            QPushButton { background-color: #2563eb; color: #f8fafc; border-radius: 8px; padding: 9px 18px; font-weight: 600; }
+            QPushButton:disabled { background-color: #94a3b8; color: #e2e8f0; }
             QPushButton:hover:!disabled { background-color: #1d4ed8; }
-            #card { background-color: white; border-radius: 18px; border: 1px solid #e5e7eb; }
-            #cardTitle { font-size: 18px; font-weight: 600; color: #111827; }
-            #cardSubtitle { color: #6b7280; font-size: 12px; }
-            #pageTitle { font-size: 24px; font-weight: 700; color: #0f172a; }
-            #statusLabel { color: #1f2937; font-size: 14px; }
+            QPushButton:pressed { background-color: #1e40af; }
+            #card { background-color: #ffffff; border-radius: 20px; border: 1px solid #e2e8f0; }
+            #cardTitle { font-size: 18px; font-weight: 700; color: #0f172a; }
+            #cardSubtitle { color: #64748b; font-size: 12px; }
+            #pageTitle { font-size: 26px; font-weight: 700; color: #0f172a; }
+            #statusLabel { color: #1e293b; font-size: 14px; }
             #infoLabel { color: #6b7280; }
+            #infoField { color: #1e293b; font-weight: 600; }
             #jsonView { background-color: #0f172a; color: #f9fafb; font-family: "Fira Code", monospace; border-radius: 12px; padding: 12px; }
-            #cardTable { border: none; }
-            QHeaderView::section { background-color: transparent; border: none; font-weight: 600; }
+            #cardTable { border: none; gridline-color: #e2e8f0; }
+            QTableWidget::item { padding: 6px; }
+            QHeaderView::section { background-color: transparent; border: none; font-weight: 600; color: #475569; }
             QListWidget#checklist { border: none; }
             QListWidget#checklist::item { padding: 8px; margin: 2px 0; border-radius: 6px; }
             QListWidget#checklist::item:selected { background-color: rgba(37, 99, 235, 0.15); color: #111827; }
+            #companyLabel { color: #64748b; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; }
+            #companyValue { color: #0f172a; font-size: 14px; font-weight: 600; }
+            #metric { background-color: #eef2ff; border: 1px solid #c7d2fe; border-radius: 18px; }
+            #metricTitle { color: #4338ca; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; }
+            #metricValue { font-size: 26px; font-weight: 700; color: #0f172a; }
+            #metricContext { color: #475569; font-size: 12px; }
+            QListWidget#focusList { border: none; background: transparent; }
+            QListWidget#focusList::item { padding: 10px 12px; margin: 4px 0; border-radius: 10px; background-color: #f8fafc; }
+            QListWidget#focusList::item:hover { background-color: #e0f2fe; }
             """
         )
 
@@ -871,11 +1064,16 @@ class NordlysWindow(QMainWindow):
     # region Hjelpere
     def _update_header_fields(self) -> None:
         if not self._header:
+            self.lbl_company.setText("Selskap: –")
+            self.lbl_orgnr.setText("Org.nr: –")
+            self.lbl_period.setText("Periode: –")
+            self.dashboard_page.update_company_info(None)
             return
         self.lbl_company.setText(f"Selskap: {self._header.company_name or '–'}")
         self.lbl_orgnr.setText(f"Org.nr: {self._header.orgnr or '–'}")
         per = f"{self._header.fiscal_year or '–'} P{self._header.period_start or '?'}–P{self._header.period_end or '?'}"
         self.lbl_period.setText(f"Periode: {per}")
+        self.dashboard_page.update_company_info(self._header)
 
     # endregion
 
