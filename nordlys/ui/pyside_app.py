@@ -837,7 +837,7 @@ class PurchasesApPage(QWidget):
         layout.setSpacing(24)
 
         self.top_card = CardFrame(
-            "Topp leverandører",
+            "Innkjøp per leverandør",
             "Identifiser leverandører med høyeste innkjøp.",
         )
         controls = QHBoxLayout()
@@ -853,7 +853,7 @@ class PurchasesApPage(QWidget):
         self.top_spin.setValue(10)
         controls.addWidget(self.top_spin)
         controls.addStretch(1)
-        self.calc_button = QPushButton("Beregn topp leverandører")
+        self.calc_button = QPushButton("Beregn innkjøp per leverandør")
         self.calc_button.clicked.connect(self._handle_calc_clicked)
         controls.addWidget(self.calc_button)
         self.top_card.add_layout(controls)
@@ -868,16 +868,12 @@ class PurchasesApPage(QWidget):
                 "Innkjøp (eks. mva)",
             ]
         )
+        header = self.top_table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.top_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.top_card.add_widget(self.top_table)
-        layout.addWidget(self.top_card)
-
-        self.card = CardFrame(title, subtitle)
-        self.list_widget = QListWidget()
-        self.list_widget.setObjectName("checklist")
-        self.card.add_widget(self.list_widget)
-        layout.addWidget(self.card)
-
-        layout.addStretch(1)
+        self.top_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        layout.addWidget(self.top_card, 1)
 
         self.set_controls_enabled(False)
 
@@ -885,11 +881,6 @@ class PurchasesApPage(QWidget):
         rows = self._on_calc_top(self.source_combo.currentText(), int(self.top_spin.value()))
         if rows:
             self.set_top_suppliers(rows)
-
-    def set_checklist_items(self, items: Iterable[str]) -> None:
-        self.list_widget.clear()
-        for item in items:
-            QListWidgetItem(item, self.list_widget)
 
     def set_top_suppliers(self, rows: Iterable[Tuple[str, str, int, float]]) -> None:
         _populate_table(
@@ -1701,7 +1692,7 @@ class NordlysWindow(QMainWindow):
                 )
             )
         self.statusBar().showMessage(
-            f"Topp leverandører (kostnadskonti 4xxx–8xxx) beregnet. N={topn}."
+            f"Innkjøp per leverandør (kostnadskonti 4xxx–8xxx) beregnet. N={topn}."
         )
         return rows
 
