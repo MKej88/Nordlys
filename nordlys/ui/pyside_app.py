@@ -140,6 +140,36 @@ class CardFrame(QFrame):
         self.body_layout.addLayout(sub_layout)
 
 
+class MetricTile(QFrame):
+    """Kompakt komponent for å vise ett sentralt nøkkeltall."""
+
+    def __init__(self, title: str, hint: str) -> None:
+        super().__init__()
+        self.setObjectName("metricTile")
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 16, 20, 16)
+        layout.setSpacing(6)
+
+        self.title_label = QLabel(title)
+        self.title_label.setObjectName("metricTitle")
+        layout.addWidget(self.title_label)
+
+        self.value_label = QLabel("—")
+        self.value_label.setObjectName("metricValue")
+        layout.addWidget(self.value_label)
+
+        self.hint_label = QLabel(hint)
+        self.hint_label.setObjectName("metricHint")
+        self.hint_label.setWordWrap(True)
+        layout.addWidget(self.hint_label)
+
+    def set_value(self, value: Optional[str], hint: Optional[str] = None) -> None:
+        self.value_label.setText(value or "—")
+        if hint is not None:
+            self.hint_label.setText(hint)
+
+
 class DashboardPage(QWidget):
     """Viser nøkkeltall og topp kunder."""
 
@@ -164,6 +194,35 @@ class DashboardPage(QWidget):
         self.summary_table.setHorizontalHeaderLabels(["Nøkkel", "Beløp"])
         self.summary_card.add_widget(self.summary_table)
         layout.addWidget(self.summary_card)
+
+        self.metrics_card = CardFrame(
+            "Nøkkeltallsmonitor",
+            "Gir en rask pekepinn på lønnsomhet og balanseavvik.",
+        )
+        metrics_grid = QGridLayout()
+        metrics_grid.setHorizontalSpacing(16)
+        metrics_grid.setVerticalSpacing(16)
+        self.metrics: Dict[str, MetricTile] = {
+            "driftsinntekter": MetricTile("Driftsinntekter", "Sum inntekter rapportert i SAF-T."),
+            "ebitda": MetricTile("EBITDA", "Viser operativ lønnsomhet og margin."),
+            "arsresultat": MetricTile("Årsresultat", "Resultat etter skatt med resultatmargin."),
+            "balanse_diff": MetricTile("Balanseavvik", "Avvik mellom eiendeler og egenkapital + gjeld."),
+        }
+        for idx, tile in enumerate(self.metrics.values()):
+            row, col = divmod(idx, 2)
+            metrics_grid.addWidget(tile, row, col)
+        self.metrics_card.add_layout(metrics_grid)
+        layout.addWidget(self.metrics_card)
+
+        self.insight_card = CardFrame(
+            "Analyseinnsikt",
+            "Automatisk genererte observasjoner basert på nøkkeltallene.",
+        )
+        self.insight_label = QLabel("Last inn en SAF-T fil for å generere innsikt.")
+        self.insight_label.setObjectName("insightLabel")
+        self.insight_label.setWordWrap(True)
+        self.insight_card.add_widget(self.insight_label)
+        layout.addWidget(self.insight_card)
 
         self.top_card = CardFrame("Topp kunder", "Identifiser kunder med høyest omsetning.")
         controls = QHBoxLayout()
@@ -208,6 +267,9 @@ class DashboardPage(QWidget):
     def update_summary(self, summary: Optional[Dict[str, float]]) -> None:
         if not summary:
             self.summary_table.setRowCount(0)
+            for tile in self.metrics.values():
+                tile.set_value(None, None)
+            self.insight_label.setText("Last inn en SAF-T fil for å generere innsikt.")
             return
         rows = [
             ("Driftsinntekter (3xxx)", summary.get("driftsinntekter")),
@@ -225,6 +287,69 @@ class DashboardPage(QWidget):
             ("Balanseavvik", summary.get("balanse_diff")),
         ]
         _populate_table(self.summary_table, ["Nøkkel", "Beløp"], rows, money_cols={1})
+
+        revenue = summary.get("driftsinntekter")
+        ebitda = summary.get("ebitda")
+        result = summary.get("arsresultat")
+        diff = summary.get("balanse_diff")
+
+        def fmt_money(value: Optional[float]) -> Optional[str]:
+            return format_currency(value) if value is not None else None
+
+        def fmt_percent(value: Optional[float]) -> Optional[str]:
+            if value is None:
+                return None
+            return f"{value:.1%}"
+
+        margin = None
+        if revenue and revenue != 0 and ebitda is not None:
+            margin = ebitda / revenue
+
+        result_margin = None
+        if revenue and revenue != 0 and result is not None:
+            result_margin = result / revenue
+
+        self.metrics["driftsinntekter"].set_value(fmt_money(revenue))
+        self.metrics["ebitda"].set_value(
+            fmt_money(ebitda),
+            f"EBITDA-margin: {fmt_percent(margin)}" if margin is not None else "EBITDA-margin ikke tilgjengelig.",
+        )
+        self.metrics["arsresultat"].set_value(
+            fmt_money(result),
+            f"Resultatmargin: {fmt_percent(result_margin)}"
+            if result_margin is not None
+            else "Resultatmargin ikke tilgjengelig.",
+        )
+        balance_hint = (
+            "Balanse stemmer innenfor ±1 000." if diff is not None and abs(diff) <= 1000 else "Krev oppfølging av balanseavvik."
+        )
+        self.metrics["balanse_diff"].set_value(fmt_money(diff), balance_hint)
+
+        insights: List[str] = []
+        if margin is not None:
+            if margin >= 0.2:
+                insights.append("Selskapet leverer sterk operativ margin (>20 %).")
+            elif margin <= 0:
+                insights.append("Negativ EBITDA indikerer press på lønnsomheten.")
+            else:
+                insights.append("EBITDA er positiv, men vurder forbedring av margin.")
+
+        if result is not None:
+            if result > 0:
+                insights.append("Årsresultatet er positivt. Vurder utdeling eller reinvestering.")
+            else:
+                insights.append("Årsresultatet er negativt. Kartlegg årsaker og tiltak.")
+
+        if diff is not None and abs(diff) > 1000:
+            insights.append("Balanseavvik overstiger terskelen på 1 000 og bør avstemmes.")
+        elif diff is not None:
+            insights.append("Balanseavvik er innenfor normal toleranse.")
+
+        if not insights:
+            insights.append("Ingen avvik registrert. Dashboardet er oppdatert.")
+
+        insight_html = "<ul>" + "".join(f"<li>{text}</li>" for text in insights) + "</ul>"
+        self.insight_label.setText(insight_html)
 
     def set_top_customers(self, rows: Iterable[Tuple[str, str, int, float]]) -> None:
         _populate_table(
@@ -632,29 +757,34 @@ class NordlysWindow(QMainWindow):
     def _apply_styles(self) -> None:
         self.setStyleSheet(
             """
-            QWidget { font-family: 'Segoe UI', 'Helvetica Neue', Arial; font-size: 13px; }
-            QMainWindow { background-color: #f5f7fb; }
-            #navPanel { background-color: #111827; color: #e5e7eb; }
-            #logoLabel { font-size: 22px; font-weight: 700; color: #f9fafb; }
-            #navTree { background: transparent; border: none; color: #d1d5db; font-size: 14px; }
+            QWidget { font-family: 'Inter', 'Segoe UI', 'Helvetica Neue', Arial; font-size: 13px; color: #0f172a; }
+            QMainWindow { background-color: #eef2f9; }
+            #navPanel { background-color: #0b1220; color: #e5e7eb; }
+            #logoLabel { font-size: 22px; font-weight: 700; color: #f9fafb; letter-spacing: 1px; }
+            #navTree { background: transparent; border: none; color: #cbd5f5; font-size: 14px; }
             #navTree::item { height: 32px; }
-            #navTree::item:selected { background-color: #2563eb; color: white; border-radius: 6px; }
+            #navTree::item:selected { background-color: #2563eb; color: white; border-radius: 8px; }
             #navTree::item:hover { background-color: rgba(37, 99, 235, 0.25); }
-            QPushButton { background-color: #2563eb; color: white; border-radius: 6px; padding: 8px 16px; }
+            QPushButton { background-color: #2563eb; color: white; border-radius: 8px; padding: 9px 18px; font-weight: 600; }
             QPushButton:disabled { background-color: #9ca3af; color: #f3f4f6; }
             QPushButton:hover:!disabled { background-color: #1d4ed8; }
-            #card { background-color: white; border-radius: 18px; border: 1px solid #e5e7eb; }
+            #card { background-color: white; border-radius: 20px; border: 1px solid #e2e8f0; box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08); }
             #cardTitle { font-size: 18px; font-weight: 600; color: #111827; }
-            #cardSubtitle { color: #6b7280; font-size: 12px; }
-            #pageTitle { font-size: 24px; font-weight: 700; color: #0f172a; }
+            #cardSubtitle { color: #64748b; font-size: 12px; }
+            #pageTitle { font-size: 26px; font-weight: 700; color: #0b1220; }
             #statusLabel { color: #1f2937; font-size: 14px; }
             #infoLabel { color: #6b7280; }
+            #insightLabel { color: #1e293b; font-size: 13px; }
             #jsonView { background-color: #0f172a; color: #f9fafb; font-family: "Fira Code", monospace; border-radius: 12px; padding: 12px; }
             #cardTable { border: none; }
-            QHeaderView::section { background-color: transparent; border: none; font-weight: 600; }
+            QHeaderView::section { background-color: transparent; border: none; font-weight: 600; color: #1f2937; }
             QListWidget#checklist { border: none; }
             QListWidget#checklist::item { padding: 8px; margin: 2px 0; border-radius: 6px; }
             QListWidget#checklist::item:selected { background-color: rgba(37, 99, 235, 0.15); color: #111827; }
+            #metricTile { background-color: #f8fafc; border-radius: 16px; border: 1px solid #e2e8f0; }
+            #metricTitle { font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: #475569; }
+            #metricValue { font-size: 26px; font-weight: 700; color: #0f172a; }
+            #metricHint { color: #64748b; font-size: 12px; }
             """
         )
 
