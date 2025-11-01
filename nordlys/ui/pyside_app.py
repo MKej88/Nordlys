@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 import sys
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
@@ -371,22 +372,54 @@ class DashboardPage(QWidget):
 class DataFramePage(QWidget):
     """Generisk side som viser en pandas DataFrame."""
 
-    def __init__(self, title: str, subtitle: str) -> None:
+    def __init__(
+        self,
+        title: str,
+        subtitle: str,
+        *,
+        frame_builder: Optional[Callable[[pd.DataFrame], pd.DataFrame]] = None,
+        money_columns: Optional[Sequence[str]] = None,
+        header_mode: QHeaderView.ResizeMode = QHeaderView.Stretch,
+        full_window: bool = False,
+    ) -> None:
         super().__init__()
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(24)
 
-        self.card = CardFrame(title, subtitle)
+        self.card: Optional[CardFrame] = None
         self.info_label = QLabel("Last inn en SAF-T fil for å vise data.")
         self.info_label.setObjectName("infoLabel")
-        self.card.add_widget(self.info_label)
 
         self.table = _create_table_widget()
+        self.table.horizontalHeader().setSectionResizeMode(header_mode)
+        self.table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.table.hide()
-        self.card.add_widget(self.table)
-        layout.addWidget(self.card)
-        layout.addStretch(1)
+
+        if full_window:
+            title_label = QLabel(title)
+            title_label.setObjectName("pageTitle")
+            layout.addWidget(title_label)
+
+            if subtitle:
+                subtitle_label = QLabel(subtitle)
+                subtitle_label.setObjectName("pageSubtitle")
+                subtitle_label.setWordWrap(True)
+                layout.addWidget(subtitle_label)
+
+            layout.addWidget(self.info_label)
+            layout.addWidget(self.table, 1)
+        else:
+            self.card = CardFrame(title, subtitle)
+            self.card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+            self.card.add_widget(self.info_label)
+            self.card.add_widget(self.table)
+            layout.addWidget(self.card)
+            layout.addStretch(1)
+
+        self._frame_builder = frame_builder
+        self._money_columns = tuple(money_columns or [])
+        self._auto_resize_columns = header_mode == QHeaderView.ResizeToContents
 
     def set_dataframe(self, df: Optional[pd.DataFrame]) -> None:
         if df is None or df.empty:
@@ -394,11 +427,53 @@ class DataFramePage(QWidget):
             self.info_label.show()
             self.table.setRowCount(0)
             return
-        columns = list(df.columns)
-        rows = [tuple(df.iloc[i][column] for column in columns) for i in range(len(df))]
-        _populate_table(self.table, columns, rows)
+
+        work = df
+        if self._frame_builder is not None:
+            work = self._frame_builder(df)
+
+        columns = list(work.columns)
+        rows = [tuple(work.iloc[i][column] for column in columns) for i in range(len(work))]
+        money_idx = {columns.index(col) for col in self._money_columns if col in columns}
+        _populate_table(self.table, columns, rows, money_cols=money_idx)
+        if self._auto_resize_columns:
+            self.table.resizeColumnsToContents()
         self.table.show()
         self.info_label.hide()
+
+
+def _standard_tb_frame(df: pd.DataFrame) -> pd.DataFrame:
+    """Bygger en norsk standard saldobalanse med nettoverdier."""
+
+    work = df.copy()
+    if "Konto_int" in work.columns:
+        work = work.sort_values("Konto_int", na_position="last")
+    elif "Konto" in work.columns:
+        work = work.sort_values("Konto", na_position="last")
+
+    if "IB_netto" not in work.columns:
+        work["IB_netto"] = work.get("IB Debet", 0.0).fillna(0) - work.get("IB Kredit", 0.0).fillna(0)
+    if "UB_netto" not in work.columns:
+        work["UB_netto"] = work.get("UB Debet", 0.0).fillna(0) - work.get("UB Kredit", 0.0).fillna(0)
+
+    work["Endringer"] = work["UB_netto"] - work["IB_netto"]
+
+    columns = ["Konto", "Kontonavn", "IB", "Endringer", "UB"]
+    konto = work["Konto"].fillna("") if "Konto" in work.columns else pd.Series([""] * len(work))
+    navn = (
+        work["Kontonavn"].fillna("")
+        if "Kontonavn" in work.columns
+        else pd.Series([""] * len(work))
+    )
+
+    result = pd.DataFrame({
+        "Konto": konto.astype(str),
+        "Kontonavn": navn.astype(str),
+        "IB": work["IB_netto"].fillna(0.0),
+        "Endringer": work["Endringer"].fillna(0.0),
+        "UB": work["UB_netto"].fillna(0.0),
+    })
+    return result[columns].reset_index(drop=True)
 
 
 class SummaryPage(QWidget):
@@ -691,6 +766,10 @@ class NordlysWindow(QMainWindow):
         saldobalanse_page = DataFramePage(
             "Saldobalanse",
             "Viser saldobalansen slik den er rapportert i SAF-T.",
+            frame_builder=_standard_tb_frame,
+            money_columns=("IB", "Endringer", "UB"),
+            header_mode=QHeaderView.ResizeToContents,
+            full_window=True,
         )
         self._register_page("plan.saldobalanse", saldobalanse_page)
         self.stack.addWidget(saldobalanse_page)
@@ -1094,11 +1173,34 @@ def _populate_table(
 def _format_value(value: object, money: bool) -> str:
     if value is None:
         return "—"
+    if isinstance(value, float) and math.isnan(value):
+        return "—"
+    try:
+        if isinstance(value, (float, int)) and pd.isna(value):
+            return "—"
+        if not isinstance(value, (float, int)) and pd.isna(value):  # type: ignore[arg-type]
+            return "—"
+    except NameError:
+        pass
+    except Exception:
+        pass
     if isinstance(value, (int, float)):
         if money:
-            return f"{float(value):,.2f}"
-        return f"{float(value):,.0f}" if float(value).is_integer() else f"{float(value):,.2f}"
+            return _format_money_norwegian(float(value))
+        numeric = float(value)
+        return _format_integer_norwegian(numeric) if numeric.is_integer() else _format_money_norwegian(numeric)
     return str(value)
+
+
+def _format_money_norwegian(value: float) -> str:
+    formatted = f"{value:,.2f}"
+    formatted = formatted.replace(",", " ")
+    return formatted.replace(".", ",")
+
+
+def _format_integer_norwegian(value: float) -> str:
+    formatted = f"{int(round(value)):,}"
+    return formatted.replace(",", " ")
 
 
 def create_app() -> Tuple[QApplication, NordlysWindow]:
