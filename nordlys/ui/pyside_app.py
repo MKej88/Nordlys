@@ -10,7 +10,18 @@ from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple, cast
 
 import pandas as pd
-from PySide6.QtCore import QObject, Qt, QThread, Signal, Slot
+from PySide6.QtCore import (
+    QObject,
+    QEasingCurve,
+    QParallelAnimationGroup,
+    QPoint,
+    QPropertyAnimation,
+    Qt,
+    QThread,
+    QTimer,
+    Signal,
+    Slot,
+)
 from PySide6.QtGui import QBrush, QColor, QFont, QIcon
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -20,6 +31,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
     QGraphicsDropShadowEffect,
+    QGraphicsOpacityEffect,
     QHeaderView,
     QHBoxLayout,
     QLabel,
@@ -273,6 +285,92 @@ def _create_table_widget() -> QTableWidget:
     table.verticalHeader().setVisible(False)
     table.setObjectName("cardTable")
     return table
+
+
+class AnimatedStackedWidget(QStackedWidget):
+    """QStackedWidget med fade-animasjon mellom sider."""
+
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self._fade_duration = 320
+        self._animating = False
+        self._current_animation: Optional[QPropertyAnimation] = None
+
+    def setCurrentIndex(self, index: int) -> None:  # type: ignore[override]
+        widget = self.widget(index)
+        if widget is None:
+            return
+        self.setCurrentWidget(widget)
+
+    def setCurrentWidget(self, widget: QWidget) -> None:  # type: ignore[override]
+        if widget is None:
+            return
+        current = self.currentWidget()
+        if current is widget or current is None:
+            effect = self._ensure_opacity_effect(widget)
+            if effect is not None:
+                effect.setOpacity(1.0)
+            super().setCurrentWidget(widget)
+            return
+
+        if self._animating:
+            super().setCurrentWidget(widget)
+            effect = self._ensure_opacity_effect(widget)
+            if effect is not None:
+                effect.setOpacity(1.0)
+            self._animating = False
+            self._current_animation = None
+            return
+
+        current_effect = self._ensure_opacity_effect(current)
+        target_effect = self._ensure_opacity_effect(widget)
+
+        if current_effect is None or target_effect is None:
+            super().setCurrentWidget(widget)
+            return
+
+        self._animating = True
+        target_effect.setOpacity(0.0)
+
+        fade_out = QPropertyAnimation(current_effect, b"opacity", self)
+        fade_out.setDuration(self._fade_duration)
+        fade_out.setStartValue(current_effect.opacity())
+        fade_out.setEndValue(0.0)
+        fade_out.setEasingCurve(QEasingCurve.OutCubic)
+
+        def _on_fade_out_finished() -> None:
+            super(AnimatedStackedWidget, self).setCurrentWidget(widget)
+
+            fade_in = QPropertyAnimation(target_effect, b"opacity", self)
+            fade_in.setDuration(self._fade_duration)
+            fade_in.setStartValue(target_effect.opacity())
+            fade_in.setEndValue(1.0)
+            fade_in.setEasingCurve(QEasingCurve.OutCubic)
+
+            def _on_fade_in_finished() -> None:
+                current_effect.setOpacity(1.0)
+                target_effect.setOpacity(1.0)
+                self._animating = False
+                self._current_animation = None
+
+            fade_in.finished.connect(_on_fade_in_finished)
+            fade_in.start()
+            self._current_animation = fade_in
+
+        fade_out.finished.connect(_on_fade_out_finished)
+        fade_out.start()
+        self._current_animation = fade_out
+
+    def _ensure_opacity_effect(self, widget: QWidget) -> Optional[QGraphicsOpacityEffect]:
+        effect = widget.graphicsEffect()
+        if effect is None:
+            opacity_effect = QGraphicsOpacityEffect(widget)
+            opacity_effect.setOpacity(1.0)
+            widget.setGraphicsEffect(opacity_effect)
+            return opacity_effect
+        if isinstance(effect, QGraphicsOpacityEffect):
+            return effect
+        return None
 
 
 class CardFrame(QFrame):
@@ -1013,6 +1111,11 @@ class NordlysWindow(QMainWindow):
         self._page_map: Dict[str, QWidget] = {}
         self.sales_ar_page: Optional[SalesArPage] = None
         self.purchases_ap_page: Optional['PurchasesApPage'] = None
+        self._content_wrapper: Optional[QWidget] = None
+        self._nav_opacity: Optional[QGraphicsOpacityEffect] = None
+        self._content_opacity: Optional[QGraphicsOpacityEffect] = None
+        self._intro_animation: Optional[QParallelAnimationGroup] = None
+        self._intro_animation_ran = False
 
         self._setup_ui()
         self._apply_styles()
@@ -1026,6 +1129,9 @@ class NordlysWindow(QMainWindow):
         root_layout.setSpacing(0)
 
         self.nav_panel = NavigationPanel()
+        self._nav_opacity = QGraphicsOpacityEffect(self.nav_panel)
+        self._nav_opacity.setOpacity(0.0)
+        self.nav_panel.setGraphicsEffect(self._nav_opacity)
         root_layout.addWidget(self.nav_panel, 0)
 
         content_wrapper = QWidget()
@@ -1034,6 +1140,10 @@ class NordlysWindow(QMainWindow):
         content_layout.setContentsMargins(32, 32, 32, 32)
         content_layout.setSpacing(24)
         root_layout.addWidget(content_wrapper, 1)
+        self._content_wrapper = content_wrapper
+        self._content_opacity = QGraphicsOpacityEffect(content_wrapper)
+        self._content_opacity.setOpacity(0.0)
+        content_wrapper.setGraphicsEffect(self._content_opacity)
 
         header_layout = QHBoxLayout()
         header_layout.setSpacing(16)
@@ -1072,7 +1182,7 @@ class NordlysWindow(QMainWindow):
         info_card.add_layout(info_grid)
         content_layout.addWidget(info_card)
 
-        self.stack = QStackedWidget()
+        self.stack = AnimatedStackedWidget()
         content_layout.addWidget(self.stack, 1)
 
         self._create_pages()
@@ -1080,6 +1190,66 @@ class NordlysWindow(QMainWindow):
         status = QStatusBar()
         status.showMessage("Klar.")
         self.setStatusBar(status)
+
+    def showEvent(self, event) -> None:  # type: ignore[override]
+        super().showEvent(event)
+        if not self._intro_animation_ran:
+            self._intro_animation_ran = True
+            QTimer.singleShot(60, self._play_intro_animation)
+
+    def _play_intro_animation(self) -> None:
+        if self._content_wrapper is None or self._nav_opacity is None or self._content_opacity is None:
+            return
+
+        nav_pos = self.nav_panel.pos()
+        content_pos = self._content_wrapper.pos()
+
+        start_nav = nav_pos - QPoint(48, 0)
+        start_content = content_pos + QPoint(0, 28)
+
+        self.nav_panel.move(start_nav)
+        self._content_wrapper.move(start_content)
+
+        nav_move = QPropertyAnimation(self.nav_panel, b"pos", self)
+        nav_move.setDuration(520)
+        nav_move.setStartValue(start_nav)
+        nav_move.setEndValue(nav_pos)
+        nav_move.setEasingCurve(QEasingCurve.OutCubic)
+
+        content_move = QPropertyAnimation(self._content_wrapper, b"pos", self)
+        content_move.setDuration(520)
+        content_move.setStartValue(start_content)
+        content_move.setEndValue(content_pos)
+        content_move.setEasingCurve(QEasingCurve.OutCubic)
+
+        nav_fade = QPropertyAnimation(self._nav_opacity, b"opacity", self)
+        nav_fade.setDuration(520)
+        nav_fade.setStartValue(self._nav_opacity.opacity())
+        nav_fade.setEndValue(1.0)
+        nav_fade.setEasingCurve(QEasingCurve.OutCubic)
+
+        content_fade = QPropertyAnimation(self._content_opacity, b"opacity", self)
+        content_fade.setDuration(520)
+        content_fade.setStartValue(self._content_opacity.opacity())
+        content_fade.setEndValue(1.0)
+        content_fade.setEasingCurve(QEasingCurve.OutCubic)
+
+        group = QParallelAnimationGroup(self)
+        group.addAnimation(nav_move)
+        group.addAnimation(content_move)
+        group.addAnimation(nav_fade)
+        group.addAnimation(content_fade)
+
+        def _on_finished() -> None:
+            self.nav_panel.move(nav_pos)
+            self._content_wrapper.move(content_pos)
+            self._nav_opacity.setOpacity(1.0)
+            self._content_opacity.setOpacity(1.0)
+            self._intro_animation = None
+
+        group.finished.connect(_on_finished)
+        group.start()
+        self._intro_animation = group
 
     def _create_pages(self) -> None:
         dashboard = DashboardPage()
@@ -1187,49 +1357,217 @@ class NordlysWindow(QMainWindow):
     def _apply_styles(self) -> None:
         self.setStyleSheet(
             """
-            QWidget { font-family: 'Inter', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; font-size: 14px; color: #0f172a; }
-            QMainWindow { background-color: #edf1f7; }
-            #navPanel { background-color: #0b1120; color: #e2e8f0; border-right: 1px solid rgba(148, 163, 184, 0.18); }
-            #logoLabel { font-size: 26px; font-weight: 700; letter-spacing: 0.6px; color: #f8fafc; }
-            #navTree { background: transparent; border: none; color: #dbeafe; font-size: 14px; }
+            QWidget {
+                font-family: 'Inter', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+                font-size: 14px;
+                color: #0b132b;
+            }
+            QMainWindow {
+                background-color: #eef2ff;
+            }
+            #navPanel {
+                background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
+                    stop:0 #020617, stop:0.55 #0f172a, stop:1 #1d2a44);
+                color: #e2e8f0;
+                border-right: 1px solid rgba(148, 163, 184, 0.22);
+            }
+            #logoLabel {
+                font-size: 28px;
+                font-weight: 700;
+                letter-spacing: 1px;
+                color: #f8fafc;
+                text-transform: uppercase;
+            }
+            #navTree {
+                background: transparent;
+                border: none;
+                color: #dbeafe;
+                font-size: 14px;
+            }
             #navTree:focus { outline: none; border: none; }
             QTreeWidget::item:focus { outline: none; }
-            #navTree::item { height: 34px; padding: 6px 10px; border-radius: 10px; margin: 2px 0; }
-            #navTree::item:selected { background-color: rgba(59, 130, 246, 0.35); color: #f8fafc; font-weight: 600; }
-            #navTree::item:hover { background-color: rgba(59, 130, 246, 0.18); }
-            QPushButton { background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 #2563eb, stop:1 #1d4ed8); color: white; border-radius: 10px; padding: 10px 20px; font-weight: 600; letter-spacing: 0.2px; }
+            #navTree::item {
+                height: 36px;
+                padding: 8px 12px;
+                border-radius: 12px;
+                margin: 3px 0;
+            }
+            #navTree::item:selected {
+                background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
+                    stop:0 #38bdf8, stop:0.5 #6366f1, stop:1 #8b5cf6);
+                color: #f8fafc;
+                font-weight: 600;
+            }
+            #navTree::item:hover {
+                background-color: rgba(59, 130, 246, 0.26);
+            }
+            QPushButton {
+                background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
+                    stop:0 #2dd4bf, stop:0.45 #38bdf8, stop:1 #6366f1);
+                color: #f8fafc;
+                border-radius: 12px;
+                padding: 11px 22px;
+                font-weight: 600;
+                letter-spacing: 0.3px;
+                border: 1px solid rgba(255, 255, 255, 0.18);
+            }
             QPushButton:focus { outline: none; }
-            QPushButton:disabled { background-color: #94a3b8; color: #e5e7eb; }
-            QPushButton:hover:!disabled { background-color: #1e40af; }
-            QPushButton:pressed { background-color: #1d4ed8; }
-            #card { background-color: #ffffff; border-radius: 18px; border: 1px solid rgba(148, 163, 184, 0.28); }
-            #cardTitle { font-size: 20px; font-weight: 600; color: #0f172a; letter-spacing: 0.2px; }
-            #cardSubtitle { color: #64748b; font-size: 13px; line-height: 1.4; }
-            #pageTitle { font-size: 28px; font-weight: 700; color: #020617; letter-spacing: 0.4px; }
-            #statusLabel { color: #1f2937; font-size: 14px; line-height: 1.5; }
+            QPushButton:disabled {
+                background: rgba(148, 163, 184, 0.65);
+                color: rgba(226, 232, 240, 0.9);
+                border: none;
+            }
+            QPushButton:hover:!disabled {
+                background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
+                    stop:0 #22d3ee, stop:0.5 #4f46e5, stop:1 #7c3aed);
+            }
+            QPushButton:pressed {
+                background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
+                    stop:0 #0ea5e9, stop:1 #4c1d95);
+            }
+            #card {
+                background: qlineargradient(spread:pad, x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #ffffff, stop:1 rgba(226, 232, 240, 0.38));
+                border-radius: 20px;
+                border: 1px solid rgba(148, 163, 184, 0.28);
+            }
+            #card:hover {
+                border: 1px solid rgba(99, 102, 241, 0.45);
+            }
+            #cardTitle {
+                font-size: 21px;
+                font-weight: 600;
+                color: #0f172a;
+                letter-spacing: 0.2px;
+            }
+            #cardSubtitle {
+                color: #475569;
+                font-size: 13px;
+                line-height: 1.5;
+            }
+            #pageTitle {
+                font-size: 30px;
+                font-weight: 700;
+                color: #111827;
+                letter-spacing: 0.6px;
+            }
+            #statusLabel {
+                color: #1f2937;
+                font-size: 14px;
+                line-height: 1.55;
+            }
             #infoLabel { color: #475569; font-size: 14px; }
-            #jsonView { background-color: #0f172a; color: #f9fafb; font-family: "Fira Code", monospace; border-radius: 12px; padding: 14px; border: 1px solid #1e293b; }
-            #cardTable { border: none; gridline-color: rgba(148, 163, 184, 0.35); background-color: transparent; alternate-background-color: #f8fafc; }
-            QTableWidget { background-color: transparent; alternate-background-color: #f8fafc; }
+            #jsonView {
+                background: #0f172a;
+                color: #f8fafc;
+                font-family: "Fira Code", monospace;
+                border-radius: 14px;
+                padding: 14px;
+                border: 1px solid rgba(30, 41, 59, 0.8);
+            }
+            #cardTable {
+                border: none;
+                gridline-color: rgba(148, 163, 184, 0.35);
+                background-color: transparent;
+                alternate-background-color: rgba(226, 232, 240, 0.45);
+            }
+            QTableWidget { background-color: transparent; alternate-background-color: rgba(226, 232, 240, 0.45); }
             QTableWidget::item { padding: 10px 8px; }
-            QTableWidget::item:selected { background-color: rgba(37, 99, 235, 0.22); color: #0f172a; }
-            QHeaderView::section { background-color: transparent; border: none; font-weight: 600; color: #1f2937; padding: 10px 6px; }
-            QHeaderView::section:horizontal { border-bottom: 1px solid rgba(148, 163, 184, 0.45); }
+            QTableWidget::item:selected {
+                background: rgba(99, 102, 241, 0.22);
+                color: #0f172a;
+            }
+            QHeaderView::section {
+                background-color: transparent;
+                border: none;
+                font-weight: 600;
+                color: #1f2937;
+                padding: 10px 6px;
+            }
+            QHeaderView::section:horizontal {
+                border-bottom: 1px solid rgba(148, 163, 184, 0.45);
+            }
             QListWidget#checklist { border: none; }
-            QListWidget#checklist::item { padding: 12px 14px; margin: 4px 0; border-radius: 10px; }
-            QListWidget#checklist::item:selected { background-color: rgba(37, 99, 235, 0.16); color: #0f172a; font-weight: 600; }
-            QListWidget#checklist::item:hover { background-color: rgba(15, 23, 42, 0.05); }
-            #statBadge { background-color: #f8fafc; border: 1px solid rgba(148, 163, 184, 0.35); border-radius: 16px; }
-            #statTitle { font-size: 12px; font-weight: 600; color: #475569; text-transform: uppercase; letter-spacing: 1.2px; }
-            #statValue { font-size: 26px; font-weight: 700; color: #0f172a; }
-            #statDescription { font-size: 12px; color: #64748b; }
-            QStatusBar { background: transparent; color: #475569; padding-right: 24px; border-top: 1px solid rgba(148, 163, 184, 0.3); }
-            QComboBox, QSpinBox { background-color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.5); border-radius: 8px; padding: 6px 10px; min-height: 32px; }
-            QComboBox QAbstractItemView { border-radius: 8px; padding: 6px; }
+            QListWidget#checklist::item {
+                padding: 12px 14px;
+                margin: 4px 0;
+                border-radius: 12px;
+            }
+            QListWidget#checklist::item:selected {
+                background: rgba(14, 165, 233, 0.18);
+                color: #0f172a;
+                font-weight: 600;
+            }
+            QListWidget#checklist::item:hover {
+                background-color: rgba(15, 23, 42, 0.06);
+            }
+            #statBadge {
+                background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
+                    stop:0 rgba(236, 254, 255, 0.85), stop:1 rgba(224, 231, 255, 0.9));
+                border: 1px solid rgba(148, 163, 184, 0.35);
+                border-radius: 18px;
+            }
+            #statTitle {
+                font-size: 12px;
+                font-weight: 600;
+                color: #475569;
+                text-transform: uppercase;
+                letter-spacing: 1.2px;
+            }
+            #statValue {
+                font-size: 28px;
+                font-weight: 700;
+                color: #0f172a;
+            }
+            #statDescription {
+                font-size: 12px;
+                color: #64748b;
+            }
+            QStatusBar {
+                background: transparent;
+                color: #475569;
+                padding-right: 24px;
+                border-top: 1px solid rgba(148, 163, 184, 0.3);
+            }
+            QComboBox, QSpinBox {
+                background-color: rgba(255, 255, 255, 0.92);
+                border: 1px solid rgba(148, 163, 184, 0.5);
+                border-radius: 10px;
+                padding: 6px 12px;
+                min-height: 32px;
+            }
+            QComboBox QAbstractItemView {
+                border-radius: 10px;
+                padding: 6px;
+                background-color: #ffffff;
+                selection-background-color: rgba(99, 102, 241, 0.2);
+            }
             QComboBox::drop-down { border: none; width: 24px; }
             QComboBox::down-arrow { image: none; }
             QSpinBox::up-button, QSpinBox::down-button { border: none; background: transparent; width: 20px; }
-            QToolTip { background-color: #0f172a; color: #f8fafc; border: none; padding: 8px 10px; border-radius: 8px; }
+            QScrollBar:vertical {
+                width: 12px;
+                background: transparent;
+                margin: 6px 0;
+            }
+            QScrollBar::handle:vertical {
+                background: rgba(99, 102, 241, 0.45);
+                border-radius: 6px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background: rgba(59, 130, 246, 0.6);
+            }
+            QScrollBar::add-line:vertical,
+            QScrollBar::sub-line:vertical {
+                height: 0;
+            }
+            QToolTip {
+                background-color: #0f172a;
+                color: #f8fafc;
+                border: none;
+                padding: 8px 10px;
+                border-radius: 8px;
+            }
             """
         )
 
