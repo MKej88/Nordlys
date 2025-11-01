@@ -1185,11 +1185,11 @@ class NordlysWindow(QMainWindow):
             return 0.0
 
     def _on_calc_top_customers(self, source: str, topn: int) -> Optional[List[Tuple[str, str, int, float]]]:
-            if source == "faktura":
-                if self._sales_agg is None or self._sales_agg.empty:
-                    QMessageBox.information(
-                        self,
-                        "Ingen fakturaer",
+        if source == "faktura":
+            if self._sales_agg is None or self._sales_agg.empty:
+                QMessageBox.information(
+                    self,
+                    "Ingen fakturaer",
                     "Fant ingen fakturaopplysninger i SAF-T. Prøv kilde 'reskontro'.",
                 )
                 return None
