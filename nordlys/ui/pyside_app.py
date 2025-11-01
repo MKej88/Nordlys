@@ -11,7 +11,7 @@ from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple, ca
 
 import pandas as pd
 from PySide6.QtCore import QObject, Qt, QThread, Signal, Slot
-from PySide6.QtGui import QBrush, QColor, QFont
+from PySide6.QtGui import QBrush, QColor, QFont, QIcon
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -106,6 +106,48 @@ REVISION_TASKS: Dict[str, List[str]] = {
         "Verifiser justeringer og korrigeringer",
     ],
 }
+
+
+NAV_ICON_FILENAMES: Dict[str, str] = {
+    "dashboard": "dashboard.svg",
+    "plan.saldobalanse": "balance-scale.svg",
+    "plan.kontroll": "shield-check.svg",
+    "plan.vesentlighet": "target.svg",
+    "plan.regnskapsanalyse": "analytics.svg",
+    "plan.sammenstilling": "layers.svg",
+    "rev.innkjop": "shopping-bag.svg",
+    "rev.lonn": "people.svg",
+    "rev.kostnad": "coins.svg",
+    "rev.driftsmidler": "gear.svg",
+    "rev.finans": "bank.svg",
+    "rev.varelager": "boxes.svg",
+    "rev.salg": "trend-up.svg",
+    "rev.mva": "percent.svg",
+}
+
+
+_ICON_CACHE: Dict[str, Optional[QIcon]] = {}
+
+
+def _icon_for_navigation(key: str) -> Optional[QIcon]:
+    """Returnerer ikon for navigasjonsnøkkelen dersom tilgjengelig."""
+
+    if key in _ICON_CACHE:
+        return _ICON_CACHE[key]
+
+    filename = NAV_ICON_FILENAMES.get(key)
+    if not filename:
+        _ICON_CACHE[key] = None
+        return None
+
+    icon_path = Path(__file__).resolve().parent.parent / "resources" / "icons" / filename
+    if not icon_path.exists():
+        _ICON_CACHE[key] = None
+        return None
+
+    icon = QIcon(str(icon_path))
+    _ICON_CACHE[key] = icon
+    return icon
 
 
 @dataclass
@@ -908,6 +950,9 @@ class NavigationPanel(QFrame):
             font.setWeight(QFont.DemiBold)
             item.setFont(0, font)
             item.setForeground(0, QBrush(QColor("#f8fafc")))
+            icon = _icon_for_navigation(key)
+            if icon:
+                item.setIcon(0, icon)
         else:
             font = item.font(0)
             font.setPointSize(max(font.pointSize() - 1, 9))
@@ -933,6 +978,9 @@ class NavigationPanel(QFrame):
         font.setWeight(QFont.Medium)
         item.setFont(0, font)
         item.setForeground(0, QBrush(QColor("#e2e8f0")))
+        icon = _icon_for_navigation(key)
+        if icon:
+            item.setIcon(0, icon)
         parent.item.addChild(item)
         parent.item.setExpanded(True)
         return NavigationItem(key, item)
