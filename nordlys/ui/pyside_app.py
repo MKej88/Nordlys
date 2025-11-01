@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple, cast
 
 import pandas as pd
-from PySide6.QtCore import QObject, Qt, QThread, Signal, Slot
+from PySide6.QtCore import QEasingCurve, QObject, Qt, QThread, QPropertyAnimation, Signal, Slot
 from PySide6.QtGui import QBrush, QColor, QFont, QIcon
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
     QGraphicsDropShadowEffect,
+    QGraphicsOpacityEffect,
     QHeaderView,
     QHBoxLayout,
     QLabel,
@@ -284,6 +285,7 @@ class CardFrame(QFrame):
         self.setFrameShape(QFrame.StyledPanel)
         self.setFrameShadow(QFrame.Raised)
         self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setAttribute(Qt.WA_Hover, True)
 
         shadow = QGraphicsDropShadowEffect(self)
         shadow.setBlurRadius(24)
@@ -342,6 +344,45 @@ class StatBadge(QFrame):
 
     def set_value(self, value: str) -> None:
         self.value_label.setText(value)
+
+
+class AnimatedButton(QPushButton):
+    """Primærknapp med subtil skyggeanimasjon."""
+
+    def __init__(self, text: str = "", parent: Optional[QWidget] = None) -> None:
+        super().__init__(text, parent)
+        self.setCursor(Qt.PointingHandCursor)
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(18)
+        shadow.setOffset(0, 6)
+        shadow.setColor(QColor(37, 99, 235, 90))
+        self.setGraphicsEffect(shadow)
+        self._shadow = shadow
+        animation = QPropertyAnimation(self._shadow, b"blurRadius", self)
+        animation.setDuration(220)
+        animation.setEasingCurve(QEasingCurve.OutCubic)
+        self._shadow_anim = animation
+
+    def enterEvent(self, event) -> None:  # type: ignore[override]
+        if self.isEnabled():
+            self._start_shadow_animation(28)
+        super().enterEvent(event)
+
+    def leaveEvent(self, event) -> None:  # type: ignore[override]
+        self._start_shadow_animation(18 if self.isEnabled() else 12)
+        super().leaveEvent(event)
+
+    def setEnabled(self, enabled: bool) -> None:  # type: ignore[override]
+        super().setEnabled(enabled)
+        base_radius = 18 if enabled else 12
+        self._shadow.setBlurRadius(base_radius)
+        self._shadow.setColor(QColor(37, 99, 235, 90 if enabled else 45))
+
+    def _start_shadow_animation(self, target_radius: float) -> None:
+        self._shadow_anim.stop()
+        self._shadow_anim.setStartValue(self._shadow.blurRadius())
+        self._shadow_anim.setEndValue(target_radius)
+        self._shadow_anim.start()
 
 
 class DashboardPage(QWidget):
@@ -910,6 +951,7 @@ class NavigationPanel(QFrame):
     def __init__(self) -> None:
         super().__init__()
         self.setObjectName("navPanel")
+        self.setAttribute(Qt.WA_StyledBackground, True)
         self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 32, 24, 32)
@@ -1009,6 +1051,8 @@ class NordlysWindow(QMainWindow):
         self._load_thread: Optional[QThread] = None
         self._load_worker: Optional[SaftLoadWorker] = None
         self._progress_dialog: Optional[QProgressDialog] = None
+        self._page_fade_effect: Optional[QGraphicsOpacityEffect] = None
+        self._page_fade_anim: Optional[QPropertyAnimation] = None
 
         self._page_map: Dict[str, QWidget] = {}
         self.sales_ar_page: Optional[SalesArPage] = None
@@ -1029,6 +1073,8 @@ class NordlysWindow(QMainWindow):
         root_layout.addWidget(self.nav_panel, 0)
 
         content_wrapper = QWidget()
+        content_wrapper.setObjectName("contentArea")
+        content_wrapper.setAttribute(Qt.WA_StyledBackground, True)
         content_wrapper.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         content_layout = QVBoxLayout(content_wrapper)
         content_layout.setContentsMargins(32, 32, 32, 32)
@@ -1042,16 +1088,16 @@ class NordlysWindow(QMainWindow):
         self.title_label.setObjectName("pageTitle")
         header_layout.addWidget(self.title_label, 1)
 
-        self.btn_open = QPushButton("Åpne SAF-T XML …")
+        self.btn_open = AnimatedButton("Åpne SAF-T XML …")
         self.btn_open.clicked.connect(self.on_open)
         header_layout.addWidget(self.btn_open)
 
-        self.btn_brreg = QPushButton("Hent Regnskapsregisteret")
+        self.btn_brreg = AnimatedButton("Hent Regnskapsregisteret")
         self.btn_brreg.clicked.connect(self.on_brreg)
         self.btn_brreg.setEnabled(False)
         header_layout.addWidget(self.btn_brreg)
 
-        self.btn_export = QPushButton("Eksporter rapport (Excel)")
+        self.btn_export = AnimatedButton("Eksporter rapport (Excel)")
         self.btn_export.clicked.connect(self.on_export)
         self.btn_export.setEnabled(False)
         header_layout.addWidget(self.btn_export)
@@ -1187,49 +1233,64 @@ class NordlysWindow(QMainWindow):
     def _apply_styles(self) -> None:
         self.setStyleSheet(
             """
-            QWidget { font-family: 'Inter', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; font-size: 14px; color: #0f172a; }
-            QMainWindow { background-color: #edf1f7; }
-            #navPanel { background-color: #0b1120; color: #e2e8f0; border-right: 1px solid rgba(148, 163, 184, 0.18); }
+            QWidget { font-family: 'Inter', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; font-size: 14px; color: #0b1120; }
+            QMainWindow { background-color: #e0e7ff; }
+            #navPanel { background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 #0f172a, stop:1 #1e293b); color: #e2e8f0; border-right: 1px solid rgba(148, 163, 184, 0.18); }
             #logoLabel { font-size: 26px; font-weight: 700; letter-spacing: 0.6px; color: #f8fafc; }
-            #navTree { background: transparent; border: none; color: #dbeafe; font-size: 14px; }
+            #navTree { background: transparent; border: none; color: #cbd5f5; font-size: 14px; }
             #navTree:focus { outline: none; border: none; }
             QTreeWidget::item:focus { outline: none; }
-            #navTree::item { height: 34px; padding: 6px 10px; border-radius: 10px; margin: 2px 0; }
-            #navTree::item:selected { background-color: rgba(59, 130, 246, 0.35); color: #f8fafc; font-weight: 600; }
-            #navTree::item:hover { background-color: rgba(59, 130, 246, 0.18); }
-            QPushButton { background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 #2563eb, stop:1 #1d4ed8); color: white; border-radius: 10px; padding: 10px 20px; font-weight: 600; letter-spacing: 0.2px; }
+            #navTree::item { height: 34px; padding: 8px 14px; border-radius: 12px; margin: 3px 0; }
+            #navTree::item:selected { background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 rgba(99, 102, 241, 0.75), stop:1 rgba(59, 130, 246, 0.75)); color: #f8fafc; font-weight: 600; }
+            #navTree::item:hover { background-color: rgba(56, 189, 248, 0.22); }
+            #contentArea { background: qlineargradient(spread:pad, x1:0, y1:0, x2:0, y2:1, stop:0 rgba(248, 250, 252, 0.98), stop:1 rgba(224, 231, 255, 0.9)); border-top-left-radius: 32px; border-bottom-left-radius: 32px; }
+            #contentArea > QWidget, #contentArea > QFrame { background: transparent; }
+            QPushButton { background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 #6366f1, stop:1 #3b82f6); color: #ffffff; border-radius: 12px; padding: 12px 22px; font-weight: 600; letter-spacing: 0.2px; }
             QPushButton:focus { outline: none; }
-            QPushButton:disabled { background-color: #94a3b8; color: #e5e7eb; }
-            QPushButton:hover:!disabled { background-color: #1e40af; }
-            QPushButton:pressed { background-color: #1d4ed8; }
-            #card { background-color: #ffffff; border-radius: 18px; border: 1px solid rgba(148, 163, 184, 0.28); }
-            #cardTitle { font-size: 20px; font-weight: 600; color: #0f172a; letter-spacing: 0.2px; }
-            #cardSubtitle { color: #64748b; font-size: 13px; line-height: 1.4; }
-            #pageTitle { font-size: 28px; font-weight: 700; color: #020617; letter-spacing: 0.4px; }
-            #statusLabel { color: #1f2937; font-size: 14px; line-height: 1.5; }
+            QPushButton:disabled { background-color: #a5b4fc; color: #e0e7ff; }
+            QPushButton:hover:!disabled { background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 #818cf8, stop:1 #2563eb); }
+            QPushButton:pressed { background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 #4338ca, stop:1 #1d4ed8); }
+            #card { background: qlineargradient(spread:pad, x1:0, y1:0, x2:0, y2:1, stop:0 rgba(255, 255, 255, 0.96), stop:1 rgba(236, 245, 255, 0.92)); border-radius: 20px; border: 1px solid rgba(148, 163, 184, 0.28); }
+            #card:hover { border: 1px solid rgba(129, 140, 248, 0.6); }
+            #cardTitle { font-size: 21px; font-weight: 600; color: #0f172a; letter-spacing: 0.3px; }
+            #cardSubtitle { color: #475569; font-size: 13px; line-height: 1.5; }
+            #pageTitle { font-size: 30px; font-weight: 700; color: #0b1120; letter-spacing: 0.4px; }
+            #pageSubtitle { color: #475569; font-size: 15px; }
+            #statusLabel { color: #1f2937; font-size: 14px; line-height: 1.55; }
             #infoLabel { color: #475569; font-size: 14px; }
-            #jsonView { background-color: #0f172a; color: #f9fafb; font-family: "Fira Code", monospace; border-radius: 12px; padding: 14px; border: 1px solid #1e293b; }
-            #cardTable { border: none; gridline-color: rgba(148, 163, 184, 0.35); background-color: transparent; alternate-background-color: #f8fafc; }
-            QTableWidget { background-color: transparent; alternate-background-color: #f8fafc; }
+            #jsonView { background-color: #0f172a; color: #f9fafb; font-family: "Fira Code", monospace; border-radius: 14px; padding: 16px; border: 1px solid #1e293b; }
+            #cardTable { border: none; gridline-color: rgba(148, 163, 184, 0.28); background-color: transparent; alternate-background-color: rgba(226, 232, 240, 0.4); }
+            QTableWidget { background-color: transparent; alternate-background-color: rgba(226, 232, 240, 0.32); }
             QTableWidget::item { padding: 10px 8px; }
-            QTableWidget::item:selected { background-color: rgba(37, 99, 235, 0.22); color: #0f172a; }
-            QHeaderView::section { background-color: transparent; border: none; font-weight: 600; color: #1f2937; padding: 10px 6px; }
+            QTableWidget::item:selected { background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:0, stop:0 rgba(99, 102, 241, 0.25), stop:1 rgba(56, 189, 248, 0.25)); color: #0f172a; }
+            QHeaderView::section { background-color: transparent; border: none; font-weight: 600; color: #1e293b; padding: 10px 6px; }
             QHeaderView::section:horizontal { border-bottom: 1px solid rgba(148, 163, 184, 0.45); }
             QListWidget#checklist { border: none; }
-            QListWidget#checklist::item { padding: 12px 14px; margin: 4px 0; border-radius: 10px; }
-            QListWidget#checklist::item:selected { background-color: rgba(37, 99, 235, 0.16); color: #0f172a; font-weight: 600; }
-            QListWidget#checklist::item:hover { background-color: rgba(15, 23, 42, 0.05); }
-            #statBadge { background-color: #f8fafc; border: 1px solid rgba(148, 163, 184, 0.35); border-radius: 16px; }
+            QListWidget#checklist::item { padding: 12px 14px; margin: 4px 0; border-radius: 12px; }
+            QListWidget#checklist::item:selected { background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:0, stop:0 rgba(96, 165, 250, 0.22), stop:1 rgba(45, 212, 191, 0.24)); color: #0f172a; font-weight: 600; }
+            QListWidget#checklist::item:hover { background-color: rgba(148, 163, 184, 0.22); }
+            #statBadge { background: qlineargradient(spread:pad, x1:0, y1:0, x2:0, y2:1, stop:0 rgba(59, 130, 246, 0.12), stop:1 rgba(45, 212, 191, 0.12)); border: 1px solid rgba(59, 130, 246, 0.28); border-radius: 18px; }
             #statTitle { font-size: 12px; font-weight: 600; color: #475569; text-transform: uppercase; letter-spacing: 1.2px; }
-            #statValue { font-size: 26px; font-weight: 700; color: #0f172a; }
+            #statValue { font-size: 28px; font-weight: 700; color: #0f172a; }
             #statDescription { font-size: 12px; color: #64748b; }
             QStatusBar { background: transparent; color: #475569; padding-right: 24px; border-top: 1px solid rgba(148, 163, 184, 0.3); }
-            QComboBox, QSpinBox { background-color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.5); border-radius: 8px; padding: 6px 10px; min-height: 32px; }
-            QComboBox QAbstractItemView { border-radius: 8px; padding: 6px; }
-            QComboBox::drop-down { border: none; width: 24px; }
+            QStatusBar::item { border: none; }
+            QComboBox, QSpinBox { background-color: #ffffff; border: 1px solid rgba(129, 140, 248, 0.55); border-radius: 10px; padding: 6px 12px; min-height: 34px; }
+            QComboBox:focus, QSpinBox:focus { border: 1px solid rgba(99, 102, 241, 0.85); }
+            QComboBox QAbstractItemView { border-radius: 10px; padding: 6px; background-color: #ffffff; }
+            QComboBox::drop-down { border: none; width: 26px; }
             QComboBox::down-arrow { image: none; }
             QSpinBox::up-button, QSpinBox::down-button { border: none; background: transparent; width: 20px; }
             QToolTip { background-color: #0f172a; color: #f8fafc; border: none; padding: 8px 10px; border-radius: 8px; }
+            QProgressDialog { background-color: #111827; color: #e2e8f0; border: 1px solid rgba(99, 102, 241, 0.6); border-radius: 14px; }
+            QProgressBar { background-color: rgba(30, 41, 59, 0.6); border-radius: 8px; border: 1px solid rgba(99, 102, 241, 0.35); color: #f8fafc; padding: 3px; }
+            QProgressBar::chunk { border-radius: 6px; background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 #34d399, stop:1 #22d3ee); }
+            QScrollBar:vertical, QScrollBar:horizontal { background: transparent; border: none; margin: 0; width: 10px; height: 10px; }
+            QScrollBar::handle:vertical, QScrollBar::handle:horizontal { background: rgba(148, 163, 184, 0.55); border-radius: 6px; min-height: 40px; min-width: 40px; }
+            QScrollBar::handle:vertical:hover, QScrollBar::handle:horizontal:hover { background: rgba(99, 102, 241, 0.65); }
+            QScrollBar::add-line, QScrollBar::sub-line { height: 0; width: 0; }
+            QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
+            QStackedWidget { background: transparent; }
             """
         )
 
@@ -1813,10 +1874,42 @@ class NordlysWindow(QMainWindow):
             widget = self._page_map[key]
             self.stack.setCurrentWidget(widget)
             self.title_label.setText(current.text(0))
+            self._animate_page_transition(widget)
 
     # endregion
 
     # region Hjelpere
+    def _animate_page_transition(self, widget: QWidget) -> None:
+        if self._page_fade_anim and self._page_fade_anim.state() == QPropertyAnimation.Running:
+            self._page_fade_anim.stop()
+        if self._page_fade_effect is not None:
+            previous_effect = self._page_fade_effect
+            parent = previous_effect.parent()
+            if isinstance(parent, QWidget) and parent.graphicsEffect() is previous_effect:
+                parent.setGraphicsEffect(None)
+            previous_effect.deleteLater()
+            self._page_fade_effect = None
+
+        effect = QGraphicsOpacityEffect(widget)
+        effect.setOpacity(0.0)
+        widget.setGraphicsEffect(effect)
+
+        animation = QPropertyAnimation(effect, b"opacity", self)
+        animation.setDuration(280)
+        animation.setStartValue(0.0)
+        animation.setEndValue(1.0)
+        animation.setEasingCurve(QEasingCurve.OutCubic)
+        animation.finished.connect(lambda eff=effect, w=widget: self._clear_page_effect(w, eff))
+
+        self._page_fade_effect = effect
+        self._page_fade_anim = animation
+        animation.start()
+
+    def _clear_page_effect(self, widget: QWidget, effect: QGraphicsOpacityEffect) -> None:
+        if widget.graphicsEffect() is effect:
+            widget.setGraphicsEffect(None)
+        effect.deleteLater()
+
     def _update_header_fields(self) -> None:
         if not self._header:
             return
