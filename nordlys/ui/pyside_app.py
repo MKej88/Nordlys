@@ -2,8 +2,12 @@
 from __future__ import annotations
 
 import sys
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Tuple
+from pathlib import Path
+from typing import Dict, Iterable, List, Optional, Tuple
+
+import pandas as pd
 
 try:  # pragma: no cover - eksponeres kun ved manglende avhengighet
     from PySide6.QtCore import Qt
@@ -11,20 +15,27 @@ try:  # pragma: no cover - eksponeres kun ved manglende avhengighet
     from PySide6.QtWidgets import (
         QApplication,
         QComboBox,
+        QFileDialog,
         QFrame,
+        QFormLayout,
         QGridLayout,
         QHBoxLayout,
         QLabel,
         QMainWindow,
+        QMessageBox,
         QPushButton,
         QProgressBar,
         QScrollArea,
         QSizePolicy,
         QStackedWidget,
+        QTableWidget,
+        QTableWidgetItem,
         QTreeWidget,
         QTreeWidgetItem,
         QVBoxLayout,
         QWidget,
+        QHeaderView,
+        QAbstractItemView,
     )
 except ImportError as exc:  # pragma: no cover - avhenger av miljøet
     _PYSIDE_AVAILABLE = False
@@ -34,6 +45,17 @@ else:
     _IMPORT_ERROR = None
 
 from ..constants import APP_TITLE
+from ..saft import (
+    SaftHeader,
+    extract_ar_from_gl,
+    extract_sales_taxbase_by_customer,
+    ns4102_summary_from_tb,
+    parse_customers,
+    parse_saft_header,
+    parse_saldobalanse,
+)
+from ..brreg import fetch_brreg, map_brreg_metrics
+from ..utils import format_currency, format_difference
 
 
 @dataclass(frozen=True)
@@ -52,6 +74,7 @@ class NavItem:
 
 
 NAV_STRUCTURE: Tuple[NavItem, ...] = (
+    NavItem(key="analysis", title="SAF-T analyse", subtitle="Importer filer og nøkkeltall"),
     NavItem(key="dashboard", title="Dashboard", subtitle="Overblikk"),
     NavItem(
         key="planning",
@@ -83,6 +106,37 @@ NAV_STRUCTURE: Tuple[NavItem, ...] = (
 
 
 if _PYSIDE_AVAILABLE:
+
+    SUMMARY_FIELDS: Tuple[Tuple[str, str], ...] = (
+        ("driftsinntekter", "Driftsinntekter"),
+        ("varekostnad", "Varekostnad"),
+        ("lonn", "Lønn"),
+        ("andre_drift", "Andre driftskostnader"),
+        ("ebitda", "EBITDA"),
+        ("ebit", "EBIT"),
+        ("finans_netto", "Finans netto"),
+        ("ebt", "Resultat før skatt"),
+        ("arsresultat", "Årsresultat"),
+        ("eiendeler_UB", "Eiendeler (UB)"),
+        ("egenkapital_UB", "Egenkapital (UB)"),
+        ("gjeld_UB", "Gjeld (UB)"),
+    )
+
+
+    @dataclass
+    class AnalysisState:
+        """Holder resultatene fra sist lastede SAF-T fil."""
+
+        path: Path
+        header: SaftHeader
+        trial_balance: pd.DataFrame
+        summary: Dict[str, float]
+        customers: Dict[str, str]
+        sales_by_customer: pd.DataFrame
+        ar_by_customer: pd.DataFrame
+        top_customers: pd.DataFrame
+        brreg_json: Optional[Dict[str, object]] = None
+        brreg_metrics: Optional[Dict[str, Optional[float]]] = None
 
     class InfoCard(QFrame):
         """Visuell kortkomponent brukt på dashbordet."""
@@ -314,6 +368,211 @@ if _PYSIDE_AVAILABLE:
             layout.addStretch()
 
 
+    class AnalysisPage(QWidget):
+        """Side for å importere SAF-T og kjøre analyser."""
+
+        def __init__(self, main_window: "MainWindow") -> None:
+            super().__init__()
+            self._main_window = main_window
+            self._state: Optional[AnalysisState] = None
+
+            layout = QVBoxLayout(self)
+            layout.setSpacing(24)
+            layout.setContentsMargins(0, 0, 0, 0)
+
+            title = QLabel("SAF-T analyse")
+            title.setObjectName("PageTitle")
+            layout.addWidget(title)
+
+            subtitle = QLabel(
+                "Importer SAF-T filer, hent nøkkeltall og sammenlign mot Regnskapsregisteret."
+            )
+            subtitle.setObjectName("PageSubtitle")
+            subtitle.setWordWrap(True)
+            layout.addWidget(subtitle)
+
+            action_row = QHBoxLayout()
+            self.open_button = QPushButton("Åpne SAF-T-fil…")
+            self.open_button.clicked.connect(self._main_window.prompt_open_saft)
+            action_row.addWidget(self.open_button)
+
+            self.brreg_button = QPushButton("Hent Brreg-data")
+            self.brreg_button.clicked.connect(self._main_window.fetch_brreg_data)
+            action_row.addWidget(self.brreg_button)
+
+            self.export_button = QPushButton("Eksporter analyse…")
+            self.export_button.clicked.connect(self._main_window.export_analysis)
+            action_row.addWidget(self.export_button)
+
+            action_row.addStretch()
+            layout.addLayout(action_row)
+
+            self.file_value = QLabel("Ingen fil valgt")
+            self.file_value.setObjectName("BulletText")
+            layout.addWidget(self.file_value)
+
+            header_card = QFrame()
+            header_card.setObjectName("PanelCard")
+            header_layout = QVBoxLayout(header_card)
+            header_layout.setContentsMargins(22, 22, 22, 22)
+            header_layout.setSpacing(12)
+
+            header_title = QLabel("Metadata fra SAF-T")
+            header_title.setObjectName("PanelTitle")
+            header_layout.addWidget(header_title)
+
+            form = QFormLayout()
+            form.setLabelAlignment(Qt.AlignLeft)
+            self.header_labels: Dict[str, QLabel] = {}
+            for key, label_text in [
+                ("company_name", "Selskap"),
+                ("orgnr", "Organisasjonsnummer"),
+                ("fiscal_year", "Regnskapsår"),
+                ("period_start", "Periode start"),
+                ("period_end", "Periode slutt"),
+                ("file_version", "SAF-T versjon"),
+            ]:
+                label = QLabel("—")
+                label.setObjectName("BulletText")
+                form.addRow(f"{label_text}:", label)
+                self.header_labels[key] = label
+            header_layout.addLayout(form)
+
+            self.brreg_status = QLabel("Ingen Brreg-data hentet ennå.")
+            self.brreg_status.setObjectName("BulletText")
+            self.brreg_status.setWordWrap(True)
+            header_layout.addWidget(self.brreg_status)
+
+            layout.addWidget(header_card)
+
+            summary_card = QFrame()
+            summary_card.setObjectName("PanelCard")
+            summary_layout = QVBoxLayout(summary_card)
+            summary_layout.setContentsMargins(22, 22, 22, 22)
+            summary_layout.setSpacing(12)
+
+            summary_title = QLabel("Nøkkeltall")
+            summary_title.setObjectName("PanelTitle")
+            summary_layout.addWidget(summary_title)
+
+            self.summary_table = QTableWidget(0, 4)
+            self.summary_table.setHorizontalHeaderLabels([
+                "Nøkkeltall",
+                "SAF-T",
+                "Brreg",
+                "Differanse",
+            ])
+            self.summary_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+            self.summary_table.verticalHeader().setVisible(False)
+            self.summary_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+            self.summary_table.setSelectionMode(QAbstractItemView.NoSelection)
+            summary_layout.addWidget(self.summary_table)
+
+            layout.addWidget(summary_card)
+
+            top_card = QFrame()
+            top_card.setObjectName("PanelCard")
+            top_layout = QVBoxLayout(top_card)
+            top_layout.setContentsMargins(22, 22, 22, 22)
+            top_layout.setSpacing(12)
+
+            top_title = QLabel("Toppkunder")
+            top_title.setObjectName("PanelTitle")
+            top_layout.addWidget(top_title)
+
+            self.top_table = QTableWidget(0, 5)
+            self.top_table.setHorizontalHeaderLabels([
+                "Kunde",
+                "Kunde-ID",
+                "Omsetning eks mva",
+                "Fakturaer",
+                "Reskontro netto",
+            ])
+            self.top_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+            for column in range(1, 5):
+                self.top_table.horizontalHeader().setSectionResizeMode(column, QHeaderView.ResizeToContents)
+            self.top_table.verticalHeader().setVisible(False)
+            self.top_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+            self.top_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+            self.top_table.setSelectionMode(QAbstractItemView.NoSelection)
+            top_layout.addWidget(self.top_table)
+
+            layout.addWidget(top_card)
+            layout.addStretch()
+
+            self.set_state(None)
+
+        def _table_item(self, text: str) -> QTableWidgetItem:
+            item = QTableWidgetItem(text)
+            item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+            return item
+
+        def set_state(self, state: Optional[AnalysisState]) -> None:
+            self._state = state
+            has_state = state is not None
+            self.brreg_button.setEnabled(bool(has_state and (state.header.orgnr or "").strip()))
+            self.export_button.setEnabled(bool(has_state))
+
+            if state is None:
+                self.file_value.setText("Ingen fil valgt")
+                for label in self.header_labels.values():
+                    label.setText("—")
+                self.brreg_status.setText("Ingen Brreg-data hentet ennå.")
+                self.summary_table.setRowCount(0)
+                self.top_table.setRowCount(0)
+                return
+
+            self.file_value.setText(str(state.path))
+            header_values = {
+                "company_name": state.header.company_name or "—",
+                "orgnr": state.header.orgnr or "—",
+                "fiscal_year": state.header.fiscal_year or "—",
+                "period_start": state.header.period_start or "—",
+                "period_end": state.header.period_end or "—",
+                "file_version": state.header.file_version or "—",
+            }
+            for key, value in header_values.items():
+                self.header_labels[key].setText(value)
+
+            if state.brreg_metrics:
+                self.brreg_status.setText("Brreg-data hentet – sammenligning vises i tabellen.")
+            else:
+                self.brreg_status.setText("Brreg-data er ikke hentet. Klikk på \"Hent Brreg-data\" for å sammenligne.")
+
+            self.summary_table.setRowCount(len(SUMMARY_FIELDS))
+            for row, (key, label) in enumerate(SUMMARY_FIELDS):
+                saft_value = state.summary.get(key)
+                brreg_value = (state.brreg_metrics or {}).get(key) if state.brreg_metrics else None
+                self.summary_table.setItem(row, 0, self._table_item(label))
+                self.summary_table.setItem(row, 1, self._table_item(format_currency(saft_value)))
+                self.summary_table.setItem(row, 2, self._table_item(format_currency(brreg_value)))
+                diff_text = (
+                    format_difference(saft_value, brreg_value)
+                    if saft_value is not None and brreg_value is not None
+                    else "—"
+                )
+                self.summary_table.setItem(row, 3, self._table_item(diff_text))
+
+            top_df = state.top_customers
+            display_df = top_df.head(15) if not top_df.empty else top_df
+            self.top_table.setRowCount(len(display_df))
+            for row, (_, record) in enumerate(display_df.iterrows()):
+                navn = (record.get("Navn") or "").strip() or "(uten navn)"
+                customer_id = str(record.get("CustomerID") or "")
+                omsetning = format_currency(record.get("OmsetningEksMva"))
+                fakturaer = record.get("Fakturaer")
+                fakturaer_text = "—"
+                if pd.notna(fakturaer):
+                    try:
+                        fakturaer_text = str(int(fakturaer))
+                    except Exception:
+                        fakturaer_text = str(fakturaer)
+                ar_netto = format_currency(record.get("AR_Netto"))
+                values = [navn, customer_id, omsetning, fakturaer_text, ar_netto]
+                for col, value in enumerate(values):
+                    self.top_table.setItem(row, col, self._table_item(value))
+
+
     class NavigationPanel(QFrame):
         """Venstremeny med fasestruktur."""
 
@@ -353,6 +612,9 @@ if _PYSIDE_AVAILABLE:
             self.setWindowTitle(APP_TITLE)
             self.resize(1280, 860)
             self.setMinimumSize(1100, 760)
+
+            self._analysis_state: Optional[AnalysisState] = None
+            self._analysis_page: Optional[AnalysisPage] = None
 
             self._setup_palette()
             self._build_layout()
@@ -465,10 +727,17 @@ if _PYSIDE_AVAILABLE:
             self._pages_layout.addStretch()
 
         def _create_page_for_item(self, item: NavItem) -> QWidget:
+            if item.key == "analysis":
+                page = AnalysisPage(self)
+                self._analysis_page = page
+                if self._analysis_state is not None:
+                    page.set_state(self._analysis_state)
+                return page
             if item.key == "dashboard":
                 return DashboardPage()
 
             descriptions = {
+                "analysis": "Importer SAF-T filer, kjør analyser og eksporter resultater.",
                 "planning": "Få oversikten over hvilke forberedelser som gjenstår og fordel arbeidet i teamet.",
                 "planning_ib": "Verifiser inngående balanser, sammenlign mot foregående periode og dokumenter avvik.",
                 "planning_materiality": "Dokumenter vesentlighetsgrenser, delberegninger og revisjonsstrategi.",
@@ -510,6 +779,178 @@ if _PYSIDE_AVAILABLE:
                 page.setVisible(False)
             widget.setVisible(True)
             widget.raise_()
+
+        def prompt_open_saft(self) -> None:
+            """Viser en fil-dialog og laster SAF-T filen brukeren velger."""
+
+            path_str, _ = QFileDialog.getOpenFileName(
+                self,
+                "Velg SAF-T fil",
+                str(self._analysis_state.path.parent) if self._analysis_state else str(Path.home()),
+                "SAF-T filer (*.xml *.txt);;Alle filer (*.*)",
+            )
+            if not path_str:
+                return
+            self._load_saft_file(Path(path_str))
+
+        def _load_saft_file(self, path: Path) -> None:
+            try:
+                tree = ET.parse(path)
+                root = tree.getroot()
+            except Exception as exc:  # pragma: no cover - UI interaksjon
+                QMessageBox.critical(self, "Kunne ikke åpne SAF-T", f"Feil ved lesing av filen: {exc}")
+                return
+
+            header = parse_saft_header(root)
+            trial_balance = parse_saldobalanse(root)
+            summary = ns4102_summary_from_tb(trial_balance)
+            customers = parse_customers(root)
+
+            sales_df = extract_sales_taxbase_by_customer(root)
+            if not sales_df.empty:
+                sales_df = sales_df.copy()
+                sales_df["CustomerID"] = sales_df["CustomerID"].astype(str)
+                sales_df["Navn"] = sales_df["CustomerID"].map(lambda cid: customers.get(cid, ""))
+                sales_df.sort_values("OmsetningEksMva", ascending=False, inplace=True)
+            else:
+                sales_df = pd.DataFrame(columns=["CustomerID", "Navn", "OmsetningEksMva", "Fakturaer"])
+
+            ar_df = extract_ar_from_gl(root)
+            if not ar_df.empty:
+                ar_df = ar_df.copy()
+                ar_df["CustomerID"] = ar_df["CustomerID"].astype(str)
+                ar_df["Navn"] = ar_df["CustomerID"].map(lambda cid: customers.get(cid, ""))
+                ar_df.sort_values("AR_Netto", ascending=False, inplace=True)
+            else:
+                ar_df = pd.DataFrame(columns=["CustomerID", "Navn", "AR_Netto"])
+
+            if sales_df.empty and ar_df.empty:
+                top_customers = pd.DataFrame(
+                    columns=["CustomerID", "Navn", "OmsetningEksMva", "Fakturaer", "AR_Netto"]
+                )
+            else:
+                top_customers = pd.merge(
+                    sales_df[["CustomerID", "Navn", "OmsetningEksMva", "Fakturaer"]],
+                    ar_df[["CustomerID", "AR_Netto"]],
+                    on="CustomerID",
+                    how="outer",
+                )
+                if "Navn_x" in top_customers.columns:
+                    top_customers["Navn"] = top_customers["Navn_x"].fillna(top_customers.get("Navn_y"))
+                    top_customers.drop(columns=[col for col in ["Navn_x", "Navn_y"] if col in top_customers], inplace=True)
+                top_customers["Navn"] = top_customers["Navn"].fillna("")
+                top_customers["OmsetningEksMva"] = top_customers["OmsetningEksMva"].fillna(0.0)
+                if "Fakturaer" in top_customers:
+                    top_customers["Fakturaer"] = top_customers["Fakturaer"].fillna(0)
+                top_customers["AR_Netto"] = top_customers["AR_Netto"].fillna(0.0)
+                top_customers.sort_values(
+                    ["OmsetningEksMva", "AR_Netto"], ascending=[False, False], inplace=True
+                )
+
+            self._analysis_state = AnalysisState(
+                path=path,
+                header=header,
+                trial_balance=trial_balance,
+                summary=summary,
+                customers=customers,
+                sales_by_customer=sales_df,
+                ar_by_customer=ar_df,
+                top_customers=top_customers,
+                brreg_json=None,
+                brreg_metrics=None,
+            )
+
+            if self._analysis_page is not None:
+                self._analysis_page.set_state(self._analysis_state)
+
+            QMessageBox.information(self, "SAF-T importert", f"Lastet {path.name}")
+
+        def fetch_brreg_data(self) -> None:
+            if not self._analysis_state:
+                QMessageBox.warning(self, "Ingen SAF-T", "Last inn en SAF-T fil først.")
+                return
+
+            orgnr = (self._analysis_state.header.orgnr or "").strip()
+            digits = "".join(ch for ch in orgnr if ch.isdigit())
+            if not digits:
+                QMessageBox.warning(
+                    self,
+                    "Organisasjonsnummer mangler",
+                    "SAF-T filen inneholder ikke organisasjonsnummer. Oppdater filen eller hent manuelt.",
+                )
+                return
+
+            try:
+                brreg_json = fetch_brreg(digits)
+            except Exception as exc:  # pragma: no cover - nettverkskall
+                QMessageBox.critical(self, "Brreg", f"Kunne ikke hente data fra Brreg: {exc}")
+                return
+
+            metrics = map_brreg_metrics(brreg_json)
+            self._analysis_state.brreg_json = brreg_json
+            self._analysis_state.brreg_metrics = metrics
+
+            if self._analysis_page is not None:
+                self._analysis_page.set_state(self._analysis_state)
+
+            QMessageBox.information(self, "Brreg", "Brreg-data hentet og nøkkeltall oppdatert.")
+
+        def export_analysis(self) -> None:
+            if not self._analysis_state:
+                QMessageBox.warning(self, "Ingen SAF-T", "Last inn en SAF-T fil før du eksporterer.")
+                return
+
+            default_name = self._analysis_state.path.with_suffix(".xlsx")
+            path_str, selected_filter = QFileDialog.getSaveFileName(
+                self,
+                "Lagre analyse",
+                str(default_name),
+                "Excel-arbeidsbok (*.xlsx);;CSV (*.csv)",
+            )
+            if not path_str:
+                return
+
+            output_path = Path(path_str)
+            if output_path.suffix.lower() not in {".xlsx", ".csv"}:
+                if "csv" in selected_filter.lower():
+                    output_path = output_path.with_suffix(".csv")
+                else:
+                    output_path = output_path.with_suffix(".xlsx")
+
+            try:
+                if output_path.suffix.lower() == ".csv":
+                    self._analysis_state.trial_balance.to_csv(output_path, index=False)
+                else:
+                    with pd.ExcelWriter(output_path) as writer:
+                        self._analysis_state.trial_balance.to_excel(writer, sheet_name="Saldobalanse", index=False)
+                        summary_rows = [
+                            {
+                                "Nøkkeltall": label,
+                                "SAF-T": self._analysis_state.summary.get(key),
+                                "Brreg": (self._analysis_state.brreg_metrics or {}).get(key),
+                            }
+                            for key, label in SUMMARY_FIELDS
+                        ]
+                        pd.DataFrame(summary_rows).to_excel(writer, sheet_name="Nøkkeltall", index=False)
+                        self._analysis_state.sales_by_customer.to_excel(
+                            writer, sheet_name="Omsetning_kunder", index=False
+                        )
+                        self._analysis_state.ar_by_customer.to_excel(
+                            writer, sheet_name="Reskontro_kunder", index=False
+                        )
+                        if not self._analysis_state.top_customers.empty:
+                            self._analysis_state.top_customers.to_excel(
+                                writer, sheet_name="Toppkunder", index=False
+                            )
+                        if self._analysis_state.brreg_json:
+                            pd.json_normalize(self._analysis_state.brreg_json).to_excel(
+                                writer, sheet_name="Brreg_raw", index=False
+                            )
+            except Exception as exc:  # pragma: no cover - filsysteminteraksjon
+                QMessageBox.critical(self, "Eksport", f"Kunne ikke lagre filen: {exc}")
+                return
+
+            QMessageBox.information(self, "Eksport", f"Analysen er lagret til {output_path}")
 
 
     def run() -> None:
