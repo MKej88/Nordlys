@@ -570,6 +570,9 @@ class NavigationPanel(QFrame):
         self.tree.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.tree.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.tree.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.tree.setRootIsDecorated(False)
+        self.tree.setItemsExpandable(False)
+        self.tree.setFocusPolicy(Qt.NoFocus)
         layout.addWidget(self.tree, 1)
 
     def add_root(self, title: str, key: str | None = None) -> NavigationItem:
@@ -685,6 +688,14 @@ class NordlysWindow(QMainWindow):
         self.stack.addWidget(dashboard)
         self.dashboard_page = dashboard
 
+        saldobalanse_page = DataFramePage(
+            "Saldobalanse",
+            "Viser saldobalansen slik den er rapportert i SAF-T.",
+        )
+        self._register_page("plan.saldobalanse", saldobalanse_page)
+        self.stack.addWidget(saldobalanse_page)
+        self.saldobalanse_page = saldobalanse_page
+
         kontroll_page = DataFramePage(
             "Kontroll av inngående balanse",
             "Detaljert saldobalanse fra SAF-T for kvalitetssikring.",
@@ -734,6 +745,7 @@ class NordlysWindow(QMainWindow):
         dashboard_item = nav.add_root("Dashboard", "dashboard")
 
         planning_root = nav.add_root("Planlegging")
+        nav.add_child(planning_root, "Saldobalanse", "plan.saldobalanse")
         nav.add_child(planning_root, "Kontroll IB", "plan.kontroll")
         nav.add_child(planning_root, "Vesentlighetsvurdering", "plan.vesentlighet")
         nav.add_child(planning_root, "Regnskapsanalyse", "plan.regnskapsanalyse")
@@ -768,10 +780,13 @@ class NordlysWindow(QMainWindow):
             #navPanel { background-color: #0f172a; color: #e2e8f0; }
             #logoLabel { font-size: 24px; font-weight: 700; letter-spacing: 0.4px; color: #f8fafc; }
             #navTree { background: transparent; border: none; color: #cbd5f5; font-size: 14px; }
+            #navTree:focus { outline: none; border: none; }
+            QTreeWidget::item:focus { outline: none; }
             #navTree::item { height: 34px; padding: 4px 6px; }
             #navTree::item:selected { background-color: #2563eb; color: #ffffff; border-radius: 8px; }
             #navTree::item:hover { background-color: rgba(37, 99, 235, 0.25); }
             QPushButton { background-color: #2563eb; color: white; border-radius: 8px; padding: 9px 18px; font-weight: 600; }
+            QPushButton:focus { outline: none; }
             QPushButton:disabled { background-color: #9ca3af; color: #e5e7eb; }
             QPushButton:hover:!disabled { background-color: #1d4ed8; }
             QPushButton:pressed { background-color: #1e40af; }
@@ -821,6 +836,7 @@ class NordlysWindow(QMainWindow):
             self._validation_result = validation
 
             self._update_header_fields()
+            self.saldobalanse_page.set_dataframe(df)
             self.kontroll_page.set_dataframe(df)
             self.dashboard_page.update_summary(self._saft_summary)
             company = self._header.company_name if self._header else None
