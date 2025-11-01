@@ -83,6 +83,15 @@ class CustomerInfo:
     name: str
 
 
+@dataclass
+class SupplierInfo:
+    """Leverandørdata hentet fra masterfilen."""
+
+    supplier_id: str
+    supplier_number: str
+    name: str
+
+
 SAFT_RESOURCE_DIR = Path(__file__).resolve().parent / 'resources' / 'saf_t'
 
 
@@ -358,13 +367,46 @@ def parse_customers(root: ET.Element) -> Dict[str, CustomerInfo]:
     return customers
 
 
+def parse_suppliers(root: ET.Element) -> Dict[str, SupplierInfo]:
+    """Returnerer oppslag over leverandører med nummer og navn."""
+
+    suppliers: Dict[str, SupplierInfo] = {}
+    for element in root.findall('.//n1:MasterFiles/n1:Supplier', NS):
+        sid = text_or_none(element.find('n1:SupplierID', NS))
+        if not sid:
+            continue
+        number = (
+            text_or_none(element.find('n1:SupplierAccountID', NS))
+            or text_or_none(element.find('n1:SupplierTaxID', NS))
+            or text_or_none(element.find('n1:AccountID', NS))
+            or sid
+        )
+        raw_name = (
+            text_or_none(element.find('n1:SupplierName', NS))
+            or text_or_none(element.find('n1:Name', NS))
+            or text_or_none(element.find('n1:CompanyName', NS))
+            or text_or_none(element.find('n1:Contact/n1:Name', NS))
+            or text_or_none(element.find('n1:Contact/n1:ContactName', NS))
+            or ''
+        )
+        name = raw_name.strip()
+        suppliers[sid] = SupplierInfo(
+            supplier_id=sid,
+            supplier_number=number or sid,
+            name=name,
+        )
+    return suppliers
+
+
 __all__ = [
     'SaftHeader',
     'SaftValidationResult',
     'CustomerInfo',
+    'SupplierInfo',
     'parse_saft_header',
     'parse_saldobalanse',
     'ns4102_summary_from_tb',
     'parse_customers',
+    'parse_suppliers',
     'validate_saft_against_xsd',
 ]

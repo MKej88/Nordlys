@@ -48,13 +48,19 @@ from ..saft import (
     CustomerInfo,
     SaftHeader,
     SaftValidationResult,
+    SupplierInfo,
     ns4102_summary_from_tb,
     parse_customers,
     parse_saldobalanse,
     parse_saft_header,
+    parse_suppliers,
     validate_saft_against_xsd,
 )
-from ..saft_customers import compute_sales_per_customer, parse_saft
+from ..saft_customers import (
+    compute_purchases_per_supplier,
+    compute_sales_per_customer,
+    parse_saft,
+)
 from ..utils import format_currency, format_difference
 
 
@@ -111,6 +117,8 @@ class SaftLoadResult:
     dataframe: pd.DataFrame
     customers: Dict[str, CustomerInfo]
     customer_sales: Optional[pd.DataFrame]
+    suppliers: Dict[str, SupplierInfo]
+    supplier_purchases: Optional[pd.DataFrame]
     summary: Optional[Dict[str, float]]
     validation: SaftValidationResult
 
@@ -133,6 +141,7 @@ class SaftLoadWorker(QObject):
             header = parse_saft_header(root)
             dataframe = parse_saldobalanse(root)
             customers = parse_customers(root)
+            suppliers = parse_suppliers(root)
 
             def _parse_date(value: Optional[str]) -> Optional[date]:
                 if value is None:
@@ -151,8 +160,15 @@ class SaftLoadWorker(QObject):
             period_start = _parse_date(header.period_start) if header else None
             period_end = _parse_date(header.period_end) if header else None
             customer_sales: Optional[pd.DataFrame] = None
+            supplier_purchases: Optional[pd.DataFrame] = None
             if period_start or period_end:
                 customer_sales = compute_sales_per_customer(
+                    root,
+                    ns,
+                    date_from=period_start,
+                    date_to=period_end,
+                )
+                supplier_purchases = compute_purchases_per_supplier(
                     root,
                     ns,
                     date_from=period_start,
@@ -179,6 +195,11 @@ class SaftLoadWorker(QObject):
                                 break
                 if analysis_year is not None:
                     customer_sales = compute_sales_per_customer(root, ns, year=analysis_year)
+                    supplier_purchases = compute_purchases_per_supplier(
+                        root,
+                        ns,
+                        year=analysis_year,
+                    )
 
             summary = ns4102_summary_from_tb(dataframe)
             validation = validate_saft_against_xsd(
@@ -191,6 +212,8 @@ class SaftLoadWorker(QObject):
                 dataframe=dataframe,
                 customers=customers,
                 customer_sales=customer_sales,
+                suppliers=suppliers,
+                supplier_purchases=supplier_purchases,
                 summary=summary,
                 validation=validation,
             )
@@ -755,6 +778,93 @@ class SalesArPage(QWidget):
         self.top_spin.setEnabled(enabled)
 
 
+class PurchasesApPage(QWidget):
+    """Revisjonsside for innkjøp og leverandørgjeld med topp leverandører."""
+
+    def __init__(
+        self,
+        title: str,
+        subtitle: str,
+        on_calc_top: Callable[[str, int], Optional[List[Tuple[str, str, int, float]]]],
+    ) -> None:
+        super().__init__()
+        self._on_calc_top = on_calc_top
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(24)
+
+        self.top_card = CardFrame(
+            "Topp leverandører",
+            "Identifiser leverandører med høyeste innkjøp.",
+        )
+        controls = QHBoxLayout()
+        controls.setSpacing(12)
+        controls.addWidget(QLabel("Kilde:"))
+        self.source_combo = QComboBox()
+        self.source_combo.addItems(["alle kostnadskonti (4xxx–8xxx)"])
+        self.source_combo.setEnabled(False)
+        controls.addWidget(self.source_combo)
+        controls.addWidget(QLabel("Antall:"))
+        self.top_spin = QSpinBox()
+        self.top_spin.setRange(5, 100)
+        self.top_spin.setValue(10)
+        controls.addWidget(self.top_spin)
+        controls.addStretch(1)
+        self.calc_button = QPushButton("Beregn topp leverandører")
+        self.calc_button.clicked.connect(self._handle_calc_clicked)
+        controls.addWidget(self.calc_button)
+        self.top_card.add_layout(controls)
+
+        self.top_table = _create_table_widget()
+        self.top_table.setColumnCount(4)
+        self.top_table.setHorizontalHeaderLabels(
+            [
+                "Leverandørnr",
+                "Leverandørnavn",
+                "Transaksjoner",
+                "Innkjøp (eks. mva)",
+            ]
+        )
+        self.top_card.add_widget(self.top_table)
+        layout.addWidget(self.top_card)
+
+        self.card = CardFrame(title, subtitle)
+        self.list_widget = QListWidget()
+        self.list_widget.setObjectName("checklist")
+        self.card.add_widget(self.list_widget)
+        layout.addWidget(self.card)
+
+        layout.addStretch(1)
+
+        self.set_controls_enabled(False)
+
+    def _handle_calc_clicked(self) -> None:
+        rows = self._on_calc_top(self.source_combo.currentText(), int(self.top_spin.value()))
+        if rows:
+            self.set_top_suppliers(rows)
+
+    def set_checklist_items(self, items: Iterable[str]) -> None:
+        self.list_widget.clear()
+        for item in items:
+            QListWidgetItem(item, self.list_widget)
+
+    def set_top_suppliers(self, rows: Iterable[Tuple[str, str, int, float]]) -> None:
+        _populate_table(
+            self.top_table,
+            ["Leverandørnr", "Leverandørnavn", "Transaksjoner", "Innkjøp (eks. mva)"],
+            rows,
+            money_cols={3},
+        )
+
+    def clear_top_suppliers(self) -> None:
+        self.top_table.setRowCount(0)
+
+    def set_controls_enabled(self, enabled: bool) -> None:
+        self.calc_button.setEnabled(enabled)
+        self.top_spin.setEnabled(enabled)
+
+
 @dataclass
 class NavigationItem:
     key: str
@@ -849,6 +959,10 @@ class NordlysWindow(QMainWindow):
         self._cust_name_by_nr: Dict[str, str] = {}
         self._cust_id_to_nr: Dict[str, str] = {}
         self._customer_sales: Optional[pd.DataFrame] = None
+        self._suppliers: Dict[str, SupplierInfo] = {}
+        self._sup_name_by_nr: Dict[str, str] = {}
+        self._sup_id_to_nr: Dict[str, str] = {}
+        self._supplier_purchases: Optional[pd.DataFrame] = None
         self._validation_result: Optional[SaftValidationResult] = None
         self._current_file: Optional[str] = None
         self._loading_file: Optional[str] = None
@@ -859,6 +973,7 @@ class NordlysWindow(QMainWindow):
 
         self._page_map: Dict[str, QWidget] = {}
         self.sales_ar_page: Optional[SalesArPage] = None
+        self.purchases_ap_page: Optional['PurchasesApPage'] = None
 
         self._setup_ui()
         self._apply_styles()
@@ -985,6 +1100,9 @@ class NordlysWindow(QMainWindow):
             if key == "rev.salg":
                 page = SalesArPage(title, subtitle, self._on_calc_top_customers)
                 self.sales_ar_page = page
+            elif key == "rev.innkjop":
+                page = PurchasesApPage(title, subtitle, self._on_calc_top_suppliers)
+                self.purchases_ap_page = page
             else:
                 page = ChecklistPage(title, subtitle)
             self.revision_pages[key] = page
@@ -1148,15 +1266,26 @@ class NordlysWindow(QMainWindow):
         self._progress_dialog = None
 
     def _set_loading_state(self, loading: bool, status_message: Optional[str] = None) -> None:
-        has_data = self._saft_df is not None
         self.btn_open.setEnabled(not loading)
+        has_data = self._saft_df is not None
         self.btn_brreg.setEnabled(False if loading else has_data)
         self.btn_export.setEnabled(False if loading else has_data)
         if self.sales_ar_page:
             if loading:
                 self.sales_ar_page.set_controls_enabled(False)
             else:
-                self.sales_ar_page.set_controls_enabled(has_data)
+                has_customer_data = (
+                    self._customer_sales is not None and not self._customer_sales.empty
+                )
+                self.sales_ar_page.set_controls_enabled(has_customer_data)
+        if self.purchases_ap_page:
+            if loading:
+                self.purchases_ap_page.set_controls_enabled(False)
+            else:
+                has_supplier_data = (
+                    self._supplier_purchases is not None and not self._supplier_purchases.empty
+                )
+                self.purchases_ap_page.set_controls_enabled(has_supplier_data)
         if status_message:
             self.statusBar().showMessage(status_message)
 
@@ -1181,8 +1310,14 @@ class NordlysWindow(QMainWindow):
         self._current_file = result.file_path
 
         self._ingest_customers(result.customers)
+        self._ingest_suppliers(result.suppliers)
         self._customer_sales = (
             result.customer_sales.copy() if result.customer_sales is not None else None
+        )
+        self._supplier_purchases = (
+            result.supplier_purchases.copy()
+            if result.supplier_purchases is not None
+            else None
         )
 
         if self._customer_sales is not None and not self._customer_sales.empty:
@@ -1200,6 +1335,28 @@ class NordlysWindow(QMainWindow):
             ordered_cols += [col for col in ["Transaksjoner"] if col in self._customer_sales.columns]
             remaining = [col for col in self._customer_sales.columns if col not in ordered_cols]
             self._customer_sales = self._customer_sales.loc[:, ordered_cols + remaining]
+
+        if self._supplier_purchases is not None and not self._supplier_purchases.empty:
+            if "Leverandørnavn" in self._supplier_purchases.columns:
+                mask = self._supplier_purchases["Leverandørnavn"].astype(str).str.strip() == ""
+                if mask.any():
+                    self._supplier_purchases.loc[mask, "Leverandørnavn"] = self._supplier_purchases.loc[
+                        mask, "Leverandørnr"
+                    ].apply(lambda value: self._lookup_supplier_name(value, value) or value)
+            else:
+                self._supplier_purchases["Leverandørnavn"] = self._supplier_purchases["Leverandørnr"].apply(
+                    lambda value: self._lookup_supplier_name(value, value) or value
+                )
+            ordered_sup_cols = ["Leverandørnr", "Leverandørnavn", "Innkjøp eks mva"]
+            ordered_sup_cols += [
+                col for col in ["Transaksjoner"] if col in self._supplier_purchases.columns
+            ]
+            remaining_sup = [
+                col for col in self._supplier_purchases.columns if col not in ordered_sup_cols
+            ]
+            self._supplier_purchases = self._supplier_purchases.loc[
+                :, ordered_sup_cols + remaining_sup
+            ]
 
         df = result.dataframe
         self._update_header_fields()
@@ -1241,8 +1398,17 @@ class NordlysWindow(QMainWindow):
             QMessageBox.information(self, "XSD-validering", validation.details)
 
         if self.sales_ar_page:
-            self.sales_ar_page.set_controls_enabled(True)
+            has_customer_data = (
+                self._customer_sales is not None and not self._customer_sales.empty
+            )
+            self.sales_ar_page.set_controls_enabled(has_customer_data)
             self.sales_ar_page.clear_top_customers()
+        if self.purchases_ap_page:
+            has_supplier_data = (
+                self._supplier_purchases is not None and not self._supplier_purchases.empty
+            )
+            self.purchases_ap_page.set_controls_enabled(has_supplier_data)
+            self.purchases_ap_page.clear_top_suppliers()
 
         self.vesentlig_page.update_summary(self._saft_summary)
         self.regnskap_page.update_comparison(None)
@@ -1263,7 +1429,7 @@ class NordlysWindow(QMainWindow):
         self._load_thread = None
         self._load_worker = None
 
-    def _normalize_customer_key(self, value: object) -> Optional[str]:
+    def _normalize_identifier(self, value: object) -> Optional[str]:
         if value is None:
             return None
         try:
@@ -1273,6 +1439,12 @@ class NordlysWindow(QMainWindow):
             pass
         text = str(value).strip()
         return text or None
+
+    def _normalize_customer_key(self, value: object) -> Optional[str]:
+        return self._normalize_identifier(value)
+
+    def _normalize_supplier_key(self, value: object) -> Optional[str]:
+        return self._normalize_identifier(value)
 
     def _ingest_customers(self, customers: Dict[str, CustomerInfo]) -> None:
         self._customers = {}
@@ -1326,6 +1498,52 @@ class NordlysWindow(QMainWindow):
                         self._cust_name_by_nr[norm_key] = name
                     self._cust_name_by_nr[key] = name
 
+    def _ingest_suppliers(self, suppliers: Dict[str, SupplierInfo]) -> None:
+        self._suppliers = {}
+        self._sup_name_by_nr = {}
+        self._sup_id_to_nr = {}
+        for info in suppliers.values():
+            name = (info.name or "").strip()
+            raw_id = info.supplier_id
+            raw_number = info.supplier_number or info.supplier_id
+            norm_id = self._normalize_supplier_key(raw_id)
+            norm_number = self._normalize_supplier_key(raw_number)
+            resolved_number = norm_number or norm_id or self._normalize_supplier_key(raw_id)
+            if not resolved_number and isinstance(raw_number, str) and raw_number.strip():
+                resolved_number = raw_number.strip()
+            if not resolved_number and isinstance(raw_id, str) and raw_id.strip():
+                resolved_number = raw_id.strip()
+
+            supplier_key = norm_id or (raw_id.strip() if isinstance(raw_id, str) and raw_id.strip() else None)
+            if supplier_key:
+                self._suppliers[supplier_key] = SupplierInfo(
+                    supplier_id=supplier_key,
+                    supplier_number=resolved_number or supplier_key,
+                    name=name,
+                )
+
+            keys = {raw_id, norm_id, raw_number, norm_number, resolved_number}
+            keys = {key for key in keys if isinstance(key, str) and key}
+
+            if resolved_number:
+                norm_resolved = self._normalize_supplier_key(resolved_number)
+                all_number_keys = set(keys)
+                if norm_resolved:
+                    all_number_keys.add(norm_resolved)
+                all_number_keys.add(resolved_number)
+                for key in all_number_keys:
+                    norm_key = self._normalize_supplier_key(key)
+                    if norm_key:
+                        self._sup_id_to_nr[norm_key] = resolved_number
+                    self._sup_id_to_nr[key] = resolved_number
+
+            if name:
+                for key in keys:
+                    norm_key = self._normalize_supplier_key(key)
+                    if norm_key:
+                        self._sup_name_by_nr[norm_key] = name
+                    self._sup_name_by_nr[key] = name
+
     def _lookup_customer_name(self, number: object, customer_id: object) -> Optional[str]:
         number_key = self._normalize_customer_key(number)
         if number_key:
@@ -1338,6 +1556,22 @@ class NordlysWindow(QMainWindow):
             if info and info.name:
                 return info.name
             name = self._cust_name_by_nr.get(cid_key)
+            if name:
+                return name
+        return None
+
+    def _lookup_supplier_name(self, number: object, supplier_id: object) -> Optional[str]:
+        number_key = self._normalize_supplier_key(number)
+        if number_key:
+            name = self._sup_name_by_nr.get(number_key)
+            if name:
+                return name
+        sid_key = self._normalize_supplier_key(supplier_id)
+        if sid_key:
+            info = self._suppliers.get(sid_key)
+            if info and info.name:
+                return info.name
+            name = self._sup_name_by_nr.get(sid_key)
             if name:
                 return name
         return None
@@ -1385,6 +1619,42 @@ class NordlysWindow(QMainWindow):
                 )
             )
         self.statusBar().showMessage(f"Topp kunder (3xxx) beregnet. N={topn}.")
+        return rows
+
+    def _on_calc_top_suppliers(self, source: str, topn: int) -> Optional[List[Tuple[str, str, int, float]]]:
+        _ = source  # kilde er alltid kostnadskonti
+        if self._supplier_purchases is None or self._supplier_purchases.empty:
+            QMessageBox.information(
+                self,
+                "Ingen innkjøpslinjer",
+                "Fant ingen innkjøpslinjer på kostnadskonti (4xxx–8xxx) i SAF-T-filen.",
+            )
+            return None
+        data = self._supplier_purchases.copy()
+        data = data.sort_values("Innkjøp eks mva", ascending=False).head(topn)
+        rows: List[Tuple[str, str, int, float]] = []
+        for _, row in data.iterrows():
+            number = row.get("Leverandørnr")
+            number_text = self._normalize_supplier_key(number)
+            if not number_text and isinstance(number, str):
+                number_text = number.strip() or None
+            name = row.get("Leverandørnavn") or self._lookup_supplier_name(number, number)
+            count_val = row.get("Transaksjoner", 0)
+            try:
+                count_int = int(count_val)
+            except (TypeError, ValueError):
+                count_int = 0
+            rows.append(
+                (
+                    number_text or "—",
+                    (name or "").strip() or "—",
+                    count_int,
+                    self._safe_float(row.get("Innkjøp eks mva")),
+                )
+            )
+        self.statusBar().showMessage(
+            f"Topp leverandører (kostnadskonti 4xxx–8xxx) beregnet. N={topn}."
+        )
         return rows
 
     def on_brreg(self) -> None:

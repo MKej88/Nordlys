@@ -11,13 +11,17 @@ from nordlys.saft import (
     parse_customers,
     parse_saldobalanse,
     parse_saft_header,
+    parse_suppliers,
     validate_saft_against_xsd,
 )
 from nordlys.saft_customers import (
     build_customer_name_map,
+    build_supplier_name_map,
+    compute_purchases_per_supplier,
     compute_sales_per_customer,
     get_amount,
     get_tx_customer_id,
+    get_tx_supplier_id,
     parse_saft,
     save_outputs,
 )
@@ -65,12 +69,25 @@ def build_sample_root() -> ET.Element:
             <ClosingDebitBalance>400</ClosingDebitBalance>
             <ClosingCreditBalance>0</ClosingCreditBalance>
           </Account>
+          <Account>
+            <AccountID>2400</AccountID>
+            <AccountDescription>Leverandørgjeld</AccountDescription>
+            <OpeningDebitBalance>0</OpeningDebitBalance>
+            <OpeningCreditBalance>0</OpeningCreditBalance>
+            <ClosingDebitBalance>0</ClosingDebitBalance>
+            <ClosingCreditBalance>600</ClosingCreditBalance>
+          </Account>
         </GeneralLedgerAccounts>
         <Customer>
           <CustomerID>K1</CustomerID>
           <CustomerNumber>1001</CustomerNumber>
           <Name>Kunde 1</Name>
         </Customer>
+        <Supplier>
+          <SupplierID>S1</SupplierID>
+          <SupplierAccountID>2001</SupplierAccountID>
+          <SupplierName>Leverandør 1</SupplierName>
+        </Supplier>
       </MasterFiles>
       <SourceDocuments>
         <SalesInvoices>
@@ -97,6 +114,18 @@ def build_sample_root() -> ET.Element:
               <AccountID>1500</AccountID>
               <DebitAmount>1000</DebitAmount>
               <CustomerID>K1</CustomerID>
+            </Line>
+          </Transaction>
+          <Transaction>
+            <TransactionDate>2023-03-10</TransactionDate>
+            <Line>
+              <AccountID>4000</AccountID>
+              <DebitAmount>600</DebitAmount>
+            </Line>
+            <Line>
+              <AccountID>2400</AccountID>
+              <CreditAmount>600</CreditAmount>
+              <SupplierID>S1</SupplierID>
             </Line>
           </Transaction>
         </Journal>
@@ -225,6 +254,168 @@ def test_compute_sales_per_customer_date_filter():
     ns = {'n1': root.tag.split('}')[0][1:]}
     df = compute_sales_per_customer(root, ns, date_from='2023-06-01', date_to='2023-12-31')
     assert df.empty
+
+
+def test_parse_suppliers_and_compute_purchases():
+    root = build_sample_root()
+    suppliers = parse_suppliers(root)
+    assert 'S1' in suppliers
+    assert suppliers['S1'].supplier_number == '2001'
+
+    ns = {'n1': root.tag.split('}')[0][1:]}
+    df = compute_purchases_per_supplier(root, ns, year=2023)
+    assert not df.empty
+    row = df.iloc[0]
+    assert row['Leverandørnr'] == 'S1'
+    assert row['Leverandørnavn'] == 'Leverandør 1'
+    assert row['Innkjøp eks mva'] == pytest.approx(600.0)
+    assert row['Transaksjoner'] == 1
+
+
+def test_compute_purchases_per_supplier_date_filter():
+    root = build_sample_root()
+    ns = {'n1': root.tag.split('}')[0][1:]}
+    df = compute_purchases_per_supplier(root, ns, date_from='2023-07-01', date_to='2023-12-31')
+    assert df.empty
+
+
+def test_compute_purchases_includes_all_cost_accounts():
+    xml = """
+    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <GeneralLedgerEntries>
+        <Journal>
+          <Transaction>
+            <TransactionDate>2023-01-15</TransactionDate>
+            <Line>
+              <AccountID>5500</AccountID>
+              <DebitAmount>250</DebitAmount>
+            </Line>
+            <Line>
+              <AccountID>2400</AccountID>
+              <CreditAmount>250</CreditAmount>
+              <SupplierID>SUP-55</SupplierID>
+            </Line>
+          </Transaction>
+          <Transaction>
+            <TransactionDate>2023-02-20</TransactionDate>
+            <Line>
+              <AccountID>6300</AccountID>
+              <DebitAmount>400</DebitAmount>
+            </Line>
+            <Line>
+              <AccountID>2400</AccountID>
+              <CreditAmount>400</CreditAmount>
+              <SupplierID>SUP-63</SupplierID>
+            </Line>
+          </Transaction>
+          <Transaction>
+            <TransactionDate>2023-03-12</TransactionDate>
+            <Line>
+              <AccountID>3100</AccountID>
+              <DebitAmount>999</DebitAmount>
+            </Line>
+            <Line>
+              <AccountID>2400</AccountID>
+              <CreditAmount>999</CreditAmount>
+              <SupplierID>SUP-31</SupplierID>
+            </Line>
+          </Transaction>
+          <Transaction>
+            <TransactionDate>2023-04-18</TransactionDate>
+            <Line>
+              <AccountID>7800</AccountID>
+              <DebitAmount>150</DebitAmount>
+            </Line>
+            <Line>
+              <AccountID>2400</AccountID>
+              <CreditAmount>150</CreditAmount>
+              <SupplierID>SUP-78</SupplierID>
+            </Line>
+          </Transaction>
+        </Journal>
+      </GeneralLedgerEntries>
+    </AuditFile>
+    """
+    root = ET.fromstring(xml)
+    ns = {'n1': root.tag.split('}')[0][1:]}
+    df = compute_purchases_per_supplier(root, ns, year=2023)
+    assert set(df['Leverandørnr']) == {'SUP-55', 'SUP-63', 'SUP-78'}
+    totals = dict(zip(df['Leverandørnr'], df['Innkjøp eks mva']))
+    assert totals['SUP-55'] == pytest.approx(250.0)
+    assert totals['SUP-63'] == pytest.approx(400.0)
+    assert totals['SUP-78'] == pytest.approx(150.0)
+
+
+def test_get_tx_supplier_id_priority():
+    ns = {'n1': 'urn:StandardAuditFile-Taxation-Financial:NO'}
+    xml_ap = """
+    <Transaction xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <Line>
+        <AccountID>2400</AccountID>
+        <SupplierID>AP-SUP</SupplierID>
+      </Line>
+      <Line>
+        <AccountID>4000</AccountID>
+        <SupplierID>GEN-SUP</SupplierID>
+      </Line>
+    </Transaction>
+    """
+    transaction_ap = ET.fromstring(xml_ap)
+    assert get_tx_supplier_id(transaction_ap, ns) == 'AP-SUP'
+
+    xml_dim = """
+    <Transaction xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <Line>
+        <AccountID>4000</AccountID>
+        <Dimensions>
+          <SupplierID>DIM-SUP</SupplierID>
+        </Dimensions>
+      </Line>
+    </Transaction>
+    """
+    transaction_dim = ET.fromstring(xml_dim)
+    assert get_tx_supplier_id(transaction_dim, ns) == 'DIM-SUP'
+
+    xml_analysis = """
+    <Transaction xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <Line>
+        <AccountID>4800</AccountID>
+        <Dimensions>
+          <Analysis>
+            <Type>supplier-segment</Type>
+            <ID>ANAL-SUP</ID>
+          </Analysis>
+        </Dimensions>
+      </Line>
+    </Transaction>
+    """
+    transaction_analysis = ET.fromstring(xml_analysis)
+    assert get_tx_supplier_id(transaction_analysis, ns) == 'ANAL-SUP'
+
+
+def test_build_supplier_name_map_fallback():
+    xml = """
+    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <GeneralLedgerEntries>
+        <Journal>
+          <Transaction>
+            <Line>
+              <AccountID>4000</AccountID>
+              <DebitAmount>500</DebitAmount>
+            </Line>
+            <SupplierInfo>
+              <SupplierID>SUP1</SupplierID>
+              <SupplierName>Fallback Leverandør</SupplierName>
+            </SupplierInfo>
+          </Transaction>
+        </Journal>
+      </GeneralLedgerEntries>
+    </AuditFile>
+    """
+    root = ET.fromstring(xml)
+    ns = {'n1': root.tag.split('}')[0][1:]}
+    names = build_supplier_name_map(root, ns)
+    assert names['SUP1'] == 'Fallback Leverandør'
 
 
 def test_build_customer_name_map_fallback():
