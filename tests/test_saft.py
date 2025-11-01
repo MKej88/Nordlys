@@ -279,6 +279,73 @@ def test_compute_purchases_per_supplier_date_filter():
     assert df.empty
 
 
+def test_compute_purchases_includes_all_cost_accounts():
+    xml = """
+    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <GeneralLedgerEntries>
+        <Journal>
+          <Transaction>
+            <TransactionDate>2023-01-15</TransactionDate>
+            <Line>
+              <AccountID>5500</AccountID>
+              <DebitAmount>250</DebitAmount>
+            </Line>
+            <Line>
+              <AccountID>2400</AccountID>
+              <CreditAmount>250</CreditAmount>
+              <SupplierID>SUP-55</SupplierID>
+            </Line>
+          </Transaction>
+          <Transaction>
+            <TransactionDate>2023-02-20</TransactionDate>
+            <Line>
+              <AccountID>6300</AccountID>
+              <DebitAmount>400</DebitAmount>
+            </Line>
+            <Line>
+              <AccountID>2400</AccountID>
+              <CreditAmount>400</CreditAmount>
+              <SupplierID>SUP-63</SupplierID>
+            </Line>
+          </Transaction>
+          <Transaction>
+            <TransactionDate>2023-03-12</TransactionDate>
+            <Line>
+              <AccountID>3100</AccountID>
+              <DebitAmount>999</DebitAmount>
+            </Line>
+            <Line>
+              <AccountID>2400</AccountID>
+              <CreditAmount>999</CreditAmount>
+              <SupplierID>SUP-31</SupplierID>
+            </Line>
+          </Transaction>
+          <Transaction>
+            <TransactionDate>2023-04-18</TransactionDate>
+            <Line>
+              <AccountID>7800</AccountID>
+              <DebitAmount>150</DebitAmount>
+            </Line>
+            <Line>
+              <AccountID>2400</AccountID>
+              <CreditAmount>150</CreditAmount>
+              <SupplierID>SUP-78</SupplierID>
+            </Line>
+          </Transaction>
+        </Journal>
+      </GeneralLedgerEntries>
+    </AuditFile>
+    """
+    root = ET.fromstring(xml)
+    ns = {'n1': root.tag.split('}')[0][1:]}
+    df = compute_purchases_per_supplier(root, ns, year=2023)
+    assert set(df['Leverandørnr']) == {'SUP-55', 'SUP-63', 'SUP-78'}
+    totals = dict(zip(df['Leverandørnr'], df['Innkjøp eks mva']))
+    assert totals['SUP-55'] == pytest.approx(250.0)
+    assert totals['SUP-63'] == pytest.approx(400.0)
+    assert totals['SUP-78'] == pytest.approx(150.0)
+
+
 def test_get_tx_supplier_id_priority():
     ns = {'n1': 'urn:StandardAuditFile-Taxation-Financial:NO'}
     xml_ap = """

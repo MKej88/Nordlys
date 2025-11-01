@@ -456,6 +456,20 @@ def compute_sales_per_customer(
     return df
 
 
+def _is_cost_account(account: str) -> bool:
+    """Returnerer True dersom kontoen tilhører kostnadsklassene 4xxx–8xxx."""
+
+    if not account:
+        return False
+    normalized = account.strip()
+    digits = "".join(ch for ch in normalized if ch.isdigit())
+    normalized = digits or normalized
+    if not normalized:
+        return False
+    first_char = normalized[0]
+    return first_char in {"4", "5", "6", "7", "8"}
+
+
 def compute_purchases_per_supplier(
     root: ET.Element,
     ns: Dict[str, str],
@@ -464,7 +478,7 @@ def compute_purchases_per_supplier(
     date_from: Optional[object] = None,
     date_to: Optional[object] = None,
 ) -> pd.DataFrame:
-    """Beregner innkjøp eksklusiv mva per leverandør basert på 4xxx-konti."""
+    """Beregner innkjøp eksklusiv mva per leverandør basert på kostnadskonti."""
 
     start_date = _ensure_date(date_from)
     end_date = _ensure_date(date_to)
@@ -502,11 +516,7 @@ def compute_purchases_per_supplier(
         for line in lines:
             account_element = _find(line, "n1:AccountID", ns)
             account = _clean_text(account_element.text if account_element is not None else None)
-            if not account:
-                continue
-            digits = "".join(ch for ch in account if ch.isdigit())
-            normalized = digits or account
-            if not normalized.startswith("4"):
+            if not _is_cost_account(account or ""):
                 continue
             has_purchase = True
             debit = get_amount(line, "DebitAmount", ns)

@@ -802,7 +802,7 @@ class PurchasesApPage(QWidget):
         controls.setSpacing(12)
         controls.addWidget(QLabel("Kilde:"))
         self.source_combo = QComboBox()
-        self.source_combo.addItems(["alle 4xxx"])
+        self.source_combo.addItems(["alle kostnadskonti (4xxx–8xxx)"])
         self.source_combo.setEnabled(False)
         controls.addWidget(self.source_combo)
         controls.addWidget(QLabel("Antall:"))
@@ -1622,12 +1622,12 @@ class NordlysWindow(QMainWindow):
         return rows
 
     def _on_calc_top_suppliers(self, source: str, topn: int) -> Optional[List[Tuple[str, str, int, float]]]:
-        _ = source  # kilde er alltid 4xxx-transaksjoner
+        _ = source  # kilde er alltid kostnadskonti
         if self._supplier_purchases is None or self._supplier_purchases.empty:
             QMessageBox.information(
                 self,
                 "Ingen innkjøpslinjer",
-                "Fant ingen innkjøpslinjer på 4xxx-konti i SAF-T-filen.",
+                "Fant ingen innkjøpslinjer på kostnadskonti (4xxx–8xxx) i SAF-T-filen.",
             )
             return None
         data = self._supplier_purchases.copy()
@@ -1652,7 +1652,9 @@ class NordlysWindow(QMainWindow):
                     self._safe_float(row.get("Innkjøp eks mva")),
                 )
             )
-        self.statusBar().showMessage(f"Topp leverandører (4xxx) beregnet. N={topn}.")
+        self.statusBar().showMessage(
+            f"Topp leverandører (kostnadskonti 4xxx–8xxx) beregnet. N={topn}."
+        )
         return rows
 
     def on_brreg(self) -> None:
