@@ -543,6 +543,7 @@ class NavigationPanel(QFrame):
         self.tree.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.tree.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.tree.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.tree.setItemsExpandable(False)
         self.tree.itemCollapsed.connect(self._on_item_collapsed)
         layout.addWidget(self.tree, 1)
 
@@ -745,6 +746,7 @@ class NordlysWindow(QMainWindow):
 
         nav.tree.currentItemChanged.connect(self._on_navigation_changed)
         nav.tree.setCurrentItem(dashboard_item.item)
+        nav.tree.expandAll()
 
         for key, items in REVISION_TASKS.items():
             page = self.revision_pages.get(key)
