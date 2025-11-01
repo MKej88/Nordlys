@@ -1,6 +1,7 @@
 """Funksjoner for å lese og analysere SAF-T filer."""
 from __future__ import annotations
 
+import importlib
 import importlib.util
 from dataclasses import dataclass
 from pathlib import Path
@@ -14,16 +15,42 @@ from .utils import text_or_none, to_float
 
 
 _XMLSCHEMA_SPEC = importlib.util.find_spec("xmlschema")
-if _XMLSCHEMA_SPEC is not None:
-    from xmlschema import XMLSchema, XMLSchemaException  # type: ignore[import]
-    XMLSCHEMA_AVAILABLE = True
-else:  # pragma: no cover - kjøres kun uten opsjonal avhengighet
-    XMLSchema = None  # type: ignore[assignment]
+XMLSCHEMA_AVAILABLE: bool = _XMLSCHEMA_SPEC is not None
 
-    class XMLSchemaException(Exception):
-        """Fallback-unntak når xmlschema ikke er tilgjengelig."""
 
-    XMLSCHEMA_AVAILABLE = False
+class XMLSchemaException(Exception):
+    """Fallback-unntak når xmlschema ikke er tilgjengelig."""
+
+
+XMLSchema = None  # type: ignore[assignment]
+
+
+def _ensure_xmlschema_loaded() -> bool:
+    """Prøver å importere ``xmlschema`` først når det trengs.
+
+    Dette gjør at applikasjonen starter raskere for brukere som ikke
+    benytter XSD-validering, siden den tunge avhengigheten ikke lastes ved
+    modulimport.
+    """
+
+    global XMLSchema, XMLSchemaException, XMLSCHEMA_AVAILABLE
+
+    if XMLSchema is not None:
+        return True
+
+    if not XMLSCHEMA_AVAILABLE:
+        return False
+
+    try:
+        xmlschema_module = importlib.import_module("xmlschema")
+    except Exception:  # pragma: no cover - importfeil håndteres som manglende pakke
+        XMLSchema = None  # type: ignore[assignment]
+        XMLSCHEMA_AVAILABLE = False
+        return False
+
+    XMLSchema = xmlschema_module.XMLSchema  # type: ignore[attr-defined,assignment]
+    XMLSchemaException = xmlschema_module.XMLSchemaException  # type: ignore[attr-defined]
+    return True
 
 
 @dataclass
@@ -112,7 +139,7 @@ def validate_saft_against_xsd(xml_source: Path | str, version: Optional[str] = N
         )
 
     schema_path, schema_version = schema_info
-    if not XMLSCHEMA_AVAILABLE or XMLSchema is None:
+    if not _ensure_xmlschema_loaded():
         return SaftValidationResult(
             audit_file_version=audit_version,
             version_family=family,
