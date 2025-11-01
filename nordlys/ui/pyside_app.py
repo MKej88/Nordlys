@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSpinBox,
+    QSizePolicy,
     QSplitter,
     QStackedWidget,
     QStatusBar,
@@ -252,6 +253,9 @@ class MainWindow(QMainWindow):
         self.navigation.setHeaderHidden(True)
         self.navigation.setIndentation(16)
         self.navigation.setMinimumWidth(240)
+        self.navigation.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+        self.navigation.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.navigation.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.navigation.itemSelectionChanged.connect(self._on_navigation_selection)
 
         nav_items = self._build_navigation()
