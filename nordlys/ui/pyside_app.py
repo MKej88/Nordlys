@@ -839,20 +839,20 @@ class NordlysWindow(QMainWindow):
     # endregion
 
 
-def create_app() -> QApplication:
+def create_app() -> Tuple[QApplication, NordlysWindow]:
     """Oppretter QApplication og hovedvindu."""
 
     app = QApplication.instance() or QApplication(sys.argv)
     window = NordlysWindow()
-    window.show()
-    return app
+    return app, window
 
 
 def run() -> None:
     """Starter PySide6-applikasjonen."""
 
     try:
-        app = create_app()
+        app, window = create_app()
+        window.show()
         sys.exit(app.exec())
     except Exception as exc:  # pragma: no cover - fallback dersom Qt ikke starter
         print("Kritisk feil:", exc, file=sys.stderr)
