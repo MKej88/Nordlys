@@ -140,6 +140,34 @@ class CardFrame(QFrame):
         self.body_layout.addLayout(sub_layout)
 
 
+class StatBadge(QFrame):
+    """Kompakt komponent for presentasjon av et nøkkeltall."""
+
+    def __init__(self, title: str, description: str) -> None:
+        super().__init__()
+        self.setObjectName("statBadge")
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setSpacing(6)
+
+        self.title_label = QLabel(title)
+        self.title_label.setObjectName("statTitle")
+        layout.addWidget(self.title_label)
+
+        self.value_label = QLabel("–")
+        self.value_label.setObjectName("statValue")
+        layout.addWidget(self.value_label)
+
+        self.description_label = QLabel(description)
+        self.description_label.setObjectName("statDescription")
+        self.description_label.setWordWrap(True)
+        layout.addWidget(self.description_label)
+
+    def set_value(self, value: str) -> None:
+        self.value_label.setText(value)
+
+
 class DashboardPage(QWidget):
     """Viser nøkkeltall og topp kunder."""
 
@@ -157,6 +185,33 @@ class DashboardPage(QWidget):
         self.status_label.setWordWrap(True)
         self.status_card.add_widget(self.status_label)
         layout.addWidget(self.status_card)
+
+        self.kpi_card = CardFrame(
+            "Nøkkeltallsanalyse",
+            "Marginer og balanseindikatorer basert på innlastet SAF-T.",
+        )
+        self.kpi_grid = QGridLayout()
+        self.kpi_grid.setHorizontalSpacing(16)
+        self.kpi_grid.setVerticalSpacing(16)
+        self.kpi_card.add_layout(self.kpi_grid)
+
+        self.kpi_badges: Dict[str, StatBadge] = {}
+        for idx, (key, title, desc) in enumerate(
+            [
+                ("revenue", "Driftsinntekter", "Sum av kontogruppe 3xxx."),
+                ("ebitda_margin", "EBITDA-margin", "EBITDA i prosent av driftsinntekter."),
+                ("ebit_margin", "EBIT-margin", "Driftsresultat i prosent av driftsinntekter."),
+                ("result_margin", "Resultatmargin", "Årsresultat i prosent av driftsinntekter."),
+                ("balance_gap", "Balanseavvik", "Differanse mellom eiendeler og gjeld."),
+            ]
+        ):
+            badge = StatBadge(title, desc)
+            row = idx // 3
+            col = idx % 3
+            self.kpi_grid.addWidget(badge, row, col)
+            self.kpi_badges[key] = badge
+
+        layout.addWidget(self.kpi_card)
 
         self.summary_card = CardFrame("Finansiell oversikt", "Oppsummerte nøkkeltall fra SAF-T.")
         self.summary_table = _create_table_widget()
@@ -208,6 +263,7 @@ class DashboardPage(QWidget):
     def update_summary(self, summary: Optional[Dict[str, float]]) -> None:
         if not summary:
             self.summary_table.setRowCount(0)
+            self._update_kpis(None)
             return
         rows = [
             ("Driftsinntekter (3xxx)", summary.get("driftsinntekter")),
@@ -225,6 +281,7 @@ class DashboardPage(QWidget):
             ("Balanseavvik", summary.get("balanse_diff")),
         ]
         _populate_table(self.summary_table, ["Nøkkel", "Beløp"], rows, money_cols={1})
+        self._update_kpis(summary)
 
     def set_top_customers(self, rows: Iterable[Tuple[str, str, int, float]]) -> None:
         _populate_table(
@@ -241,6 +298,41 @@ class DashboardPage(QWidget):
         self.calc_button.setEnabled(enabled)
         self.top_spin.setEnabled(enabled)
         self.source_combo.setEnabled(enabled)
+
+    def _update_kpis(self, summary: Optional[Dict[str, float]]) -> None:
+        def set_badge(key: str, value: Optional[str]) -> None:
+            badge = self.kpi_badges.get(key)
+            if badge:
+                badge.set_value(value or "—")
+
+        if not summary:
+            for key in self.kpi_badges:
+                set_badge(key, None)
+            return
+
+        revenue_value = summary.get("driftsinntekter")
+        revenue = revenue_value or 0.0
+        ebitda = summary.get("ebitda")
+        ebit = summary.get("ebit")
+        result = summary.get("arsresultat")
+
+        set_badge("revenue", format_currency(revenue_value) if revenue_value is not None else "—")
+
+        def percent(value: Optional[float]) -> Optional[str]:
+            if value is None or not revenue:
+                return None
+            try:
+                return f"{(value / revenue) * 100:,.1f} %"
+            except ZeroDivisionError:
+                return None
+
+        set_badge("ebitda_margin", percent(ebitda))
+        set_badge("ebit_margin", percent(ebit))
+        set_badge("result_margin", percent(result))
+        set_badge(
+            "balance_gap",
+            format_difference(summary.get("eiendeler_UB"), summary.get("gjeld_UB")),
+        )
 
 
 class DataFramePage(QWidget):
@@ -632,29 +724,36 @@ class NordlysWindow(QMainWindow):
     def _apply_styles(self) -> None:
         self.setStyleSheet(
             """
-            QWidget { font-family: 'Segoe UI', 'Helvetica Neue', Arial; font-size: 13px; }
-            QMainWindow { background-color: #f5f7fb; }
-            #navPanel { background-color: #111827; color: #e5e7eb; }
-            #logoLabel { font-size: 22px; font-weight: 700; color: #f9fafb; }
-            #navTree { background: transparent; border: none; color: #d1d5db; font-size: 14px; }
-            #navTree::item { height: 32px; }
-            #navTree::item:selected { background-color: #2563eb; color: white; border-radius: 6px; }
+            QWidget { font-family: 'Inter', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; font-size: 13px; color: #0f172a; }
+            QMainWindow { background-color: #f4f6fb; }
+            #navPanel { background-color: #0f172a; color: #e2e8f0; }
+            #logoLabel { font-size: 24px; font-weight: 700; letter-spacing: 0.4px; color: #f8fafc; }
+            #navTree { background: transparent; border: none; color: #cbd5f5; font-size: 14px; }
+            #navTree::item { height: 34px; padding: 4px 6px; }
+            #navTree::item:selected { background-color: #2563eb; color: #ffffff; border-radius: 8px; }
             #navTree::item:hover { background-color: rgba(37, 99, 235, 0.25); }
-            QPushButton { background-color: #2563eb; color: white; border-radius: 6px; padding: 8px 16px; }
-            QPushButton:disabled { background-color: #9ca3af; color: #f3f4f6; }
+            QPushButton { background-color: #2563eb; color: white; border-radius: 8px; padding: 9px 18px; font-weight: 600; }
+            QPushButton:disabled { background-color: #9ca3af; color: #e5e7eb; }
             QPushButton:hover:!disabled { background-color: #1d4ed8; }
-            #card { background-color: white; border-radius: 18px; border: 1px solid #e5e7eb; }
-            #cardTitle { font-size: 18px; font-weight: 600; color: #111827; }
-            #cardSubtitle { color: #6b7280; font-size: 12px; }
-            #pageTitle { font-size: 24px; font-weight: 700; color: #0f172a; }
+            QPushButton:pressed { background-color: #1e40af; }
+            #card { background-color: #ffffff; border-radius: 20px; border: 1px solid #e2e8f0; }
+            #cardTitle { font-size: 18px; font-weight: 600; color: #0f172a; }
+            #cardSubtitle { color: #64748b; font-size: 12px; }
+            #pageTitle { font-size: 26px; font-weight: 700; color: #020617; letter-spacing: 0.2px; }
             #statusLabel { color: #1f2937; font-size: 14px; }
-            #infoLabel { color: #6b7280; }
+            #infoLabel { color: #64748b; }
             #jsonView { background-color: #0f172a; color: #f9fafb; font-family: "Fira Code", monospace; border-radius: 12px; padding: 12px; }
-            #cardTable { border: none; }
-            QHeaderView::section { background-color: transparent; border: none; font-weight: 600; }
+            #cardTable { border: none; gridline-color: #e2e8f0; }
+            QTableWidget::item { padding: 6px; }
+            QHeaderView::section { background-color: transparent; border: none; font-weight: 600; color: #475569; padding: 6px 4px; }
             QListWidget#checklist { border: none; }
-            QListWidget#checklist::item { padding: 8px; margin: 2px 0; border-radius: 6px; }
-            QListWidget#checklist::item:selected { background-color: rgba(37, 99, 235, 0.15); color: #111827; }
+            QListWidget#checklist::item { padding: 10px; margin: 3px 0; border-radius: 8px; }
+            QListWidget#checklist::item:selected { background-color: rgba(37, 99, 235, 0.18); color: #0f172a; }
+            #statBadge { background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 16px; }
+            #statTitle { font-size: 13px; font-weight: 600; color: #475569; text-transform: uppercase; letter-spacing: 1px; }
+            #statValue { font-size: 24px; font-weight: 700; color: #0f172a; }
+            #statDescription { font-size: 12px; color: #64748b; }
+            QStatusBar { background: transparent; color: #475569; }
             """
         )
 
@@ -683,7 +782,27 @@ class NordlysWindow(QMainWindow):
             self._update_header_fields()
             self.kontroll_page.set_dataframe(df)
             self.dashboard_page.update_summary(self._saft_summary)
-            self.dashboard_page.update_status("SAF-T filen er analysert. Klar for videre planlegging.")
+            company = self._header.company_name if self._header else None
+            orgnr = self._header.orgnr if self._header else None
+            period = None
+            if self._header:
+                period = (
+                    f"{self._header.fiscal_year or '—'} P{self._header.period_start or '?'}–P{self._header.period_end or '?'}"
+                )
+            revenue_txt = (
+                format_currency(self._saft_summary.get("driftsinntekter"))
+                if self._saft_summary and self._saft_summary.get("driftsinntekter") is not None
+                else "—"
+            )
+            account_count = len(df.index)
+            status_bits = [
+                company or "Ukjent selskap",
+                f"Org.nr: {orgnr}" if orgnr else "Org.nr: –",
+                f"Periode: {period}" if period else None,
+                f"{account_count} konti analysert",
+                f"Driftsinntekter: {revenue_txt}",
+            ]
+            self.dashboard_page.update_status(" · ".join(bit for bit in status_bits if bit))
             self.dashboard_page.set_controls_enabled(True)
             self.dashboard_page.clear_top_customers()
             self.vesentlig_page.update_summary(self._saft_summary)
