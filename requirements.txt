@@ -2,3 +2,4 @@ pandas>=1.5
 PySide6>=6.5
 requests>=2.31
 pytest>=7.4
+xmlschema>=2.2

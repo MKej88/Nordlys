@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
 import xml.etree.ElementTree as ET
 
 import pandas as pd
+from xmlschema import XMLSchema, XMLSchemaException
 
 from .constants import NS
 from .utils import findall_any_namespace, text_or_none, to_float
@@ -19,6 +21,110 @@ class SaftHeader:
     period_start: Optional[str]
     period_end: Optional[str]
     file_version: Optional[str]
+
+
+@dataclass
+class SaftValidationResult:
+    """Resultat av XSD-validering av en SAF-T-fil."""
+
+    audit_file_version: Optional[str]
+    version_family: Optional[str]
+    schema_version: Optional[str]
+    is_valid: Optional[bool]
+    details: Optional[str] = None
+
+
+SAFT_RESOURCE_DIR = Path(__file__).resolve().parent / 'resources' / 'saf_t'
+
+
+def _detect_version_family(version: Optional[str]) -> Optional[str]:
+    """Normaliserer AuditFileVersion til hovedvariant (1.2 eller 1.3)."""
+
+    if not version:
+        return None
+    normalized = version.strip()
+    if not normalized:
+        return None
+    if normalized.startswith(('1.3', '1.30')):
+        return '1.3'
+    if normalized.startswith(('1.2', '1.20', '1.1', '1.10')):
+        return '1.2'
+    return None
+
+
+def _schema_info_for_family(family: Optional[str]) -> Optional[Tuple[Path, str]]:
+    """Returnerer sti og versjon på XSD for gitt hovedvariant."""
+
+    if family == '1.3':
+        path = SAFT_RESOURCE_DIR / 'SAF-T_Financial_1.3' / 'Norwegian_SAF-T_Financial_Schema_v_1.30.xsd'
+        return path, '1.30'
+    if family == '1.2':
+        path = SAFT_RESOURCE_DIR / 'Norwegian_SAF-T_Financial_Schema_v_1.10.xsd'
+        return path, '1.20'
+    return None
+
+
+def _extract_version_from_file(xml_path: Path) -> Optional[str]:
+    try:
+        root = ET.parse(xml_path).getroot()
+    except ET.ParseError:
+        return None
+    header = parse_saft_header(root)
+    return header.file_version if header else None
+
+
+def validate_saft_against_xsd(xml_source: Path | str, version: Optional[str] = None) -> SaftValidationResult:
+    """Validerer SAF-T XML mot korrekt XSD basert på AuditFileVersion."""
+
+    xml_path = Path(xml_source)
+    audit_version = (version.strip() if version and version.strip() else None) or _extract_version_from_file(xml_path)
+    family = _detect_version_family(audit_version)
+    schema_info = _schema_info_for_family(family)
+    if schema_info is None:
+        return SaftValidationResult(
+            audit_file_version=audit_version,
+            version_family=family,
+            schema_version=None,
+            is_valid=None,
+            details='Ingen XSD er definert for denne SAF-T versjonen.',
+        )
+
+    schema_path, schema_version = schema_info
+    if not schema_path.exists():
+        return SaftValidationResult(
+            audit_file_version=audit_version,
+            version_family=family,
+            schema_version=schema_version,
+            is_valid=None,
+            details=f'Fant ikke XSD-fil: {schema_path}',
+        )
+
+    try:
+        schema = XMLSchema(schema_path)
+        schema.validate(str(xml_path))
+        return SaftValidationResult(
+            audit_file_version=audit_version,
+            version_family=family,
+            schema_version=schema_version,
+            is_valid=True,
+            details='Validering mot XSD fullført uten feil.',
+        )
+    except XMLSchemaException as exc:  # pragma: no cover - detaljert feiltekst varierer
+        return SaftValidationResult(
+            audit_file_version=audit_version,
+            version_family=family,
+            schema_version=schema_version,
+            is_valid=False,
+            details=str(exc).strip() or 'Ukjent valideringsfeil.',
+        )
+    except OSError as exc:  # pragma: no cover - filsystemfeil sjelden i tester
+        return SaftValidationResult(
+            audit_file_version=audit_version,
+            version_family=family,
+            schema_version=schema_version,
+            is_valid=False,
+            details=str(exc).strip() or 'Klarte ikke å lese SAF-T filen.',
+        )
 
 
 def parse_saft_header(root: ET.Element) -> SaftHeader:
@@ -242,10 +348,12 @@ def extract_ar_from_gl(root: ET.Element) -> pd.DataFrame:
 
 __all__ = [
     'SaftHeader',
+    'SaftValidationResult',
     'parse_saft_header',
     'parse_saldobalanse',
     'ns4102_summary_from_tb',
     'parse_customers',
     'extract_sales_taxbase_by_customer',
     'extract_ar_from_gl',
+    'validate_saft_against_xsd',
 ]
