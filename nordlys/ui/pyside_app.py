@@ -42,12 +42,14 @@ from ..brreg import fetch_brreg, find_first_by_exact_endkey, map_brreg_metrics
 from ..constants import APP_TITLE
 from ..saft import (
     SaftHeader,
+    SaftValidationResult,
     extract_ar_from_gl,
     extract_sales_taxbase_by_customer,
     ns4102_summary_from_tb,
     parse_customers,
     parse_saldobalanse,
     parse_saft_header,
+    validate_saft_against_xsd,
 )
 from ..utils import format_currency, format_difference
 
@@ -184,6 +186,11 @@ class DashboardPage(QWidget):
         self.status_label.setObjectName("statusLabel")
         self.status_label.setWordWrap(True)
         self.status_card.add_widget(self.status_label)
+
+        self.validation_label = QLabel("Ingen XSD-validering er gjennomført.")
+        self.validation_label.setObjectName("statusLabel")
+        self.validation_label.setWordWrap(True)
+        self.status_card.add_widget(self.validation_label)
         layout.addWidget(self.status_card)
 
         self.kpi_card = CardFrame(
@@ -259,6 +266,32 @@ class DashboardPage(QWidget):
 
     def update_status(self, message: str) -> None:
         self.status_label.setText(message)
+
+    def update_validation_status(self, result: Optional[SaftValidationResult]) -> None:
+        if result is None:
+            self.validation_label.setText("Ingen XSD-validering er gjennomført.")
+            return
+
+        if result.version_family:
+            version_txt = result.version_family
+            if result.audit_file_version and result.audit_file_version != result.version_family:
+                version_txt = f"{result.version_family} (AuditFileVersion: {result.audit_file_version})"
+        else:
+            version_txt = result.audit_file_version or "ukjent"
+
+        status_parts = [f"SAF-T versjon: {version_txt}"]
+        if result.is_valid is True:
+            status_parts.append("XSD-validering: OK")
+        elif result.is_valid is False:
+            status_parts.append("XSD-validering: FEILET")
+        else:
+            status_parts.append("XSD-validering: Ikke tilgjengelig")
+
+        message = " · ".join(status_parts)
+        if result.details:
+            first_line = result.details.strip().splitlines()[0]
+            message = f"{message}\nDetaljer: {first_line}"
+        self.validation_label.setText(message)
 
     def update_summary(self, summary: Optional[Dict[str, float]]) -> None:
         if not summary:
@@ -575,6 +608,7 @@ class NordlysWindow(QMainWindow):
         self._cust_map: Dict[str, str] = {}
         self._sales_agg: Optional[pd.DataFrame] = None
         self._ar_agg: Optional[pd.DataFrame] = None
+        self._validation_result: Optional[SaftValidationResult] = None
 
         self._page_map: Dict[str, QWidget] = {}
 
@@ -783,6 +817,8 @@ class NordlysWindow(QMainWindow):
             self._ar_agg = extract_ar_from_gl(root)
             self._saft_df = df
             self._saft_summary = ns4102_summary_from_tb(df)
+            validation = validate_saft_against_xsd(file_name, self._header.file_version if self._header else None)
+            self._validation_result = validation
 
             self._update_header_fields()
             self.kontroll_page.set_dataframe(df)
@@ -808,6 +844,15 @@ class NordlysWindow(QMainWindow):
                 f"Driftsinntekter: {revenue_txt}",
             ]
             self.dashboard_page.update_status(" · ".join(bit for bit in status_bits if bit))
+            self.dashboard_page.update_validation_status(validation)
+            if validation.is_valid is False:
+                QMessageBox.warning(
+                    self,
+                    "XSD-validering feilet",
+                    validation.details or "Valideringen mot XSD feilet. Se dashboard for detaljer.",
+                )
+            elif validation.is_valid is None and validation.details:
+                QMessageBox.information(self, "XSD-validering", validation.details)
             self.dashboard_page.set_controls_enabled(True)
             self.dashboard_page.clear_top_customers()
             self.vesentlig_page.update_summary(self._saft_summary)
