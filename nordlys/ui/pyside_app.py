@@ -870,10 +870,10 @@ class PurchasesApPage(QWidget):
         )
         header = self.top_table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.top_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.top_card.add_widget(self.top_table)
-        layout.addWidget(self.top_card)
-
-        layout.addStretch(1)
+        self.top_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        layout.addWidget(self.top_card, 1)
 
         self.set_controls_enabled(False)
 
