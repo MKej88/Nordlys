@@ -10,7 +10,18 @@ from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple, cast
 
 import pandas as pd
-from PySide6.QtCore import QObject, Qt, QThread, Signal, Slot
+from PySide6.QtCore import (
+    QEasingCurve,
+    QObject,
+    QEvent,
+    QPropertyAnimation,
+    QRect,
+    Qt,
+    QThread,
+    QTimer,
+    Signal,
+    Slot,
+)
 from PySide6.QtGui import QBrush, QColor, QFont, QIcon
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -20,6 +31,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
     QGraphicsDropShadowEffect,
+    QGraphicsOpacityEffect,
     QHeaderView,
     QHBoxLayout,
     QLabel,
@@ -273,6 +285,64 @@ def _create_table_widget() -> QTableWidget:
     table.verticalHeader().setVisible(False)
     table.setObjectName("cardTable")
     return table
+
+
+class AnimatedStackedWidget(QStackedWidget):
+    """StackedWidget med myk fade-animasjon ved sidebytte."""
+
+    def __init__(self, duration_ms: int = 320, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self._duration = duration_ms
+        self._current_animation: Optional[QPropertyAnimation] = None
+
+    def setCurrentIndex(self, index: int) -> None:  # type: ignore[override]
+        if index == self.currentIndex():
+            return
+        super().setCurrentIndex(index)
+        self._start_fade_in(self.currentWidget())
+
+    def setCurrentWidget(self, widget: QWidget) -> None:  # type: ignore[override]
+        if widget is self.currentWidget():
+            return
+        super().setCurrentWidget(widget)
+        self._start_fade_in(widget)
+
+    def _start_fade_in(self, widget: Optional[QWidget]) -> None:
+        if widget is None:
+            return
+        effect = widget.graphicsEffect()
+        if not isinstance(effect, QGraphicsOpacityEffect):
+            effect = QGraphicsOpacityEffect(widget)
+            widget.setGraphicsEffect(effect)
+        effect.setOpacity(0.0)
+
+        if self._current_animation is not None:
+            self._current_animation.stop()
+            self._current_animation.deleteLater()
+
+        animation = QPropertyAnimation(effect, b"opacity", widget)
+        animation.setDuration(self._duration)
+        animation.setStartValue(0.0)
+        animation.setEndValue(1.0)
+        animation.setEasingCurve(QEasingCurve.OutCubic)
+        animation.finished.connect(self._on_animation_finished)
+        animation.start()
+        self._current_animation = animation
+
+    def _on_animation_finished(self) -> None:
+        if self._current_animation is None:
+            return
+        animation = self._current_animation
+        self._current_animation = None
+        widget = self.currentWidget()
+        if widget is None:
+            animation.deleteLater()
+            return
+
+        effect = widget.graphicsEffect()
+        if isinstance(effect, QGraphicsOpacityEffect):
+            effect.setOpacity(1.0)
+        animation.deleteLater()
 
 
 class CardFrame(QFrame):
@@ -919,6 +989,17 @@ class NavigationPanel(QFrame):
         self.logo_label.setObjectName("logoLabel")
         layout.addWidget(self.logo_label)
 
+        self.logo_subtitle = QLabel("Revisjonsinnsikt i ny drakt")
+        self.logo_subtitle.setObjectName("logoSubtitle")
+        self.logo_subtitle.setWordWrap(True)
+        layout.addWidget(self.logo_subtitle)
+
+        divider = QFrame()
+        divider.setFrameShape(QFrame.HLine)
+        divider.setFrameShadow(QFrame.Plain)
+        divider.setObjectName("navDivider")
+        layout.addWidget(divider)
+
         self.tree = QTreeWidget()
         self.tree.setObjectName("navTree")
         self.tree.setHeaderHidden(True)
@@ -931,6 +1012,14 @@ class NavigationPanel(QFrame):
         self.tree.setItemsExpandable(False)
         self.tree.setFocusPolicy(Qt.NoFocus)
         layout.addWidget(self.tree, 1)
+
+        self._indicator = QFrame(self.tree.viewport())
+        self._indicator.setObjectName("navIndicator")
+        self._indicator.hide()
+        self._indicator_animation: Optional[QPropertyAnimation] = None
+
+        self.tree.viewport().installEventFilter(self)
+        self.tree.verticalScrollBar().valueChanged.connect(lambda _value: self._sync_indicator())
 
     def add_root(self, title: str, key: str | None = None) -> NavigationItem:
         item = QTreeWidgetItem([title])
@@ -975,6 +1064,72 @@ class NavigationPanel(QFrame):
         parent.item.addChild(item)
         parent.item.setExpanded(True)
         return NavigationItem(key, item)
+
+    def focus_on_current(self, animated: bool = True) -> None:
+        current = self.tree.currentItem()
+        self.animate_to_item(current, animated=animated)
+
+    def animate_to_item(
+        self, item: Optional[QTreeWidgetItem], *, animated: bool = True
+    ) -> None:
+        if item is None:
+            self._indicator.hide()
+            return
+
+        rect = self.tree.visualItemRect(item)
+        if rect.isNull():
+            self._indicator.hide()
+            return
+
+        indicator_height = max(rect.height() - 6, 18)
+        top = rect.top() + (rect.height() - indicator_height) // 2
+        top = max(top, 4)
+        bottom_limit = self.tree.viewport().height() - 4
+        if top + indicator_height > bottom_limit:
+            indicator_height = max(bottom_limit - top, 12)
+        new_geometry = QRect(6, top, 6, indicator_height)
+
+        if not self._indicator.isVisible():
+            self._indicator.setGeometry(new_geometry)
+            self._indicator.show()
+            return
+
+        if not animated:
+            self._indicator.setGeometry(new_geometry)
+            return
+
+        if self._indicator_animation is not None:
+            self._indicator_animation.stop()
+            self._indicator_animation.deleteLater()
+
+        animation = QPropertyAnimation(self._indicator, b"geometry", self)
+        animation.setDuration(260)
+        animation.setEasingCurve(QEasingCurve.OutCubic)
+        animation.setStartValue(self._indicator.geometry())
+        animation.setEndValue(new_geometry)
+        animation.finished.connect(self._on_indicator_animation_finished)
+        animation.start()
+        self._indicator_animation = animation
+
+    def _sync_indicator(self) -> None:
+        if not self._indicator.isVisible():
+            return
+        self.animate_to_item(self.tree.currentItem(), animated=False)
+
+    def _on_indicator_animation_finished(self) -> None:
+        if self._indicator_animation is None:
+            return
+        self._indicator_animation.deleteLater()
+        self._indicator_animation = None
+
+    def eventFilter(self, obj: QObject, event: QEvent) -> bool:  # type: ignore[override]
+        if obj is self.tree.viewport() and event.type() in {
+            QEvent.Resize,
+            QEvent.UpdateRequest,
+            QEvent.Paint,
+        }:
+            self.animate_to_item(self.tree.currentItem(), animated=False)
+        return super().eventFilter(obj, event)
 
 
 class NordlysWindow(QMainWindow):
@@ -1029,34 +1184,41 @@ class NordlysWindow(QMainWindow):
         root_layout.addWidget(self.nav_panel, 0)
 
         content_wrapper = QWidget()
+        content_wrapper.setObjectName("contentWrapper")
         content_wrapper.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         content_layout = QVBoxLayout(content_wrapper)
         content_layout.setContentsMargins(32, 32, 32, 32)
         content_layout.setSpacing(24)
         root_layout.addWidget(content_wrapper, 1)
 
-        header_layout = QHBoxLayout()
-        header_layout.setSpacing(16)
+        header_bar = QFrame()
+        header_bar.setObjectName("headerBar")
+        header_layout = QHBoxLayout(header_bar)
+        header_layout.setContentsMargins(24, 20, 24, 20)
+        header_layout.setSpacing(20)
 
         self.title_label = QLabel("Dashboard")
         self.title_label.setObjectName("pageTitle")
         header_layout.addWidget(self.title_label, 1)
 
         self.btn_open = QPushButton("Åpne SAF-T XML …")
+        self.btn_open.setObjectName("primaryButton")
         self.btn_open.clicked.connect(self.on_open)
         header_layout.addWidget(self.btn_open)
 
         self.btn_brreg = QPushButton("Hent Regnskapsregisteret")
+        self.btn_brreg.setObjectName("secondaryButton")
         self.btn_brreg.clicked.connect(self.on_brreg)
         self.btn_brreg.setEnabled(False)
         header_layout.addWidget(self.btn_brreg)
 
         self.btn_export = QPushButton("Eksporter rapport (Excel)")
+        self.btn_export.setObjectName("ghostButton")
         self.btn_export.clicked.connect(self.on_export)
         self.btn_export.setEnabled(False)
         header_layout.addWidget(self.btn_export)
 
-        content_layout.addLayout(header_layout)
+        content_layout.addWidget(header_bar)
 
         info_card = CardFrame("Selskapsinformasjon")
         info_grid = QGridLayout()
@@ -1072,7 +1234,7 @@ class NordlysWindow(QMainWindow):
         info_card.add_layout(info_grid)
         content_layout.addWidget(info_card)
 
-        self.stack = QStackedWidget()
+        self.stack = AnimatedStackedWidget()
         content_layout.addWidget(self.stack, 1)
 
         self._create_pages()
@@ -1173,6 +1335,7 @@ class NordlysWindow(QMainWindow):
 
         nav.tree.currentItemChanged.connect(self._on_navigation_changed)
         nav.tree.setCurrentItem(dashboard_item.item)
+        QTimer.singleShot(0, lambda: nav.focus_on_current(animated=False))
 
         for key, items in REVISION_TASKS.items():
             page = self.revision_pages.get(key)
@@ -1187,49 +1350,238 @@ class NordlysWindow(QMainWindow):
     def _apply_styles(self) -> None:
         self.setStyleSheet(
             """
-            QWidget { font-family: 'Inter', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; font-size: 14px; color: #0f172a; }
-            QMainWindow { background-color: #edf1f7; }
-            #navPanel { background-color: #0b1120; color: #e2e8f0; border-right: 1px solid rgba(148, 163, 184, 0.18); }
-            #logoLabel { font-size: 26px; font-weight: 700; letter-spacing: 0.6px; color: #f8fafc; }
-            #navTree { background: transparent; border: none; color: #dbeafe; font-size: 14px; }
+            QWidget {
+                font-family: 'Inter', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+                font-size: 14px;
+                color: #0f172a;
+                background-color: transparent;
+            }
+            QMainWindow {
+                background-color: #dbe4f3;
+            }
+            #navPanel {
+                background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
+                    stop:0 #0b1220, stop:1 #1e293b);
+                color: #e2e8f0;
+                border-right: 1px solid rgba(148, 163, 184, 0.18);
+            }
+            #logoLabel {
+                font-size: 28px;
+                font-weight: 700;
+                letter-spacing: 0.6px;
+                color: #f8fafc;
+            }
+            #logoSubtitle {
+                color: #bae6fd;
+                font-size: 12px;
+                letter-spacing: 0.5px;
+            }
+            QFrame#navDivider {
+                background-color: rgba(148, 163, 184, 0.28);
+                min-height: 1px;
+                max-height: 1px;
+            }
+            #navTree {
+                background: transparent;
+                border: none;
+                color: #e2e8f0;
+                font-size: 14px;
+            }
             #navTree:focus { outline: none; border: none; }
             QTreeWidget::item:focus { outline: none; }
-            #navTree::item { height: 34px; padding: 6px 10px; border-radius: 10px; margin: 2px 0; }
-            #navTree::item:selected { background-color: rgba(59, 130, 246, 0.35); color: #f8fafc; font-weight: 600; }
-            #navTree::item:hover { background-color: rgba(59, 130, 246, 0.18); }
-            QPushButton { background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 #2563eb, stop:1 #1d4ed8); color: white; border-radius: 10px; padding: 10px 20px; font-weight: 600; letter-spacing: 0.2px; }
+            #navTree::item {
+                height: 36px;
+                padding: 8px 12px;
+                border-radius: 12px;
+                margin: 3px 0;
+            }
+            #navTree::item:selected {
+                background-color: rgba(56, 189, 248, 0.35);
+                color: #f8fafc;
+                font-weight: 600;
+            }
+            #navTree::item:hover {
+                background-color: rgba(56, 189, 248, 0.18);
+            }
+            #navIndicator {
+                background-color: #38bdf8;
+                border-radius: 3px;
+            }
+            #contentWrapper {
+                background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
+                    stop:0 #f8fafc, stop:1 #eef2ff);
+                border-radius: 28px;
+            }
+            #headerBar {
+                background: rgba(255, 255, 255, 0.92);
+                border-radius: 20px;
+                border: 1px solid rgba(148, 163, 184, 0.22);
+            }
+            #pageTitle {
+                font-size: 30px;
+                font-weight: 700;
+                color: #0b1120;
+                letter-spacing: 0.3px;
+            }
+            QPushButton {
+                border-radius: 12px;
+                padding: 10px 22px;
+                font-weight: 600;
+                border: none;
+            }
+            QPushButton#primaryButton {
+                background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
+                    stop:0 #6366f1, stop:1 #4f46e5);
+                color: #f8fafc;
+            }
+            QPushButton#primaryButton:hover:!disabled {
+                background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
+                    stop:0 #4f46e5, stop:1 #4338ca);
+            }
+            QPushButton#secondaryButton {
+                background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
+                    stop:0 #22d3ee, stop:1 #0ea5e9);
+                color: #f8fafc;
+            }
+            QPushButton#secondaryButton:hover:!disabled {
+                background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
+                    stop:0 #0ea5e9, stop:1 #0284c7);
+            }
+            QPushButton#ghostButton {
+                background: transparent;
+                color: #0f172a;
+                border: 1px solid rgba(14, 165, 233, 0.45);
+            }
+            QPushButton#ghostButton:hover:!disabled {
+                border-color: rgba(14, 165, 233, 0.65);
+                color: #0284c7;
+            }
             QPushButton:focus { outline: none; }
-            QPushButton:disabled { background-color: #94a3b8; color: #e5e7eb; }
-            QPushButton:hover:!disabled { background-color: #1e40af; }
-            QPushButton:pressed { background-color: #1d4ed8; }
-            #card { background-color: #ffffff; border-radius: 18px; border: 1px solid rgba(148, 163, 184, 0.28); }
-            #cardTitle { font-size: 20px; font-weight: 600; color: #0f172a; letter-spacing: 0.2px; }
-            #cardSubtitle { color: #64748b; font-size: 13px; line-height: 1.4; }
-            #pageTitle { font-size: 28px; font-weight: 700; color: #020617; letter-spacing: 0.4px; }
+            QPushButton:disabled {
+                background: #94a3b8;
+                color: rgba(248, 250, 252, 0.85);
+                border: none;
+            }
+            QPushButton#ghostButton:disabled {
+                background: transparent;
+                color: rgba(148, 163, 184, 0.8);
+                border: 1px solid rgba(148, 163, 184, 0.4);
+            }
+            #card {
+                background: rgba(255, 255, 255, 0.94);
+                border-radius: 20px;
+                border: 1px solid rgba(148, 163, 184, 0.22);
+            }
+            #cardTitle {
+                font-size: 21px;
+                font-weight: 600;
+                color: #111c36;
+            }
+            #cardSubtitle {
+                color: #64748b;
+                font-size: 13px;
+                line-height: 1.45;
+            }
             #statusLabel { color: #1f2937; font-size: 14px; line-height: 1.5; }
             #infoLabel { color: #475569; font-size: 14px; }
-            #jsonView { background-color: #0f172a; color: #f9fafb; font-family: "Fira Code", monospace; border-radius: 12px; padding: 14px; border: 1px solid #1e293b; }
-            #cardTable { border: none; gridline-color: rgba(148, 163, 184, 0.35); background-color: transparent; alternate-background-color: #f8fafc; }
-            QTableWidget { background-color: transparent; alternate-background-color: #f8fafc; }
+            #jsonView {
+                background-color: #0f172a;
+                color: #f9fafb;
+                font-family: "Fira Code", monospace;
+                border-radius: 14px;
+                padding: 16px;
+                border: 1px solid #1e293b;
+            }
+            #cardTable {
+                border: none;
+                gridline-color: rgba(148, 163, 184, 0.35);
+                background-color: transparent;
+                alternate-background-color: rgba(226, 232, 240, 0.4);
+            }
+            QTableWidget {
+                background-color: transparent;
+                alternate-background-color: rgba(226, 232, 240, 0.35);
+            }
             QTableWidget::item { padding: 10px 8px; }
-            QTableWidget::item:selected { background-color: rgba(37, 99, 235, 0.22); color: #0f172a; }
-            QHeaderView::section { background-color: transparent; border: none; font-weight: 600; color: #1f2937; padding: 10px 6px; }
-            QHeaderView::section:horizontal { border-bottom: 1px solid rgba(148, 163, 184, 0.45); }
+            QTableWidget::item:selected {
+                background-color: rgba(14, 165, 233, 0.18);
+                color: #0f172a;
+            }
+            QHeaderView::section {
+                background-color: transparent;
+                border: none;
+                font-weight: 600;
+                color: #1f2937;
+                padding: 10px 6px;
+            }
+            QHeaderView::section:horizontal {
+                border-bottom: 1px solid rgba(148, 163, 184, 0.45);
+            }
             QListWidget#checklist { border: none; }
-            QListWidget#checklist::item { padding: 12px 14px; margin: 4px 0; border-radius: 10px; }
-            QListWidget#checklist::item:selected { background-color: rgba(37, 99, 235, 0.16); color: #0f172a; font-weight: 600; }
-            QListWidget#checklist::item:hover { background-color: rgba(15, 23, 42, 0.05); }
-            #statBadge { background-color: #f8fafc; border: 1px solid rgba(148, 163, 184, 0.35); border-radius: 16px; }
-            #statTitle { font-size: 12px; font-weight: 600; color: #475569; text-transform: uppercase; letter-spacing: 1.2px; }
-            #statValue { font-size: 26px; font-weight: 700; color: #0f172a; }
+            QListWidget#checklist::item {
+                padding: 12px 14px;
+                margin: 4px 0;
+                border-radius: 12px;
+            }
+            QListWidget#checklist::item:selected {
+                background-color: rgba(56, 189, 248, 0.18);
+                color: #0f172a;
+                font-weight: 600;
+            }
+            QListWidget#checklist::item:hover {
+                background-color: rgba(15, 23, 42, 0.06);
+            }
+            #statBadge {
+                background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
+                    stop:0 rgba(226, 232, 240, 0.55), stop:1 rgba(148, 163, 184, 0.35));
+                border: 1px solid rgba(148, 163, 184, 0.28);
+                border-radius: 18px;
+            }
+            #statTitle {
+                font-size: 12px;
+                font-weight: 600;
+                color: #475569;
+                text-transform: uppercase;
+                letter-spacing: 1.2px;
+            }
+            #statValue { font-size: 28px; font-weight: 700; color: #0f172a; }
             #statDescription { font-size: 12px; color: #64748b; }
-            QStatusBar { background: transparent; color: #475569; padding-right: 24px; border-top: 1px solid rgba(148, 163, 184, 0.3); }
-            QComboBox, QSpinBox { background-color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.5); border-radius: 8px; padding: 6px 10px; min-height: 32px; }
-            QComboBox QAbstractItemView { border-radius: 8px; padding: 6px; }
+            QStatusBar {
+                background: transparent;
+                color: #475569;
+                padding-right: 24px;
+                border-top: 1px solid rgba(148, 163, 184, 0.28);
+            }
+            QComboBox, QSpinBox {
+                background-color: #ffffff;
+                border: 1px solid rgba(148, 163, 184, 0.5);
+                border-radius: 10px;
+                padding: 6px 10px;
+                min-height: 32px;
+            }
+            QComboBox QAbstractItemView {
+                border-radius: 10px;
+                padding: 6px;
+            }
             QComboBox::drop-down { border: none; width: 24px; }
             QComboBox::down-arrow { image: none; }
-            QSpinBox::up-button, QSpinBox::down-button { border: none; background: transparent; width: 20px; }
-            QToolTip { background-color: #0f172a; color: #f8fafc; border: none; padding: 8px 10px; border-radius: 8px; }
+            QSpinBox::up-button, QSpinBox::down-button {
+                border: none;
+                background: transparent;
+                width: 20px;
+            }
+            QProgressDialog {
+                background: #ffffff;
+                border: 1px solid rgba(148, 163, 184, 0.35);
+                border-radius: 12px;
+            }
+            QToolTip {
+                background-color: #0f172a;
+                color: #f8fafc;
+                border: none;
+                padding: 8px 10px;
+                border-radius: 8px;
+            }
             """
         )
 
@@ -1813,6 +2165,7 @@ class NordlysWindow(QMainWindow):
             widget = self._page_map[key]
             self.stack.setCurrentWidget(widget)
             self.title_label.setText(current.text(0))
+            self.nav_panel.animate_to_item(current, animated=True)
 
     # endregion
 
