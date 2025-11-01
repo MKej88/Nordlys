@@ -28,6 +28,27 @@ def test_find_first_by_exact_endkey():
     assert list_hit == ('balanse.egenkapitalOgGjeld.sumGjeld', 600)
 
 
+def test_find_first_by_exact_endkey_disallow_contains():
+    data = {
+        'balanse': {
+            'egenkapitalOgGjeld': {
+                'sumEgenkapital': 400,
+            },
+            'egenkapital': {
+                'sumEgenkapital': 380,
+            },
+        }
+    }
+
+    hit = find_first_by_exact_endkey(
+        data,
+        ['sumEgenkapital'],
+        disallow_contains=['egenkapitaloggjeld'],
+    )
+
+    assert hit == ('balanse.egenkapital.sumEgenkapital', 380.0)
+
+
 def test_map_brreg_metrics():
     data = {
         'resultatregnskap': {
