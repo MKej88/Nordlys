@@ -7,13 +7,19 @@ import pandas as pd
 import pytest
 
 from nordlys.saft import (
-    extract_ar_from_gl,
-    extract_sales_taxbase_by_customer,
     ns4102_summary_from_tb,
     parse_customers,
     parse_saldobalanse,
     parse_saft_header,
     validate_saft_against_xsd,
+)
+from nordlys.saft_customers import (
+    build_customer_name_map,
+    compute_sales_per_customer,
+    get_amount,
+    get_tx_customer_id,
+    parse_saft,
+    save_outputs,
 )
 from nordlys.utils import format_currency, format_difference
 
@@ -27,8 +33,8 @@ def build_sample_root() -> ET.Element:
           <RegistrationNumber>999999999</RegistrationNumber>
         </Company>
         <SelectionCriteria>
-          <PeriodStart>01</PeriodStart>
-          <PeriodEnd>12</PeriodEnd>
+          <PeriodStart>2023-01-01</PeriodStart>
+          <PeriodEnd>2023-12-31</PeriodEnd>
           <PeriodEndYear>2023</PeriodEndYear>
         </SelectionCriteria>
         <AuditFileVersion>1.0</AuditFileVersion>
@@ -82,15 +88,15 @@ def build_sample_root() -> ET.Element:
       <GeneralLedgerEntries>
         <Journal>
           <Transaction>
+            <TransactionDate>2023-05-02</TransactionDate>
+            <Line>
+              <AccountID>3000</AccountID>
+              <CreditAmount>1000</CreditAmount>
+            </Line>
             <Line>
               <AccountID>1500</AccountID>
               <DebitAmount>1000</DebitAmount>
-              <CreditAmount>0</CreditAmount>
               <CustomerID>K1</CustomerID>
-              <TaxInformation>
-                <TaxBase>1000</TaxBase>
-                <TaxAmount>250</TaxAmount>
-              </TaxInformation>
             </Line>
           </Transaction>
         </Journal>
@@ -123,20 +129,138 @@ def test_parse_saldobalanse_and_summary():
     assert summary['ebitda'] == 400
 
 
-def test_extract_sales_and_ar():
-    root = build_sample_root()
-    sales = extract_sales_taxbase_by_customer(root)
-    assert sales.loc[0, 'CustomerID'] == 'K1'
-    assert sales.loc[0, 'OmsetningEksMva'] == 1000
-    assert sales.loc[0, 'Kundenr'] == '1001'
-    assert sales.loc[0, 'Kundenavn'] == 'Kunde 1'
-    ar = extract_ar_from_gl(root)
-    assert ar.loc[0, 'AR_Debit'] == 1000
-    assert ar.loc[0, 'AR_Netto'] == 1000
-    assert ar.loc[0, 'OmsetningEksMva'] == 1000
-    assert ar.loc[0, 'Kundenr'] == '1001'
-    assert ar.loc[0, 'Kundenavn'] == 'Kunde 1'
+def test_parse_saft_detects_namespace(tmp_path):
+    xml_path = tmp_path / 'simple.xml'
+    xml_path.write_text(
+        '<AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">'
+        '  <Header><AuditFileVersion>1.0</AuditFileVersion></Header>'
+        '</AuditFile>',
+        encoding='utf-8',
+    )
+    tree, ns = parse_saft(xml_path)
+    assert tree.getroot().tag.endswith('AuditFile')
+    assert ns['n1'] == 'urn:StandardAuditFile-Taxation-Financial:NO'
 
+
+def test_get_amount_handles_nested_amount():
+    line_xml = """
+    <Line xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <CreditAmount><Amount>123,45</Amount></CreditAmount>
+      <DebitAmount>10</DebitAmount>
+    </Line>
+    """
+    line = ET.fromstring(line_xml)
+    ns = {'n1': 'urn:StandardAuditFile-Taxation-Financial:NO'}
+    credit = get_amount(line, 'CreditAmount', ns)
+    debit = get_amount(line, 'DebitAmount', ns)
+    assert float(credit) == pytest.approx(123.45)
+    assert float(debit) == pytest.approx(10.0)
+
+
+def test_get_tx_customer_id_priority():
+    ns = {'n1': 'urn:StandardAuditFile-Taxation-Financial:NO'}
+    xml_ar = """
+    <Transaction xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <Line>
+        <AccountID>3000</AccountID>
+        <CustomerID>SALE</CustomerID>
+      </Line>
+      <Line>
+        <AccountID>1500</AccountID>
+        <CustomerID>AR-CUST</CustomerID>
+      </Line>
+    </Transaction>
+    """
+    transaction_ar = ET.fromstring(xml_ar)
+    assert get_tx_customer_id(transaction_ar, ns) == 'AR-CUST'
+
+    xml_dimensions = """
+    <Transaction xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <Line>
+        <AccountID>4000</AccountID>
+        <CustomerID />
+      </Line>
+      <Line>
+        <AccountID>4900</AccountID>
+        <Dimensions>
+          <CustomerID>DIM-CUST</CustomerID>
+        </Dimensions>
+      </Line>
+    </Transaction>
+    """
+    transaction_dim = ET.fromstring(xml_dimensions)
+    assert get_tx_customer_id(transaction_dim, ns) == 'DIM-CUST'
+
+    xml_analysis = """
+    <Transaction xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <Line>
+        <AccountID>4900</AccountID>
+        <Dimensions>
+          <Analysis>
+            <Type>customer-segment</Type>
+            <ID>ANAL-CUST</ID>
+          </Analysis>
+        </Dimensions>
+      </Line>
+    </Transaction>
+    """
+    transaction_analysis = ET.fromstring(xml_analysis)
+    assert get_tx_customer_id(transaction_analysis, ns) == 'ANAL-CUST'
+
+
+def test_compute_sales_per_customer():
+    root = build_sample_root()
+    ns = {'n1': root.tag.split('}')[0][1:]}
+    df = compute_sales_per_customer(root, ns, year=2023)
+    assert not df.empty
+    row = df.iloc[0]
+    assert row['Kundenr'] == 'K1'
+    assert row['Kundenavn'] == 'Kunde 1'
+    assert row['Omsetning eks mva'] == pytest.approx(1000.0)
+    assert row['Transaksjoner'] == 1
+
+
+def test_compute_sales_per_customer_date_filter():
+    root = build_sample_root()
+    ns = {'n1': root.tag.split('}')[0][1:]}
+    df = compute_sales_per_customer(root, ns, date_from='2023-06-01', date_to='2023-12-31')
+    assert df.empty
+
+
+def test_build_customer_name_map_fallback():
+    xml = """
+    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <GeneralLedgerEntries>
+        <Journal>
+          <Transaction>
+            <Line>
+              <AccountID>3000</AccountID>
+              <CreditAmount>500</CreditAmount>
+            </Line>
+            <CustomerInfo>
+              <CustomerID>CU1</CustomerID>
+              <Name>Fallback Navn</Name>
+            </CustomerInfo>
+          </Transaction>
+        </Journal>
+      </GeneralLedgerEntries>
+    </AuditFile>
+    """
+    root = ET.fromstring(xml)
+    ns = {'n1': root.tag.split('}')[0][1:]}
+    names = build_customer_name_map(root, ns)
+    assert names['CU1'] == 'Fallback Navn'
+
+
+def test_save_outputs(tmp_path):
+    root = build_sample_root()
+    ns = {'n1': root.tag.split('}')[0][1:]}
+    df = compute_sales_per_customer(root, ns, year=2023)
+    csv_path, xlsx_path = save_outputs(df, tmp_path, 2023)
+    assert csv_path.exists()
+    assert xlsx_path.exists()
+    saved = pd.read_csv(csv_path)
+    assert 'Kundenr' in saved.columns
 
 def test_format_helpers():
     assert format_currency(1234.5) == '1,234'
@@ -178,130 +302,6 @@ def test_validate_saft_against_xsd_known_version(tmp_path):
     else:
         assert result.is_valid is None
         assert 'xmlschema' in (result.details or '').lower()
-
-
-def test_extract_sales_handles_tax_inclusive_amount():
-    xml = """
-    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
-      <Header>
-        <AuditFileVersion>1.0</AuditFileVersion>
-      </Header>
-      <MasterFiles>
-        <Customer>
-          <CustomerID>ABC</CustomerID>
-          <CustomerNumber>5001</CustomerNumber>
-          <Contact>
-            <Name>Testkunde AS</Name>
-          </Contact>
-        </Customer>
-      </MasterFiles>
-      <SourceDocuments>
-        <SalesInvoices>
-          <Invoice>
-            <Customer>
-              <CustomerID>ABC</CustomerID>
-            </Customer>
-            <DocumentTotals>
-              <TaxInclusiveAmount>1250</TaxInclusiveAmount>
-              <TaxTotal>
-                <TaxAmount>250</TaxAmount>
-              </TaxTotal>
-            </DocumentTotals>
-          </Invoice>
-        </SalesInvoices>
-      </SourceDocuments>
-    </AuditFile>
-    """
-    root = ET.fromstring(xml)
-    sales = extract_sales_taxbase_by_customer(root)
-    assert not sales.empty
-    assert sales.loc[0, 'CustomerID'] == 'ABC'
-    assert sales.loc[0, 'OmsetningEksMva'] == pytest.approx(1000)
-    assert sales.loc[0, 'Kundenr'] == '5001'
-    assert sales.loc[0, 'Kundenavn'] == 'Testkunde AS'
-
-
-def test_extract_sales_handles_net_total_with_vat():
-    xml = """
-    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
-      <SourceDocuments>
-        <SalesInvoices>
-          <Invoice>
-            <CustomerID>Z1</CustomerID>
-            <DocumentTotals>
-              <NetTotal>1250</NetTotal>
-              <GrossTotal>1250</GrossTotal>
-              <TaxPayable>250</TaxPayable>
-            </DocumentTotals>
-          </Invoice>
-        </SalesInvoices>
-      </SourceDocuments>
-    </AuditFile>
-    """
-    root = ET.fromstring(xml)
-    sales = extract_sales_taxbase_by_customer(root)
-    assert sales.loc[0, 'OmsetningEksMva'] == pytest.approx(1000)
-
-
-def test_extract_sales_handles_invoice_net_total_with_vat():
-    xml = """
-    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
-      <SourceDocuments>
-        <SalesInvoices>
-          <Invoice>
-            <CustomerID>Z2</CustomerID>
-            <DocumentTotals>
-              <InvoiceNetTotal>2500</InvoiceNetTotal>
-              <TaxInclusiveAmount>2500</TaxInclusiveAmount>
-              <TaxTotal>
-                <TaxAmount>500</TaxAmount>
-              </TaxTotal>
-            </DocumentTotals>
-          </Invoice>
-        </SalesInvoices>
-      </SourceDocuments>
-    </AuditFile>
-    """
-    root = ET.fromstring(xml)
-    sales = extract_sales_taxbase_by_customer(root)
-    assert sales.loc[0, 'OmsetningEksMva'] == pytest.approx(2000)
-
-
-def test_extract_sales_prefers_line_tax_base():
-    xml = """
-    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
-      <MasterFiles>
-        <Customer>
-          <CustomerID>TB1</CustomerID>
-          <CustomerNumber>2001</CustomerNumber>
-          <Name>Tax Base Kunde</Name>
-        </Customer>
-      </MasterFiles>
-      <SourceDocuments>
-        <SalesInvoices>
-          <Invoice>
-            <CustomerID>TB1</CustomerID>
-            <DocumentTotals>
-              <TaxExclusiveAmount>1250</TaxExclusiveAmount>
-              <GrossTotal>1500</GrossTotal>
-              <TaxPayable>250</TaxPayable>
-            </DocumentTotals>
-            <Line>
-              <TaxInformation>
-                <TaxBase>1000</TaxBase>
-                <TaxAmount>250</TaxAmount>
-              </TaxInformation>
-            </Line>
-          </Invoice>
-        </SalesInvoices>
-      </SourceDocuments>
-    </AuditFile>
-    """
-    root = ET.fromstring(xml)
-    sales = extract_sales_taxbase_by_customer(root)
-    assert sales.loc[0, 'OmsetningEksMva'] == pytest.approx(1000)
-    assert sales.loc[0, 'Kundenr'] == '2001'
-    assert sales.loc[0, 'Kundenavn'] == 'Tax Base Kunde'
 
 
 def test_validate_saft_against_xsd_without_dependency(monkeypatch, tmp_path):

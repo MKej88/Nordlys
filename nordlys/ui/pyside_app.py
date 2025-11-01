@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import math
 import sys
-import xml.etree.ElementTree as ET
+from datetime import date, datetime
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple, cast
@@ -48,14 +48,13 @@ from ..saft import (
     CustomerInfo,
     SaftHeader,
     SaftValidationResult,
-    extract_ar_from_gl,
-    extract_sales_taxbase_by_customer,
     ns4102_summary_from_tb,
     parse_customers,
     parse_saldobalanse,
     parse_saft_header,
     validate_saft_against_xsd,
 )
+from ..saft_customers import compute_sales_per_customer, parse_saft
 from ..utils import format_currency, format_difference
 
 
@@ -111,8 +110,7 @@ class SaftLoadResult:
     header: Optional[SaftHeader]
     dataframe: pd.DataFrame
     customers: Dict[str, CustomerInfo]
-    sales_agg: Optional[pd.DataFrame]
-    ar_agg: Optional[pd.DataFrame]
+    customer_sales: Optional[pd.DataFrame]
     summary: Optional[Dict[str, float]]
     validation: SaftValidationResult
 
@@ -130,12 +128,58 @@ class SaftLoadWorker(QObject):
     @Slot()
     def run(self) -> None:
         try:
-            root = ET.parse(self._file_path).getroot()
+            tree, ns = parse_saft(self._file_path)
+            root = tree.getroot()
             header = parse_saft_header(root)
             dataframe = parse_saldobalanse(root)
             customers = parse_customers(root)
-            sales_agg = extract_sales_taxbase_by_customer(root)
-            ar_agg = extract_ar_from_gl(root)
+
+            def _parse_date(value: Optional[str]) -> Optional[date]:
+                if value is None:
+                    return None
+                text = value.strip()
+                if not text:
+                    return None
+                try:
+                    return date.fromisoformat(text)
+                except ValueError:
+                    try:
+                        return datetime.strptime(text, "%Y-%m-%d").date()
+                    except ValueError:
+                        return None
+
+            period_start = _parse_date(header.period_start) if header else None
+            period_end = _parse_date(header.period_end) if header else None
+            customer_sales: Optional[pd.DataFrame] = None
+            if period_start or period_end:
+                customer_sales = compute_sales_per_customer(
+                    root,
+                    ns,
+                    date_from=period_start,
+                    date_to=period_end,
+                )
+            else:
+                analysis_year: Optional[int] = None
+                if header and header.fiscal_year:
+                    try:
+                        analysis_year = int(header.fiscal_year)
+                    except (TypeError, ValueError):
+                        analysis_year = None
+                if analysis_year is None and header and header.period_end:
+                    parsed_end = _parse_date(header.period_end)
+                    if parsed_end:
+                        analysis_year = parsed_end.year
+                if analysis_year is None:
+                    for tx in root.findall('.//n1:GeneralLedgerEntries/n1:Journal/n1:Transaction', ns):
+                        date_element = tx.find('n1:TransactionDate', ns)
+                        if date_element is not None and date_element.text:
+                            parsed = _parse_date(date_element.text)
+                            if parsed:
+                                analysis_year = parsed.year
+                                break
+                if analysis_year is not None:
+                    customer_sales = compute_sales_per_customer(root, ns, year=analysis_year)
+
             summary = ns4102_summary_from_tb(dataframe)
             validation = validate_saft_against_xsd(
                 self._file_path,
@@ -146,8 +190,7 @@ class SaftLoadWorker(QObject):
                 header=header,
                 dataframe=dataframe,
                 customers=customers,
-                sales_agg=sales_agg,
-                ar_agg=ar_agg,
+                customer_sales=customer_sales,
                 summary=summary,
                 validation=validation,
             )
@@ -651,7 +694,8 @@ class SalesArPage(QWidget):
         controls.setSpacing(12)
         controls.addWidget(QLabel("Kilde:"))
         self.source_combo = QComboBox()
-        self.source_combo.addItems(["faktura", "reskontro"])
+        self.source_combo.addItems(["alle 3xxx"])
+        self.source_combo.setEnabled(False)
         controls.addWidget(self.source_combo)
         controls.addWidget(QLabel("Antall:"))
         self.top_spin = QSpinBox()
@@ -698,7 +742,7 @@ class SalesArPage(QWidget):
     def set_top_customers(self, rows: Iterable[Tuple[str, str, int, float]]) -> None:
         _populate_table(
             self.top_table,
-            ["Kundenr", "Kundenavn", "Fakturaer", "Omsetning (eks. mva)"],
+            ["Kundenr", "Kundenavn", "Transaksjoner", "Omsetning (eks. mva)"],
             rows,
             money_cols={3},
         )
@@ -709,7 +753,6 @@ class SalesArPage(QWidget):
     def set_controls_enabled(self, enabled: bool) -> None:
         self.calc_button.setEnabled(enabled)
         self.top_spin.setEnabled(enabled)
-        self.source_combo.setEnabled(enabled)
 
 
 @dataclass
@@ -805,8 +848,7 @@ class NordlysWindow(QMainWindow):
         self._customers: Dict[str, CustomerInfo] = {}
         self._cust_name_by_nr: Dict[str, str] = {}
         self._cust_id_to_nr: Dict[str, str] = {}
-        self._sales_agg: Optional[pd.DataFrame] = None
-        self._ar_agg: Optional[pd.DataFrame] = None
+        self._customer_sales: Optional[pd.DataFrame] = None
         self._validation_result: Optional[SaftValidationResult] = None
         self._current_file: Optional[str] = None
         self._loading_file: Optional[str] = None
@@ -1139,56 +1181,25 @@ class NordlysWindow(QMainWindow):
         self._current_file = result.file_path
 
         self._ingest_customers(result.customers)
-        self._sales_agg = result.sales_agg.copy() if result.sales_agg is not None else None
-        self._ar_agg = result.ar_agg.copy() if result.ar_agg is not None else None
+        self._customer_sales = (
+            result.customer_sales.copy() if result.customer_sales is not None else None
+        )
 
-        if self._sales_agg is not None and not self._sales_agg.empty and "CustomerID" in self._sales_agg.columns:
-            if "Kundenr" not in self._sales_agg.columns or self._sales_agg["Kundenr"].isna().any():
-                normalized_ids = self._sales_agg["CustomerID"].apply(self._normalize_customer_key)
-                mapped_numbers = normalized_ids.map(self._cust_id_to_nr)
-                fallback_mapped = self._sales_agg["CustomerID"].map(self._cust_id_to_nr)
-                fallback_ids = normalized_ids.fillna(self._sales_agg["CustomerID"])
-                self._sales_agg["Kundenr"] = mapped_numbers.fillna(fallback_mapped).fillna(fallback_ids)
-            if "Kundenavn" not in self._sales_agg.columns:
-                self._sales_agg["Kundenavn"] = self._sales_agg.apply(
-                    lambda row: self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID")),
-                    axis=1,
-                )
-            else:
-                mask = self._sales_agg["Kundenavn"].isna() | (
-                    self._sales_agg["Kundenavn"].astype(str).str.strip() == ""
-                )
+        if self._customer_sales is not None and not self._customer_sales.empty:
+            if "Kundenavn" in self._customer_sales.columns:
+                mask = self._customer_sales["Kundenavn"].astype(str).str.strip() == ""
                 if mask.any():
-                    self._sales_agg.loc[mask, "Kundenavn"] = self._sales_agg.loc[mask].apply(
-                        lambda row: self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID")),
-                        axis=1,
+                    self._customer_sales.loc[mask, "Kundenavn"] = self._customer_sales.loc[mask, "Kundenr"].apply(
+                        lambda value: self._lookup_customer_name(value, value) or value
                     )
-            cols = ["Kundenr"] + [col for col in self._sales_agg.columns if col != "Kundenr"]
-            self._sales_agg = self._sales_agg.loc[:, cols]
-
-        if self._ar_agg is not None and not self._ar_agg.empty and "CustomerID" in self._ar_agg.columns:
-            if "Kundenr" not in self._ar_agg.columns or self._ar_agg["Kundenr"].isna().any():
-                normalized_ids = self._ar_agg["CustomerID"].apply(self._normalize_customer_key)
-                mapped_numbers = normalized_ids.map(self._cust_id_to_nr)
-                fallback_mapped = self._ar_agg["CustomerID"].map(self._cust_id_to_nr)
-                fallback_ids = normalized_ids.fillna(self._ar_agg["CustomerID"])
-                self._ar_agg["Kundenr"] = mapped_numbers.fillna(fallback_mapped).fillna(fallback_ids)
-            if "Kundenavn" not in self._ar_agg.columns:
-                self._ar_agg["Kundenavn"] = self._ar_agg.apply(
-                    lambda row: self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID")),
-                    axis=1,
-                )
             else:
-                mask = self._ar_agg["Kundenavn"].isna() | (
-                    self._ar_agg["Kundenavn"].astype(str).str.strip() == ""
+                self._customer_sales["Kundenavn"] = self._customer_sales["Kundenr"].apply(
+                    lambda value: self._lookup_customer_name(value, value) or value
                 )
-                if mask.any():
-                    self._ar_agg.loc[mask, "Kundenavn"] = self._ar_agg.loc[mask].apply(
-                        lambda row: self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID")),
-                        axis=1,
-                    )
-            cols = ["Kundenr"] + [col for col in self._ar_agg.columns if col != "Kundenr"]
-            self._ar_agg = self._ar_agg.loc[:, cols]
+            ordered_cols = ["Kundenr", "Kundenavn", "Omsetning eks mva"]
+            ordered_cols += [col for col in ["Transaksjoner"] if col in self._customer_sales.columns]
+            remaining = [col for col in self._customer_sales.columns if col not in ordered_cols]
+            self._customer_sales = self._customer_sales.loc[:, ordered_cols + remaining]
 
         df = result.dataframe
         self._update_header_fields()
@@ -1343,98 +1354,24 @@ class NordlysWindow(QMainWindow):
             return 0.0
 
     def _on_calc_top_customers(self, source: str, topn: int) -> Optional[List[Tuple[str, str, int, float]]]:
-        if source == "faktura":
-            if self._sales_agg is None or self._sales_agg.empty:
-                QMessageBox.information(
-                    self,
-                    "Ingen fakturaer",
-                    "Fant ingen fakturaopplysninger i SAF-T. Prøv kilde 'reskontro'.",
-                )
-                return None
-            data = self._sales_agg.copy()
-            if "Kundenr" not in data.columns:
-                data["Kundenr"] = data["CustomerID"].map(self._cust_id_to_nr).fillna(data["CustomerID"])
-            if "Kundenavn" not in data.columns:
-                data["Kundenavn"] = data.apply(
-                    lambda row: self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID")),
-                    axis=1,
-                )
-            else:
-                mask = data["Kundenavn"].isna() | (data["Kundenavn"].astype(str).str.strip() == "")
-                if mask.any():
-                    data.loc[mask, "Kundenavn"] = data.loc[mask].apply(
-                        lambda row: self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID")),
-                        axis=1,
-                    )
-            data = data.sort_values("OmsetningEksMva", ascending=False).head(topn)
-            rows = []
-            for _, row in data.iterrows():
-                number = row.get("Kundenr") or row.get("CustomerNumber")
-                if not number:
-                    number = row.get("CustomerID")
-                number_text = self._normalize_customer_key(number)
-                name = row.get("Kundenavn") or row.get("CustomerName")
-                if not name:
-                    name = self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID"))
-                count_val = row.get("Fakturaer", 0)
-                try:
-                    count_int = int(count_val)
-                except (TypeError, ValueError):
-                    count_int = 0
-                rows.append(
-                    (
-                        number_text or "—",
-                        name or "—",
-                        count_int,
-                        self._safe_float(row.get("OmsetningEksMva")),
-                    )
-                )
-            self.statusBar().showMessage(f"Topp kunder (faktura) beregnet. N={topn}.")
-            return rows
-
-        if self._ar_agg is None or self._ar_agg.empty:
+        _ = source  # kilde er alltid 3xxx-transaksjoner
+        if self._customer_sales is None or self._customer_sales.empty:
             QMessageBox.information(
                 self,
-                "Ingen reskontro",
-                "Fant ikke kunde-ID på reskontro (1500–1599) i SAF-T.",
+                "Ingen inntektslinjer",
+                "Fant ingen inntektslinjer på 3xxx-konti i SAF-T-filen.",
             )
             return None
-        data = self._ar_agg.copy()
-        if "Kundenr" not in data.columns:
-            data["Kundenr"] = data["CustomerID"].map(self._cust_id_to_nr).fillna(data["CustomerID"])
-        if "Kundenavn" not in data.columns:
-            data["Kundenavn"] = data.apply(
-                lambda row: self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID")),
-                axis=1,
-            )
-        else:
-            mask = data["Kundenavn"].isna() | (data["Kundenavn"].astype(str).str.strip() == "")
-            if mask.any():
-                data.loc[mask, "Kundenavn"] = data.loc[mask].apply(
-                    lambda row: self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID")),
-                    axis=1,
-                )
-        if "OmsetningEksMva" not in data.columns:
-            data["OmsetningEksMva"] = data["AR_Debit"] - data.get("TaxAmount", 0)
-        else:
-            if "TaxAmount" in data.columns:
-                mask = data["OmsetningEksMva"] <= 0
-                data.loc[mask, "OmsetningEksMva"] = (
-                    data.loc[mask, "AR_Debit"] - data.loc[mask, "TaxAmount"]
-                )
-        data["OmsetningEksMva"] = data["OmsetningEksMva"].clip(lower=0.0)
-        data["Fakturaer"] = data.get("Fakturaer", 0)
-        data = data.sort_values("OmsetningEksMva", ascending=False).head(topn)
-        rows = []
+        data = self._customer_sales.copy()
+        data = data.sort_values("Omsetning eks mva", ascending=False).head(topn)
+        rows: List[Tuple[str, str, int, float]] = []
         for _, row in data.iterrows():
-            number = row.get("Kundenr") or row.get("CustomerNumber")
-            if not number:
-                number = row.get("CustomerID")
+            number = row.get("Kundenr")
             number_text = self._normalize_customer_key(number)
-            name = row.get("Kundenavn") or row.get("CustomerName")
-            if not name:
-                name = self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID"))
-            count_val = row.get("Fakturaer", 0)
+            if not number_text and isinstance(number, str):
+                number_text = number.strip() or None
+            name = row.get("Kundenavn") or self._lookup_customer_name(number, number)
+            count_val = row.get("Transaksjoner", 0)
             try:
                 count_int = int(count_val)
             except (TypeError, ValueError):
@@ -1442,12 +1379,12 @@ class NordlysWindow(QMainWindow):
             rows.append(
                 (
                     number_text or "—",
-                    name or "—",
+                    (name or "").strip() or "—",
                     count_int,
-                    self._safe_float(row.get("OmsetningEksMva")),
+                    self._safe_float(row.get("Omsetning eks mva")),
                 )
             )
-        self.statusBar().showMessage(f"Topp kunder (reskontro) beregnet. N={topn}.")
+        self.statusBar().showMessage(f"Topp kunder (3xxx) beregnet. N={topn}.")
         return rows
 
     def on_brreg(self) -> None:
@@ -1545,10 +1482,8 @@ class NordlysWindow(QMainWindow):
                     summary_df = pd.DataFrame([self._saft_summary]).T.reset_index()
                     summary_df.columns = ["Nøkkel", "Beløp"]
                     summary_df.to_excel(writer, sheet_name="NS4102_Sammendrag", index=False)
-                if self._sales_agg is not None:
-                    self._sales_agg.to_excel(writer, sheet_name="Sales_by_customer", index=False)
-                if self._ar_agg is not None:
-                    self._ar_agg.to_excel(writer, sheet_name="AR_agg", index=False)
+                if self._customer_sales is not None:
+                    self._customer_sales.to_excel(writer, sheet_name="Sales_by_customer", index=False)
                 if self._brreg_json:
                     pd.json_normalize(self._brreg_json).to_excel(writer, sheet_name="Brreg_JSON", index=False)
                 if self._brreg_map:
