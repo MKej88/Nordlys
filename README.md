@@ -1,12 +1,6 @@
 # Nordlys
 
-Nordlys er et Python-basert analyseverktøy som hjelper revisorer og controllere med å få oversikt over SAF-T-filer. Navnevalget Nordlys gjenspeiler målet om å gi klar sikt i komplekse regnskapsdata gjennom et moderne skrivebordsgrensesnitt bygget med PySide6. Løsningen kombinerer informasjon fra regnskapsregisteret med data som leses fra SAF-T-filer og presenterer resultatet i et visuelt og interaktivt grensesnitt.
-
-## Hvorfor Nordlys?
-
-- ✨ Konsekvent profilering gjør det enklere å introdusere løsningen internt og eksternt.
-- 🧭 Klart navn i vinduer, dokumentasjon og installasjonslister reduserer forvirring for sluttbrukere.
-- 🔁 Ensartet navnebruk forenkler vedlikehold, testing og videreutvikling.
+Nordlys er et Python-basert analyseverktøy som hjelper revisorer og controllere med å få oversikt over SAF-T-filer. Målet er å gi klar sikt i komplekse regnskapsdata gjennom et moderne skrivebordsgrensesnitt bygget med PySide6. Løsningen kombinerer informasjon fra regnskapsregisteret med data som leses fra SAF-T-filer og presenterer resultatet i et visuelt og interaktivt grensesnitt.
 
 ## Hovedfunksjoner
 
