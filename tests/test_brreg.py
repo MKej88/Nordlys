@@ -15,10 +15,17 @@ def test_find_first_by_exact_endkey():
                 'sumEgenkapital': 400,
                 'sumGjeld': 600,
             },
+            'poster': [
+                {'sumGjeld': 50},
+                {'sumGjeld': 70},
+            ],
         },
     }
     hit = find_first_by_exact_endkey(data, ['sumDriftsinntekter'])
     assert hit == ('resultatregnskap.sumDriftsinntekter', 123)
+
+    list_hit = find_first_by_exact_endkey(data, ['sumGjeld'])
+    assert list_hit == ('balanse.egenkapitalOgGjeld.sumGjeld', 600)
 
 
 def test_map_brreg_metrics():
