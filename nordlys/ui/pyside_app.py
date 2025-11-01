@@ -7,10 +7,10 @@ import sys
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple, cast
 
 import pandas as pd
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QObject, Qt, QThread, Signal, Slot
 from PySide6.QtGui import QBrush, QColor, QFont
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMainWindow,
     QMessageBox,
+    QProgressDialog,
     QPushButton,
     QSizePolicy,
     QSpinBox,
@@ -100,6 +101,59 @@ REVISION_TASKS: Dict[str, List[str]] = {
         "Verifiser justeringer og korrigeringer",
     ],
 }
+
+
+@dataclass
+class SaftLoadResult:
+    """Resultatobjekt fra bakgrunnslasting av SAF-T."""
+
+    file_path: str
+    header: Optional[SaftHeader]
+    dataframe: pd.DataFrame
+    customers: Dict[str, CustomerInfo]
+    sales_agg: Optional[pd.DataFrame]
+    ar_agg: Optional[pd.DataFrame]
+    summary: Optional[Dict[str, float]]
+    validation: SaftValidationResult
+
+
+class SaftLoadWorker(QObject):
+    """Arbeider som laster og validerer SAF-T i bakgrunnen."""
+
+    finished: Signal = Signal(object)
+    error: Signal = Signal(str)
+
+    def __init__(self, file_path: str) -> None:
+        super().__init__()
+        self._file_path = file_path
+
+    @Slot()
+    def run(self) -> None:
+        try:
+            root = ET.parse(self._file_path).getroot()
+            header = parse_saft_header(root)
+            dataframe = parse_saldobalanse(root)
+            customers = parse_customers(root)
+            sales_agg = extract_sales_taxbase_by_customer(root)
+            ar_agg = extract_ar_from_gl(root)
+            summary = ns4102_summary_from_tb(dataframe)
+            validation = validate_saft_against_xsd(
+                self._file_path,
+                header.file_version if header else None,
+            )
+            result = SaftLoadResult(
+                file_path=self._file_path,
+                header=header,
+                dataframe=dataframe,
+                customers=customers,
+                sales_agg=sales_agg,
+                ar_agg=ar_agg,
+                summary=summary,
+                validation=validation,
+            )
+            self.finished.emit(result)
+        except Exception as exc:  # pragma: no cover - presenteres i GUI
+            self.error.emit(str(exc))
 
 
 def _create_table_widget() -> QTableWidget:
@@ -754,6 +808,12 @@ class NordlysWindow(QMainWindow):
         self._sales_agg: Optional[pd.DataFrame] = None
         self._ar_agg: Optional[pd.DataFrame] = None
         self._validation_result: Optional[SaftValidationResult] = None
+        self._current_file: Optional[str] = None
+        self._loading_file: Optional[str] = None
+
+        self._load_thread: Optional[QThread] = None
+        self._load_worker: Optional[SaftLoadWorker] = None
+        self._progress_dialog: Optional[QProgressDialog] = None
 
         self._page_map: Dict[str, QWidget] = {}
         self.sales_ar_page: Optional[SalesArPage] = None
@@ -978,6 +1038,13 @@ class NordlysWindow(QMainWindow):
 
     # region Handlinger
     def on_open(self) -> None:
+        if self._load_thread is not None:
+            QMessageBox.information(
+                self,
+                "Laster allerede",
+                "En SAF-T-fil lastes inn i bakgrunnen. Vent til prosessen er ferdig.",
+            )
+            return
         file_name, _ = QFileDialog.getOpenFileName(
             self,
             "Åpne SAF-T XML",
@@ -986,113 +1053,204 @@ class NordlysWindow(QMainWindow):
         )
         if not file_name:
             return
-        try:
-            root = ET.parse(file_name).getroot()
-            self._header = parse_saft_header(root)
-            df = parse_saldobalanse(root)
-            customers = parse_customers(root)
-            self._ingest_customers(customers)
-            self._sales_agg = extract_sales_taxbase_by_customer(root)
-            self._ar_agg = extract_ar_from_gl(root)
-            if self._sales_agg is not None and not self._sales_agg.empty and "CustomerID" in self._sales_agg.columns:
-                if "Kundenr" not in self._sales_agg.columns or self._sales_agg["Kundenr"].isna().any():
-                    normalized_ids = self._sales_agg["CustomerID"].apply(self._normalize_customer_key)
-                    mapped_numbers = normalized_ids.map(self._cust_id_to_nr)
-                    fallback_mapped = self._sales_agg["CustomerID"].map(self._cust_id_to_nr)
-                    fallback_ids = normalized_ids.fillna(self._sales_agg["CustomerID"])
-                    self._sales_agg["Kundenr"] = mapped_numbers.fillna(fallback_mapped).fillna(fallback_ids)
-                if "Kundenavn" not in self._sales_agg.columns:
-                    self._sales_agg["Kundenavn"] = self._sales_agg.apply(
-                        lambda row: self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID")),
-                        axis=1,
-                    )
-                else:
-                    mask = self._sales_agg["Kundenavn"].isna() | (
-                        self._sales_agg["Kundenavn"].astype(str).str.strip() == ""
-                    )
-                    if mask.any():
-                        self._sales_agg.loc[mask, "Kundenavn"] = self._sales_agg.loc[mask].apply(
-                            lambda row: self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID")),
-                            axis=1,
-                        )
-                cols = ["Kundenr"] + [col for col in self._sales_agg.columns if col != "Kundenr"]
-                self._sales_agg = self._sales_agg.loc[:, cols]
-            if self._ar_agg is not None and not self._ar_agg.empty and "CustomerID" in self._ar_agg.columns:
-                if "Kundenr" not in self._ar_agg.columns or self._ar_agg["Kundenr"].isna().any():
-                    normalized_ids = self._ar_agg["CustomerID"].apply(self._normalize_customer_key)
-                    mapped_numbers = normalized_ids.map(self._cust_id_to_nr)
-                    fallback_mapped = self._ar_agg["CustomerID"].map(self._cust_id_to_nr)
-                    fallback_ids = normalized_ids.fillna(self._ar_agg["CustomerID"])
-                    self._ar_agg["Kundenr"] = mapped_numbers.fillna(fallback_mapped).fillna(fallback_ids)
-                if "Kundenavn" not in self._ar_agg.columns:
-                    self._ar_agg["Kundenavn"] = self._ar_agg.apply(
-                        lambda row: self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID")),
-                        axis=1,
-                    )
-                else:
-                    mask = self._ar_agg["Kundenavn"].isna() | (
-                        self._ar_agg["Kundenavn"].astype(str).str.strip() == ""
-                    )
-                    if mask.any():
-                        self._ar_agg.loc[mask, "Kundenavn"] = self._ar_agg.loc[mask].apply(
-                            lambda row: self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID")),
-                            axis=1,
-                        )
-                cols = ["Kundenr"] + [col for col in self._ar_agg.columns if col != "Kundenr"]
-                self._ar_agg = self._ar_agg.loc[:, cols]
-            self._saft_df = df
-            self._saft_summary = ns4102_summary_from_tb(df)
-            validation = validate_saft_against_xsd(file_name, self._header.file_version if self._header else None)
-            self._validation_result = validation
+        self._loading_file = file_name
+        worker = SaftLoadWorker(file_name)
+        thread = QThread(self)
+        worker.moveToThread(thread)
 
-            self._update_header_fields()
-            self.saldobalanse_page.set_dataframe(df)
-            self.kontroll_page.set_dataframe(df)
-            self.dashboard_page.update_summary(self._saft_summary)
-            company = self._header.company_name if self._header else None
-            orgnr = self._header.orgnr if self._header else None
-            period = None
-            if self._header:
-                period = (
-                    f"{self._header.fiscal_year or '—'} P{self._header.period_start or '?'}–P{self._header.period_end or '?'}"
+        thread.started.connect(self._on_loader_started)
+        thread.started.connect(worker.run)
+        worker.finished.connect(self._on_load_finished)
+        worker.error.connect(self._on_load_error)
+        worker.finished.connect(worker.deleteLater)
+        worker.error.connect(worker.deleteLater)
+        worker.finished.connect(thread.quit)
+        worker.error.connect(thread.quit)
+        thread.finished.connect(self._on_loader_thread_finished)
+        thread.finished.connect(thread.deleteLater)
+
+        self._load_worker = worker
+        self._load_thread = thread
+        thread.start()
+
+    @Slot()
+    def _on_loader_started(self) -> None:
+        message = "Laster SAF-T …"
+        if self._loading_file:
+            message = f"Laster SAF-T: {Path(self._loading_file).name} …"
+        self._set_loading_state(True, message)
+        self._show_progress_dialog(message)
+
+    def _show_progress_dialog(self, message: str) -> None:
+        if self._progress_dialog is None:
+            dialog = QProgressDialog(self)
+            dialog.setCancelButton(None)
+            dialog.setRange(0, 0)
+            dialog.setAutoReset(False)
+            dialog.setAutoClose(False)
+            dialog.setWindowModality(Qt.WindowModal)
+            dialog.setWindowTitle("Laster SAF-T")
+            dialog.setMinimumWidth(360)
+            self._progress_dialog = dialog
+        if self._progress_dialog is not None:
+            self._progress_dialog.setLabelText(message)
+            self._progress_dialog.show()
+            self._progress_dialog.raise_()
+            self._progress_dialog.activateWindow()
+
+    def _close_progress_dialog(self) -> None:
+        if self._progress_dialog is None:
+            return
+        self._progress_dialog.hide()
+        self._progress_dialog.deleteLater()
+        self._progress_dialog = None
+
+    def _set_loading_state(self, loading: bool, status_message: Optional[str] = None) -> None:
+        has_data = self._saft_df is not None
+        self.btn_open.setEnabled(not loading)
+        self.btn_brreg.setEnabled(False if loading else has_data)
+        self.btn_export.setEnabled(False if loading else has_data)
+        if self.sales_ar_page:
+            if loading:
+                self.sales_ar_page.set_controls_enabled(False)
+            else:
+                self.sales_ar_page.set_controls_enabled(has_data)
+        if status_message:
+            self.statusBar().showMessage(status_message)
+
+    def _finalize_loading(self, status_message: Optional[str] = None) -> None:
+        self._close_progress_dialog()
+        self._set_loading_state(False)
+        if status_message:
+            self.statusBar().showMessage(status_message)
+        self._loading_file = None
+
+    @Slot(object)
+    def _on_load_finished(self, result_obj: object) -> None:
+        result = cast(SaftLoadResult, result_obj)
+        self._apply_saft_result(result)
+        self._finalize_loading()
+
+    def _apply_saft_result(self, result: SaftLoadResult) -> None:
+        self._header = result.header
+        self._saft_df = result.dataframe
+        self._saft_summary = result.summary
+        self._validation_result = result.validation
+        self._current_file = result.file_path
+
+        self._ingest_customers(result.customers)
+        self._sales_agg = result.sales_agg.copy() if result.sales_agg is not None else None
+        self._ar_agg = result.ar_agg.copy() if result.ar_agg is not None else None
+
+        if self._sales_agg is not None and not self._sales_agg.empty and "CustomerID" in self._sales_agg.columns:
+            if "Kundenr" not in self._sales_agg.columns or self._sales_agg["Kundenr"].isna().any():
+                normalized_ids = self._sales_agg["CustomerID"].apply(self._normalize_customer_key)
+                mapped_numbers = normalized_ids.map(self._cust_id_to_nr)
+                fallback_mapped = self._sales_agg["CustomerID"].map(self._cust_id_to_nr)
+                fallback_ids = normalized_ids.fillna(self._sales_agg["CustomerID"])
+                self._sales_agg["Kundenr"] = mapped_numbers.fillna(fallback_mapped).fillna(fallback_ids)
+            if "Kundenavn" not in self._sales_agg.columns:
+                self._sales_agg["Kundenavn"] = self._sales_agg.apply(
+                    lambda row: self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID")),
+                    axis=1,
                 )
-            revenue_txt = (
-                format_currency(self._saft_summary.get("driftsinntekter"))
-                if self._saft_summary and self._saft_summary.get("driftsinntekter") is not None
-                else "—"
+            else:
+                mask = self._sales_agg["Kundenavn"].isna() | (
+                    self._sales_agg["Kundenavn"].astype(str).str.strip() == ""
+                )
+                if mask.any():
+                    self._sales_agg.loc[mask, "Kundenavn"] = self._sales_agg.loc[mask].apply(
+                        lambda row: self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID")),
+                        axis=1,
+                    )
+            cols = ["Kundenr"] + [col for col in self._sales_agg.columns if col != "Kundenr"]
+            self._sales_agg = self._sales_agg.loc[:, cols]
+
+        if self._ar_agg is not None and not self._ar_agg.empty and "CustomerID" in self._ar_agg.columns:
+            if "Kundenr" not in self._ar_agg.columns or self._ar_agg["Kundenr"].isna().any():
+                normalized_ids = self._ar_agg["CustomerID"].apply(self._normalize_customer_key)
+                mapped_numbers = normalized_ids.map(self._cust_id_to_nr)
+                fallback_mapped = self._ar_agg["CustomerID"].map(self._cust_id_to_nr)
+                fallback_ids = normalized_ids.fillna(self._ar_agg["CustomerID"])
+                self._ar_agg["Kundenr"] = mapped_numbers.fillna(fallback_mapped).fillna(fallback_ids)
+            if "Kundenavn" not in self._ar_agg.columns:
+                self._ar_agg["Kundenavn"] = self._ar_agg.apply(
+                    lambda row: self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID")),
+                    axis=1,
+                )
+            else:
+                mask = self._ar_agg["Kundenavn"].isna() | (
+                    self._ar_agg["Kundenavn"].astype(str).str.strip() == ""
+                )
+                if mask.any():
+                    self._ar_agg.loc[mask, "Kundenavn"] = self._ar_agg.loc[mask].apply(
+                        lambda row: self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID")),
+                        axis=1,
+                    )
+            cols = ["Kundenr"] + [col for col in self._ar_agg.columns if col != "Kundenr"]
+            self._ar_agg = self._ar_agg.loc[:, cols]
+
+        df = result.dataframe
+        self._update_header_fields()
+        self.saldobalanse_page.set_dataframe(df)
+        self.kontroll_page.set_dataframe(df)
+        self.dashboard_page.update_summary(self._saft_summary)
+
+        company = self._header.company_name if self._header else None
+        orgnr = self._header.orgnr if self._header else None
+        period = None
+        if self._header:
+            period = (
+                f"{self._header.fiscal_year or '—'} P{self._header.period_start or '?'}–P{self._header.period_end or '?'}"
             )
-            account_count = len(df.index)
-            status_bits = [
-                company or "Ukjent selskap",
-                f"Org.nr: {orgnr}" if orgnr else "Org.nr: –",
-                f"Periode: {period}" if period else None,
-                f"{account_count} konti analysert",
-                f"Driftsinntekter: {revenue_txt}",
-            ]
-            self.dashboard_page.update_status(" · ".join(bit for bit in status_bits if bit))
-            self.dashboard_page.update_validation_status(validation)
-            if validation.is_valid is False:
-                QMessageBox.warning(
-                    self,
-                    "XSD-validering feilet",
-                    validation.details or "Valideringen mot XSD feilet. Se dashboard for detaljer.",
-                )
-            elif validation.is_valid is None and validation.details:
-                QMessageBox.information(self, "XSD-validering", validation.details)
-            if self.sales_ar_page:
-                self.sales_ar_page.set_controls_enabled(True)
-                self.sales_ar_page.clear_top_customers()
-            self.vesentlig_page.update_summary(self._saft_summary)
-            self.regnskap_page.update_comparison(None)
-            self.brreg_page.update_mapping(None)
-            self.brreg_page.update_json(None)
+        revenue_txt = (
+            format_currency(self._saft_summary.get("driftsinntekter"))
+            if self._saft_summary and self._saft_summary.get("driftsinntekter") is not None
+            else "—"
+        )
+        account_count = len(df.index)
+        status_bits = [
+            company or "Ukjent selskap",
+            f"Org.nr: {orgnr}" if orgnr else "Org.nr: –",
+            f"Periode: {period}" if period else None,
+            f"{account_count} konti analysert",
+            f"Driftsinntekter: {revenue_txt}",
+        ]
+        self.dashboard_page.update_status(" · ".join(bit for bit in status_bits if bit))
 
-            self.btn_brreg.setEnabled(True)
-            self.btn_export.setEnabled(True)
-            self.statusBar().showMessage(f"SAF-T lastet: {file_name}")
-        except Exception as exc:  # pragma: no cover - vises i GUI
-            QMessageBox.critical(self, "Feil ved lesing av SAF-T", str(exc))
-            self.statusBar().showMessage("Feil ved lesing av SAF-T.")
+        validation = result.validation
+        self.dashboard_page.update_validation_status(validation)
+        if validation.is_valid is False:
+            QMessageBox.warning(
+                self,
+                "XSD-validering feilet",
+                validation.details or "Valideringen mot XSD feilet. Se dashboard for detaljer.",
+            )
+        elif validation.is_valid is None and validation.details:
+            QMessageBox.information(self, "XSD-validering", validation.details)
+
+        if self.sales_ar_page:
+            self.sales_ar_page.set_controls_enabled(True)
+            self.sales_ar_page.clear_top_customers()
+
+        self.vesentlig_page.update_summary(self._saft_summary)
+        self.regnskap_page.update_comparison(None)
+        self.brreg_page.update_mapping(None)
+        self.brreg_page.update_json(None)
+
+        self.btn_brreg.setEnabled(True)
+        self.btn_export.setEnabled(True)
+        self.statusBar().showMessage(f"SAF-T lastet: {result.file_path}")
+
+    @Slot(str)
+    def _on_load_error(self, message: str) -> None:
+        self._finalize_loading("Feil ved lesing av SAF-T.")
+        QMessageBox.critical(self, "Feil ved lesing av SAF-T", message)
+
+    @Slot()
+    def _on_loader_thread_finished(self) -> None:
+        self._load_thread = None
+        self._load_worker = None
 
     def _normalize_customer_key(self, value: object) -> Optional[str]:
         if value is None:
