@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import zipfile
 import xml.etree.ElementTree as ET
 
 import pandas as pd
@@ -450,8 +451,35 @@ def test_save_outputs(tmp_path):
     csv_path, xlsx_path = save_outputs(df, tmp_path, 2023)
     assert csv_path.exists()
     assert xlsx_path.exists()
+    assert xlsx_path.suffix in {'.xlsx', '.csv'}
     saved = pd.read_csv(csv_path)
     assert 'Kundenr' in saved.columns
+
+
+def test_save_outputs_faller_til_xlsxwriter(tmp_path, monkeypatch):
+    root = build_sample_root()
+    ns = {'n1': root.tag.split('}')[0][1:]}
+    df = compute_sales_per_customer(root, ns, year=2023)
+
+    original_to_excel = pd.DataFrame.to_excel
+
+    def fake_to_excel(self, *args, **kwargs):
+        if args and isinstance(args[0], pd.ExcelWriter):
+            return original_to_excel(self, *args, **kwargs)
+        raise ModuleNotFoundError("No module named 'openpyxl'")
+
+    monkeypatch.setattr(pd.DataFrame, 'to_excel', fake_to_excel, raising=False)
+
+    csv_path, xlsx_path = save_outputs(df, tmp_path, 2023)
+
+    assert csv_path.exists()
+    assert xlsx_path.exists()
+    assert xlsx_path.suffix == '.xlsx'
+
+    with zipfile.ZipFile(xlsx_path) as archive:
+        contents = set(archive.namelist())
+        assert 'xl/workbook.xml' in contents
+        assert any(name.startswith('xl/worksheets/sheet') for name in contents)
 
 def test_format_helpers():
     assert format_currency(1234.5) == '1,234'
