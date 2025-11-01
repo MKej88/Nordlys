@@ -337,6 +337,65 @@ def _approx_equal(a: float, b: float, tolerance: float = 0.5) -> bool:
     return abs(a - b) <= tolerance
 
 
+def _select_net_base(
+    debit: float,
+    tax_base: float,
+    taxable_amount: float,
+    tax_amount: float,
+) -> float:
+    """Prøver å anslå netto omsetning ut fra tilgjengelige felter."""
+
+    candidates: List[Tuple[float, str]] = []
+
+    def add_candidate(value: float, label: str) -> None:
+        if value is not None and value > 0:
+            candidates.append((float(value), label))
+
+    add_candidate(tax_base, "tax_base")
+    if tax_amount:
+        add_candidate(tax_base - tax_amount, "tax_base_minus_tax")
+    add_candidate(taxable_amount, "taxable_amount")
+    if tax_amount:
+        add_candidate(taxable_amount - tax_amount, "taxable_amount_minus_tax")
+    if tax_amount and debit and debit > 0:
+        add_candidate(debit - tax_amount, "debit_minus_tax")
+
+    if not candidates:
+        return 0.0
+
+    if tax_amount:
+        known_rates = (0.0, 0.05, 0.06, 0.07, 0.08, 0.1, 0.11, 0.12, 0.15, 0.2, 0.25)
+
+        def candidate_score(value: float) -> Tuple[float, float, float]:
+            ratio = tax_amount / value if value else float("inf")
+            distance_to_rate = min(abs(ratio - rate) for rate in known_rates)
+            expected_net = debit - tax_amount if debit and debit > tax_amount else None
+            closeness_to_expected = (
+                abs(value - expected_net)
+                if expected_net is not None
+                else float("inf")
+            )
+            return (distance_to_rate, closeness_to_expected, -value)
+
+        best_value, _ = min(candidates, key=lambda item: candidate_score(item[0]))
+        if best_value > 0:
+            return best_value
+
+    preferred_order = [
+        "tax_base",
+        "taxable_amount",
+        "debit_minus_tax",
+        "tax_base_minus_tax",
+        "taxable_amount_minus_tax",
+    ]
+    for label in preferred_order:
+        for value, candidate_label in candidates:
+            if candidate_label == label and value > 0:
+                return value
+
+    return candidates[0][0]
+
+
 def _normalize_customer_key(value: object) -> Optional[str]:
     if value is None:
         return None
@@ -513,6 +572,9 @@ def extract_ar_from_gl(root: ET.Element) -> pd.DataFrame:
             taxable_amount = sum(to_float(text_or_none(el)) for el in taxable_amount_elements)
             tax_amount = sum(to_float(text_or_none(el)) for el in tax_amount_elements)
             effective_base = tax_base or taxable_amount
+            inferred_base = _select_net_base(debit, tax_base, taxable_amount, tax_amount)
+            if inferred_base > 0:
+                effective_base = inferred_base
             if effective_base == 0.0 and tax_amount > 0.0:
                 effective_base = max(debit - tax_amount, 0.0)
             rows.append(

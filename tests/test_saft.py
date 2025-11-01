@@ -304,6 +304,42 @@ def test_extract_sales_prefers_line_tax_base():
     assert sales.loc[0, 'Kundenavn'] == 'Tax Base Kunde'
 
 
+def test_extract_ar_handles_tax_base_including_vat():
+    xml = """
+    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <MasterFiles>
+        <Customer>
+          <CustomerID>GROSS</CustomerID>
+          <CustomerNumber>9001</CustomerNumber>
+          <Name>Gross Kunde</Name>
+        </Customer>
+      </MasterFiles>
+      <GeneralLedgerEntries>
+        <Journal>
+          <Transaction>
+            <Line>
+              <AccountID>1500</AccountID>
+              <DebitAmount>1250</DebitAmount>
+              <CreditAmount>0</CreditAmount>
+              <CustomerID>GROSS</CustomerID>
+              <TaxInformation>
+                <TaxBase>1250</TaxBase>
+                <TaxAmount>250</TaxAmount>
+              </TaxInformation>
+            </Line>
+          </Transaction>
+        </Journal>
+      </GeneralLedgerEntries>
+    </AuditFile>
+    """
+    root = ET.fromstring(xml)
+    ar = extract_ar_from_gl(root)
+    assert ar.loc[0, 'CustomerID'] == 'GROSS'
+    assert ar.loc[0, 'OmsetningEksMva'] == pytest.approx(1000)
+    assert ar.loc[0, 'Kundenr'] == '9001'
+    assert ar.loc[0, 'Kundenavn'] == 'Gross Kunde'
+
+
 def test_validate_saft_against_xsd_without_dependency(monkeypatch, tmp_path):
     saft_module = sys.modules['nordlys.saft']
     monkeypatch.setattr(saft_module, 'XMLSCHEMA_AVAILABLE', False, raising=False)
