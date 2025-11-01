@@ -20,7 +20,7 @@ Nordlys er et Python-basert analyseverktøy som hjelper revisorer og controllere
 
 ## Avhengigheter og teknologi
 
-Nordlys bygger på følgende Python-bibliotek. Alle er oppført i `requirements.txt` slik at navnet Nordlys følger avhengighetene gjennom hele oppsettet:
+Nordlys bygger på følgende Python-bibliotek. Alle er oppført i `requirements.txt` slik at Nordlys følger avhengighetene gjennom hele oppsettet:
 
 - `pandas>=1.5` – tabell- og dataserieoperasjoner for saldobalanse og fakturadata.
 - `PySide6>=6.5` – grafisk grensesnitt der Nordlys presenterer analyser og arbeidskort.
