@@ -4,7 +4,7 @@ from __future__ import annotations
 import importlib.util
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple
 import xml.etree.ElementTree as ET
 
 import pandas as pd
@@ -337,6 +337,64 @@ def _approx_equal(a: float, b: float, tolerance: float = 0.5) -> bool:
     return abs(a - b) <= tolerance
 
 
+def _normalize_customer_key(value: object) -> Optional[str]:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    return text.upper()
+
+
+def _customer_lookup(customers: Dict[str, CustomerInfo]) -> Dict[str, CustomerInfo]:
+    lookup: Dict[str, CustomerInfo] = {}
+    for info in customers.values():
+        keys: Iterable[Optional[str]] = (
+            info.customer_id,
+            info.customer_number,
+        )
+        for key in keys:
+            norm = _normalize_customer_key(key)
+            if norm:
+                lookup[norm] = info
+    return lookup
+
+
+def _attach_customer_metadata(df: pd.DataFrame, root: ET.Element) -> pd.DataFrame:
+    if df.empty or 'CustomerID' not in df.columns:
+        return df
+    customers = parse_customers(root)
+    if not customers:
+        return df
+    lookup = _customer_lookup(customers)
+
+    def resolve_number(value: object) -> Optional[str]:
+        norm = _normalize_customer_key(value)
+        if norm and norm in lookup:
+            info = lookup[norm]
+            candidate = info.customer_number or info.customer_id
+            if candidate:
+                candidate_text = str(candidate).strip()
+                if candidate_text:
+                    return candidate_text
+        if isinstance(value, str):
+            value = value.strip()
+        return str(value).strip() if value not in (None, '') else None
+
+    def resolve_name(value: object) -> Optional[str]:
+        norm = _normalize_customer_key(value)
+        if norm and norm in lookup:
+            name = lookup[norm].name
+            if name:
+                return name.strip() or None
+        return None
+
+    enriched = df.copy()
+    enriched['Kundenr'] = enriched['CustomerID'].apply(resolve_number)
+    enriched['Kundenavn'] = enriched['CustomerID'].apply(resolve_name)
+    return enriched
+
+
 def extract_sales_taxbase_by_customer(root: ET.Element) -> pd.DataFrame:
     """Ekstraherer fakturabasert omsetning per kunde."""
     rows: List[Dict[str, float]] = []
@@ -375,40 +433,40 @@ def extract_sales_taxbase_by_customer(root: ET.Element) -> pd.DataFrame:
                 for base in findall_any_namespace(invoice, 'TaxableAmount')
             )
 
-        candidates: List[float] = []
-        if tax_exclusive > 0.0:
-            candidates.append(tax_exclusive)
-
-        if line_tax_base > 0.0:
-            candidates.append(line_tax_base)
-
-        if net_total > 0.0:
-            if gross_total > 0.0 and tax_payable > 0.0 and _approx_equal(net_total + tax_payable, gross_total):
-                candidates.append(net_total)
-            elif inclusive_total > 0.0 and tax_payable > 0.0 and _approx_equal(net_total, inclusive_total):
-                candidates.append(max(net_total - tax_payable, 0.0))
-            elif tax_payable > 0.0 and net_total > tax_payable:
-                candidates.append(max(net_total - tax_payable, 0.0))
-
-        if invoice_net_total > 0.0:
-            if gross_total > 0.0 and tax_payable > 0.0 and _approx_equal(invoice_net_total + tax_payable, gross_total):
-                candidates.append(invoice_net_total)
-            elif inclusive_total > 0.0 and tax_payable > 0.0 and _approx_equal(invoice_net_total, inclusive_total):
-                candidates.append(max(invoice_net_total - tax_payable, 0.0))
-            elif tax_payable > 0.0 and invoice_net_total > tax_payable:
-                candidates.append(max(invoice_net_total - tax_payable, 0.0))
-
-        if gross_total > 0.0 and tax_payable > 0.0:
-            candidates.append(max(gross_total - tax_payable, 0.0))
-
-        if inclusive_total > 0.0 and tax_payable > 0.0:
-            candidates.append(max(inclusive_total - tax_payable, 0.0))
-
         amount = 0.0
-        for candidate in candidates:
-            if candidate and candidate > 0.0:
-                amount = candidate
-                break
+        if line_tax_base > 0.0:
+            amount = line_tax_base
+        elif tax_exclusive > 0.0:
+            amount = tax_exclusive
+        else:
+            candidates: List[float] = []
+
+            if net_total > 0.0:
+                if gross_total > 0.0 and tax_payable > 0.0 and _approx_equal(net_total + tax_payable, gross_total):
+                    candidates.append(net_total)
+                elif inclusive_total > 0.0 and tax_payable > 0.0 and _approx_equal(net_total, inclusive_total):
+                    candidates.append(max(net_total - tax_payable, 0.0))
+                elif tax_payable > 0.0 and net_total > tax_payable:
+                    candidates.append(max(net_total - tax_payable, 0.0))
+
+            if invoice_net_total > 0.0:
+                if gross_total > 0.0 and tax_payable > 0.0 and _approx_equal(invoice_net_total + tax_payable, gross_total):
+                    candidates.append(invoice_net_total)
+                elif inclusive_total > 0.0 and tax_payable > 0.0 and _approx_equal(invoice_net_total, inclusive_total):
+                    candidates.append(max(invoice_net_total - tax_payable, 0.0))
+                elif tax_payable > 0.0 and invoice_net_total > tax_payable:
+                    candidates.append(max(invoice_net_total - tax_payable, 0.0))
+
+            if gross_total > 0.0 and tax_payable > 0.0:
+                candidates.append(max(gross_total - tax_payable, 0.0))
+
+            if inclusive_total > 0.0 and tax_payable > 0.0:
+                candidates.append(max(inclusive_total - tax_payable, 0.0))
+
+            for candidate in candidates:
+                if candidate and candidate > 0.0:
+                    amount = candidate
+                    break
 
         rows.append({'CustomerID': customer_id, 'NetExVAT': float(max(amount, 0.0))})
 
@@ -417,7 +475,7 @@ def extract_sales_taxbase_by_customer(root: ET.Element) -> pd.DataFrame:
         return df
     aggregated = df.groupby('CustomerID')['NetExVAT'].agg(['sum', 'count']).reset_index()
     aggregated.rename(columns={'sum': 'OmsetningEksMva', 'count': 'Fakturaer'}, inplace=True)
-    return aggregated
+    return _attach_customer_metadata(aggregated, root)
 
 
 def extract_ar_from_gl(root: ET.Element) -> pd.DataFrame:
@@ -480,7 +538,7 @@ def extract_ar_from_gl(root: ET.Element) -> pd.DataFrame:
     mask = grouped['OmsetningEksMva'] == 0
     grouped.loc[mask, 'OmsetningEksMva'] = grouped.loc[mask, 'AR_Debit'] - grouped.loc[mask, 'TaxAmount']
     grouped['OmsetningEksMva'] = grouped['OmsetningEksMva'].clip(lower=0.0)
-    return grouped
+    return _attach_customer_metadata(grouped, root)
 
 
 __all__ = [

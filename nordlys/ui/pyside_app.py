@@ -995,27 +995,49 @@ class NordlysWindow(QMainWindow):
             self._sales_agg = extract_sales_taxbase_by_customer(root)
             self._ar_agg = extract_ar_from_gl(root)
             if self._sales_agg is not None and not self._sales_agg.empty and "CustomerID" in self._sales_agg.columns:
-                normalized_ids = self._sales_agg["CustomerID"].apply(self._normalize_customer_key)
-                mapped_numbers = normalized_ids.map(self._cust_id_to_nr)
-                fallback_mapped = self._sales_agg["CustomerID"].map(self._cust_id_to_nr)
-                fallback_ids = normalized_ids.fillna(self._sales_agg["CustomerID"])
-                self._sales_agg["Kundenr"] = mapped_numbers.fillna(fallback_mapped).fillna(fallback_ids)
-                self._sales_agg["Kundenavn"] = self._sales_agg.apply(
-                    lambda row: self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID")),
-                    axis=1,
-                )
+                if "Kundenr" not in self._sales_agg.columns or self._sales_agg["Kundenr"].isna().any():
+                    normalized_ids = self._sales_agg["CustomerID"].apply(self._normalize_customer_key)
+                    mapped_numbers = normalized_ids.map(self._cust_id_to_nr)
+                    fallback_mapped = self._sales_agg["CustomerID"].map(self._cust_id_to_nr)
+                    fallback_ids = normalized_ids.fillna(self._sales_agg["CustomerID"])
+                    self._sales_agg["Kundenr"] = mapped_numbers.fillna(fallback_mapped).fillna(fallback_ids)
+                if "Kundenavn" not in self._sales_agg.columns:
+                    self._sales_agg["Kundenavn"] = self._sales_agg.apply(
+                        lambda row: self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID")),
+                        axis=1,
+                    )
+                else:
+                    mask = self._sales_agg["Kundenavn"].isna() | (
+                        self._sales_agg["Kundenavn"].astype(str).str.strip() == ""
+                    )
+                    if mask.any():
+                        self._sales_agg.loc[mask, "Kundenavn"] = self._sales_agg.loc[mask].apply(
+                            lambda row: self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID")),
+                            axis=1,
+                        )
                 cols = ["Kundenr"] + [col for col in self._sales_agg.columns if col != "Kundenr"]
                 self._sales_agg = self._sales_agg.loc[:, cols]
             if self._ar_agg is not None and not self._ar_agg.empty and "CustomerID" in self._ar_agg.columns:
-                normalized_ids = self._ar_agg["CustomerID"].apply(self._normalize_customer_key)
-                mapped_numbers = normalized_ids.map(self._cust_id_to_nr)
-                fallback_mapped = self._ar_agg["CustomerID"].map(self._cust_id_to_nr)
-                fallback_ids = normalized_ids.fillna(self._ar_agg["CustomerID"])
-                self._ar_agg["Kundenr"] = mapped_numbers.fillna(fallback_mapped).fillna(fallback_ids)
-                self._ar_agg["Kundenavn"] = self._ar_agg.apply(
-                    lambda row: self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID")),
-                    axis=1,
-                )
+                if "Kundenr" not in self._ar_agg.columns or self._ar_agg["Kundenr"].isna().any():
+                    normalized_ids = self._ar_agg["CustomerID"].apply(self._normalize_customer_key)
+                    mapped_numbers = normalized_ids.map(self._cust_id_to_nr)
+                    fallback_mapped = self._ar_agg["CustomerID"].map(self._cust_id_to_nr)
+                    fallback_ids = normalized_ids.fillna(self._ar_agg["CustomerID"])
+                    self._ar_agg["Kundenr"] = mapped_numbers.fillna(fallback_mapped).fillna(fallback_ids)
+                if "Kundenavn" not in self._ar_agg.columns:
+                    self._ar_agg["Kundenavn"] = self._ar_agg.apply(
+                        lambda row: self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID")),
+                        axis=1,
+                    )
+                else:
+                    mask = self._ar_agg["Kundenavn"].isna() | (
+                        self._ar_agg["Kundenavn"].astype(str).str.strip() == ""
+                    )
+                    if mask.any():
+                        self._ar_agg.loc[mask, "Kundenavn"] = self._ar_agg.loc[mask].apply(
+                            lambda row: self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID")),
+                            axis=1,
+                        )
                 cols = ["Kundenr"] + [col for col in self._ar_agg.columns if col != "Kundenr"]
                 self._ar_agg = self._ar_agg.loc[:, cols]
             self._saft_df = df
@@ -1163,28 +1185,39 @@ class NordlysWindow(QMainWindow):
             return 0.0
 
     def _on_calc_top_customers(self, source: str, topn: int) -> Optional[List[Tuple[str, str, int, float]]]:
-        if source == "faktura":
-            if self._sales_agg is None or self._sales_agg.empty:
-                QMessageBox.information(
-                    self,
-                    "Ingen fakturaer",
+            if source == "faktura":
+                if self._sales_agg is None or self._sales_agg.empty:
+                    QMessageBox.information(
+                        self,
+                        "Ingen fakturaer",
                     "Fant ingen fakturaopplysninger i SAF-T. Prøv kilde 'reskontro'.",
                 )
                 return None
             data = self._sales_agg.copy()
             if "Kundenr" not in data.columns:
                 data["Kundenr"] = data["CustomerID"].map(self._cust_id_to_nr).fillna(data["CustomerID"])
-            data["Kundenavn"] = data.apply(
-                lambda row: self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID")),
-                axis=1,
-            )
+            if "Kundenavn" not in data.columns:
+                data["Kundenavn"] = data.apply(
+                    lambda row: self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID")),
+                    axis=1,
+                )
+            else:
+                mask = data["Kundenavn"].isna() | (data["Kundenavn"].astype(str).str.strip() == "")
+                if mask.any():
+                    data.loc[mask, "Kundenavn"] = data.loc[mask].apply(
+                        lambda row: self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID")),
+                        axis=1,
+                    )
             data = data.sort_values("OmsetningEksMva", ascending=False).head(topn)
             rows = []
             for _, row in data.iterrows():
-                number = self._normalize_customer_key(row.get("Kundenr"))
+                number = row.get("Kundenr") or row.get("CustomerNumber")
                 if not number:
-                    number = self._normalize_customer_key(row.get("CustomerID"))
-                name = self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID"))
+                    number = row.get("CustomerID")
+                number_text = self._normalize_customer_key(number)
+                name = row.get("Kundenavn") or row.get("CustomerName")
+                if not name:
+                    name = self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID"))
                 count_val = row.get("Fakturaer", 0)
                 try:
                     count_int = int(count_val)
@@ -1192,7 +1225,7 @@ class NordlysWindow(QMainWindow):
                     count_int = 0
                 rows.append(
                     (
-                        number or "—",
+                        number_text or "—",
                         name or "—",
                         count_int,
                         self._safe_float(row.get("OmsetningEksMva")),
@@ -1211,10 +1244,18 @@ class NordlysWindow(QMainWindow):
         data = self._ar_agg.copy()
         if "Kundenr" not in data.columns:
             data["Kundenr"] = data["CustomerID"].map(self._cust_id_to_nr).fillna(data["CustomerID"])
-        data["Kundenavn"] = data.apply(
-            lambda row: self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID")),
-            axis=1,
-        )
+        if "Kundenavn" not in data.columns:
+            data["Kundenavn"] = data.apply(
+                lambda row: self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID")),
+                axis=1,
+            )
+        else:
+            mask = data["Kundenavn"].isna() | (data["Kundenavn"].astype(str).str.strip() == "")
+            if mask.any():
+                data.loc[mask, "Kundenavn"] = data.loc[mask].apply(
+                    lambda row: self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID")),
+                    axis=1,
+                )
         if "OmsetningEksMva" not in data.columns:
             data["OmsetningEksMva"] = data["AR_Debit"] - data.get("TaxAmount", 0)
         else:
@@ -1228,10 +1269,13 @@ class NordlysWindow(QMainWindow):
         data = data.sort_values("OmsetningEksMva", ascending=False).head(topn)
         rows = []
         for _, row in data.iterrows():
-            number = self._normalize_customer_key(row.get("Kundenr"))
+            number = row.get("Kundenr") or row.get("CustomerNumber")
             if not number:
-                number = self._normalize_customer_key(row.get("CustomerID"))
-            name = self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID"))
+                number = row.get("CustomerID")
+            number_text = self._normalize_customer_key(number)
+            name = row.get("Kundenavn") or row.get("CustomerName")
+            if not name:
+                name = self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID"))
             count_val = row.get("Fakturaer", 0)
             try:
                 count_int = int(count_val)
@@ -1239,7 +1283,7 @@ class NordlysWindow(QMainWindow):
                 count_int = 0
             rows.append(
                 (
-                    number or "—",
+                    number_text or "—",
                     name or "—",
                     count_int,
                     self._safe_float(row.get("OmsetningEksMva")),

@@ -128,10 +128,14 @@ def test_extract_sales_and_ar():
     sales = extract_sales_taxbase_by_customer(root)
     assert sales.loc[0, 'CustomerID'] == 'K1'
     assert sales.loc[0, 'OmsetningEksMva'] == 1000
+    assert sales.loc[0, 'Kundenr'] == '1001'
+    assert sales.loc[0, 'Kundenavn'] == 'Kunde 1'
     ar = extract_ar_from_gl(root)
     assert ar.loc[0, 'AR_Debit'] == 1000
     assert ar.loc[0, 'AR_Netto'] == 1000
     assert ar.loc[0, 'OmsetningEksMva'] == 1000
+    assert ar.loc[0, 'Kundenr'] == '1001'
+    assert ar.loc[0, 'Kundenavn'] == 'Kunde 1'
 
 
 def test_format_helpers():
@@ -213,6 +217,8 @@ def test_extract_sales_handles_tax_inclusive_amount():
     assert not sales.empty
     assert sales.loc[0, 'CustomerID'] == 'ABC'
     assert sales.loc[0, 'OmsetningEksMva'] == pytest.approx(1000)
+    assert sales.loc[0, 'Kundenr'] == '5001'
+    assert sales.loc[0, 'Kundenavn'] == 'Testkunde AS'
 
 
 def test_extract_sales_handles_net_total_with_vat():
@@ -259,6 +265,43 @@ def test_extract_sales_handles_invoice_net_total_with_vat():
     root = ET.fromstring(xml)
     sales = extract_sales_taxbase_by_customer(root)
     assert sales.loc[0, 'OmsetningEksMva'] == pytest.approx(2000)
+
+
+def test_extract_sales_prefers_line_tax_base():
+    xml = """
+    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <MasterFiles>
+        <Customer>
+          <CustomerID>TB1</CustomerID>
+          <CustomerNumber>2001</CustomerNumber>
+          <Name>Tax Base Kunde</Name>
+        </Customer>
+      </MasterFiles>
+      <SourceDocuments>
+        <SalesInvoices>
+          <Invoice>
+            <CustomerID>TB1</CustomerID>
+            <DocumentTotals>
+              <TaxExclusiveAmount>1250</TaxExclusiveAmount>
+              <GrossTotal>1500</GrossTotal>
+              <TaxPayable>250</TaxPayable>
+            </DocumentTotals>
+            <Line>
+              <TaxInformation>
+                <TaxBase>1000</TaxBase>
+                <TaxAmount>250</TaxAmount>
+              </TaxInformation>
+            </Line>
+          </Invoice>
+        </SalesInvoices>
+      </SourceDocuments>
+    </AuditFile>
+    """
+    root = ET.fromstring(xml)
+    sales = extract_sales_taxbase_by_customer(root)
+    assert sales.loc[0, 'OmsetningEksMva'] == pytest.approx(1000)
+    assert sales.loc[0, 'Kundenr'] == '2001'
+    assert sales.loc[0, 'Kundenavn'] == 'Tax Base Kunde'
 
 
 def test_validate_saft_against_xsd_without_dependency(monkeypatch, tmp_path):
