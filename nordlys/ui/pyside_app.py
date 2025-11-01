@@ -1190,11 +1190,11 @@ class NordlysWindow(QMainWindow):
                 mask = self._customer_sales["Kundenavn"].astype(str).str.strip() == ""
                 if mask.any():
                     self._customer_sales.loc[mask, "Kundenavn"] = self._customer_sales.loc[mask, "Kundenr"].apply(
-                        lambda value: self._lookup_customer_name(value, value) or 
+                        lambda value: self._lookup_customer_name(value, value) or value
                     )
             else:
                 self._customer_sales["Kundenavn"] = self._customer_sales["Kundenr"].apply(
-                    lambda value: self._lookup_customer_name(value, value) or 
+                    lambda value: self._lookup_customer_name(value, value) or value
                 )
             ordered_cols = ["Kundenr", "Kundenavn", "Omsetning eks mva"]
             ordered_cols += [col for col in ["Transaksjoner"] if col in self._customer_sales.columns]
