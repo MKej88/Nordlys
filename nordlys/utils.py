@@ -39,10 +39,11 @@ def to_float(value: Optional[str]) -> float:
                 normalized = cleaned.replace(",", "")
         elif dot_pos != -1:
             left, right = cleaned.rsplit(".", 1)
-            if right and len(right) <= 2:
-                normalized = f"{left.replace(',', '')}.{right}"
+            left_part = left.replace(",", "").replace(".", "")
+            if right:
+                normalized = f"{left_part}.{right}"
             else:
-                normalized = cleaned.replace(".", "")
+                normalized = left_part
         else:
             normalized = cleaned
 
