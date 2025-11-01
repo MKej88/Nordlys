@@ -1,29 +1,48 @@
 """Funksjoner for å lese og analysere SAF-T filer."""
 from __future__ import annotations
 
-import importlib.util
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple, cast
 import xml.etree.ElementTree as ET
 
-import pandas as pd
-
 from .constants import NS
+from ._lazy_imports import LazyModule
 from .utils import findall_any_namespace, text_or_none, to_float
 
 
-_XMLSCHEMA_SPEC = importlib.util.find_spec("xmlschema")
-if _XMLSCHEMA_SPEC is not None:
-    from xmlschema import XMLSchema, XMLSchemaException  # type: ignore[import]
-    XMLSCHEMA_AVAILABLE = True
-else:  # pragma: no cover - kjøres kun uten opsjonal avhengighet
-    XMLSchema = None  # type: ignore[assignment]
+if TYPE_CHECKING:
+    import pandas as pd
+else:  # pragma: no cover - modul lastes latskaplig
+    pd = cast(Any, LazyModule("pandas"))
 
-    class XMLSchemaException(Exception):
-        """Fallback-unntak når xmlschema ikke er tilgjengelig."""
 
-    XMLSCHEMA_AVAILABLE = False
+class _XmlSchemaUnavailable(Exception):
+    """Fallback når xmlschema ikke finnes."""
+
+
+XMLSchema: Optional[Any] = None
+XMLSchemaException: type[Exception] = _XmlSchemaUnavailable
+XMLSCHEMA_AVAILABLE: Optional[bool] = None
+
+
+def _ensure_xmlschema() -> bool:
+    """Forsøker å importere xmlschema-pakken på en lat måte."""
+
+    global XMLSchema, XMLSchemaException, XMLSCHEMA_AVAILABLE
+    if XMLSCHEMA_AVAILABLE is not None:
+        return XMLSCHEMA_AVAILABLE
+    try:  # pragma: no cover - avhenger av opsjonal pakke
+        from xmlschema import XMLSchema as _XMLSchema, XMLSchemaException as _XMLSchemaException
+
+        XMLSchema = _XMLSchema
+        XMLSchemaException = _XMLSchemaException
+        XMLSCHEMA_AVAILABLE = True
+    except Exception:  # pragma: no cover - kjører kun uten xmlschema
+        XMLSchema = None
+        XMLSchemaException = _XmlSchemaUnavailable
+        XMLSCHEMA_AVAILABLE = False
+    return XMLSCHEMA_AVAILABLE
 
 
 @dataclass
@@ -112,7 +131,7 @@ def validate_saft_against_xsd(xml_source: Path | str, version: Optional[str] = N
         )
 
     schema_path, schema_version = schema_info
-    if not XMLSCHEMA_AVAILABLE or XMLSchema is None:
+    if not _ensure_xmlschema() or XMLSchema is None:
         return SaftValidationResult(
             audit_file_version=audit_version,
             version_family=family,

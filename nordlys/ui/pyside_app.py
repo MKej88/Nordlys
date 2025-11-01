@@ -7,9 +7,8 @@ import sys
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple, cast
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple, cast
 
-import pandas as pd
 from PySide6.QtCore import QObject, Qt, QThread, Signal, Slot
 from PySide6.QtGui import QBrush, QColor, QFont
 from PySide6.QtWidgets import (
@@ -42,6 +41,7 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
 )
 
+from .._lazy_imports import LazyModule
 from ..brreg import fetch_brreg, find_first_by_exact_endkey, map_brreg_metrics
 from ..constants import APP_TITLE
 from ..saft import (
@@ -57,6 +57,12 @@ from ..saft import (
     validate_saft_against_xsd,
 )
 from ..utils import format_currency, format_difference
+
+
+if TYPE_CHECKING:
+    import pandas as pd
+else:  # pragma: no cover - modul lastes latskaplig
+    pd = cast(Any, LazyModule("pandas"))
 
 
 REVISION_TASKS: Dict[str, List[str]] = {
