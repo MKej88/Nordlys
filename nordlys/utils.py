@@ -11,7 +11,43 @@ def to_float(value: Optional[str]) -> float:
     if value in (None, ""):
         return 0.0
     try:
-        return float(str(value).replace(" ", "").replace("\xa0", "").replace(",", ""))
+        if isinstance(value, (int, float)):
+            return float(value)
+
+        text = str(value).strip()
+        if not text:
+            return 0.0
+
+        cleaned = text.replace(" ", "").replace("\xa0", "")
+        if not cleaned:
+            return 0.0
+
+        comma_pos = cleaned.rfind(",")
+        dot_pos = cleaned.rfind(".")
+
+        if comma_pos != -1 and dot_pos != -1:
+            # Begge separatorer finnes – anta at den sist forekommende er desimaltegn.
+            if comma_pos > dot_pos:
+                normalized = cleaned.replace(".", "").replace(",", ".")
+            else:
+                normalized = cleaned.replace(",", "")
+        elif comma_pos != -1:
+            left, right = cleaned.rsplit(",", 1)
+            if right and len(right) <= 2:
+                normalized = f"{left.replace('.', '').replace(',', '')}.{right}"
+            else:
+                normalized = cleaned.replace(",", "")
+        elif dot_pos != -1:
+            left, right = cleaned.rsplit(".", 1)
+            left_part = left.replace(",", "").replace(".", "")
+            if right:
+                normalized = f"{left_part}.{right}"
+            else:
+                normalized = left_part
+        else:
+            normalized = cleaned
+
+        return float(normalized)
     except Exception:
         try:
             return float(value)  # type: ignore[arg-type]
