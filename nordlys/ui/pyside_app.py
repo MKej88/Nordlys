@@ -10,8 +10,18 @@ from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple, cast
 
 import pandas as pd
-from PySide6.QtCore import QObject, Qt, QThread, Signal, Slot
-from PySide6.QtGui import QBrush, QColor, QFont
+from PySide6.QtCore import QObject, QPointF, QRectF, Qt, QThread, Signal, Slot
+from PySide6.QtGui import (
+    QBrush,
+    QColor,
+    QFont,
+    QIcon,
+    QPainter,
+    QPainterPath,
+    QPen,
+    QPixmap,
+    QPolygonF,
+)
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -755,6 +765,410 @@ class SalesArPage(QWidget):
         self.top_spin.setEnabled(enabled)
 
 
+@dataclass(frozen=True)
+class IconSpec:
+    background: str
+    primary: str
+    secondary: Optional[str] = None
+    shape: str = "badge"
+
+
+class NavigationIconLibrary:
+    """Genererer og mellomlagrer enkle, tegngenererte ikoner."""
+
+    def __init__(self) -> None:
+        self._cache: Dict[str, QIcon] = {}
+        self._specs: Dict[str, IconSpec] = {
+            "dashboard": IconSpec("#1d4ed8", "#bfdbfe", "#38bdf8", "gauge"),
+            "section.planlegging": IconSpec("#0f172a", "#38bdf8", "#f0f9ff", "compass"),
+            "plan.saldobalanse": IconSpec("#0b1120", "#facc15", None, "bars"),
+            "plan.kontroll": IconSpec("#052e16", "#4ade80", None, "check"),
+            "plan.vesentlighet": IconSpec("#431407", "#fb923c", "#fed7aa", "target"),
+            "plan.regnskapsanalyse": IconSpec("#0f172a", "#38bdf8", "#bae6fd", "trend"),
+            "plan.sammenstilling": IconSpec("#312e81", "#c4b5fd", "#a78bfa", "link"),
+            "section.revisjon": IconSpec("#111827", "#f8fafc", "#cbd5f5", "shield"),
+            "rev.innkjop": IconSpec("#1f2937", "#fb923c", "#fed7aa", "cart"),
+            "rev.lonn": IconSpec("#1c1917", "#facc15", "#fde68a", "coins"),
+            "rev.kostnad": IconSpec("#4c0519", "#f472b6", "#f9a8d4", "flame"),
+            "rev.driftsmidler": IconSpec("#0f172a", "#38bdf8", "#bae6fd", "building"),
+            "rev.finans": IconSpec("#083344", "#22d3ee", "#67e8f9", "bank"),
+            "rev.varelager": IconSpec("#3f1d1d", "#fb7185", "#fda4af", "boxes"),
+            "rev.salg": IconSpec("#022c22", "#4ade80", "#bbf7d0", "arrow"),
+            "rev.mva": IconSpec("#1e1b4b", "#a5b4fc", "#c7d2fe", "percent"),
+        }
+        self._default = IconSpec("#0f172a", "#38bdf8", "#bae6fd", "badge")
+
+    def icon_for(self, key: str) -> QIcon:
+        normalized = key.lower()
+        if normalized not in self._cache:
+            spec = self._specs.get(normalized, self._default)
+            self._cache[normalized] = self._build_icon(spec)
+        return self._cache[normalized]
+
+    def section_key(self, title: str) -> str:
+        slug = self._slugify(title)
+        return f"section.{slug}" if slug else "section"
+
+    def _slugify(self, text: str) -> str:
+        return "".join(
+            "_" if ch.isspace() else ch
+            for ch in text.lower()
+            if ch.isalnum() or ch.isspace()
+        )
+
+    def _build_icon(self, spec: IconSpec) -> QIcon:
+        size = 44
+        pixmap = QPixmap(size, size)
+        pixmap.fill(Qt.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        rect = QRectF(4.0, 4.0, size - 8.0, size - 8.0)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(spec.background))
+        painter.drawRoundedRect(rect, 12.0, 12.0)
+        inner = rect.adjusted(6.0, 6.0, -6.0, -6.0)
+        self._draw_shape(painter, inner, spec)
+        painter.end()
+        return QIcon(pixmap)
+
+    def _draw_shape(self, painter: QPainter, rect: QRectF, spec: IconSpec) -> None:
+        shape = spec.shape
+        if shape == "gauge":
+            self._draw_gauge(painter, rect, spec)
+        elif shape == "compass":
+            self._draw_compass(painter, rect, spec)
+        elif shape == "bars":
+            self._draw_bars(painter, rect, spec)
+        elif shape == "check":
+            self._draw_check(painter, rect, spec)
+        elif shape == "target":
+            self._draw_target(painter, rect, spec)
+        elif shape == "trend":
+            self._draw_trend(painter, rect, spec)
+        elif shape == "link":
+            self._draw_link(painter, rect, spec)
+        elif shape == "shield":
+            self._draw_shield(painter, rect, spec)
+        elif shape == "cart":
+            self._draw_cart(painter, rect, spec)
+        elif shape == "coins":
+            self._draw_coins(painter, rect, spec)
+        elif shape == "flame":
+            self._draw_flame(painter, rect, spec)
+        elif shape == "building":
+            self._draw_building(painter, rect, spec)
+        elif shape == "bank":
+            self._draw_bank(painter, rect, spec)
+        elif shape == "boxes":
+            self._draw_boxes(painter, rect, spec)
+        elif shape == "arrow":
+            self._draw_arrow(painter, rect, spec)
+        elif shape == "percent":
+            self._draw_percent(painter, rect, spec)
+        else:
+            self._draw_badge(painter, rect, spec)
+
+    @staticmethod
+    def _point(rect: QRectF, x: float, y: float) -> QPointF:
+        return QPointF(rect.left() + rect.width() * x, rect.top() + rect.height() * y)
+
+    @staticmethod
+    def _circle(center: QPointF, radius: float) -> QRectF:
+        return QRectF(center.x() - radius, center.y() - radius, radius * 2, radius * 2)
+
+    @staticmethod
+    def _polar(center: QPointF, radius: float, angle_deg: float) -> QPointF:
+        radians = math.radians(angle_deg)
+        return QPointF(
+            center.x() + math.cos(radians) * radius,
+            center.y() - math.sin(radians) * radius,
+        )
+
+    def _draw_gauge(self, painter: QPainter, rect: QRectF, spec: IconSpec) -> None:
+        pen = QPen(QColor(spec.primary), 3.2, Qt.RoundCap, Qt.RoundJoin)
+        painter.setBrush(Qt.NoBrush)
+        painter.setPen(pen)
+        painter.drawArc(rect, int(210 * 16), int(120 * 16))
+        center = rect.center()
+        end = self._polar(center, rect.width() * 0.4, 300)
+        painter.drawLine(center, end)
+        if spec.secondary:
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QColor(spec.secondary))
+            painter.drawEllipse(self._circle(center, rect.width() * 0.08))
+
+    def _draw_compass(self, painter: QPainter, rect: QRectF, spec: IconSpec) -> None:
+        painter.setBrush(Qt.NoBrush)
+        painter.setPen(QPen(QColor(spec.primary), 2.6, Qt.RoundCap, Qt.RoundJoin))
+        painter.drawEllipse(rect)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(spec.secondary or spec.primary))
+        pointer = QPolygonF(
+            [
+                self._point(rect, 0.5, 0.05),
+                self._point(rect, 0.78, 0.52),
+                self._point(rect, 0.5, 0.68),
+                self._point(rect, 0.32, 0.48),
+            ]
+        )
+        painter.drawPolygon(pointer)
+
+    def _draw_bars(self, painter: QPainter, rect: QRectF, spec: IconSpec) -> None:
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(spec.primary))
+        bar_width = rect.width() / 4.2
+        gap = bar_width * 0.55
+        total = bar_width * 3 + gap * 2
+        start = rect.left() + (rect.width() - total) / 2
+        heights = [0.45, 0.7, 0.9]
+        for index, factor in enumerate(heights):
+            height = rect.height() * factor
+            x = start + index * (bar_width + gap)
+            y = rect.bottom() - height
+            painter.drawRoundedRect(QRectF(x, y, bar_width, height), 2.8, 2.8)
+
+    def _draw_check(self, painter: QPainter, rect: QRectF, spec: IconSpec) -> None:
+        pen = QPen(QColor(spec.primary), rect.width() * 0.18, Qt.RoundCap, Qt.RoundJoin)
+        painter.setPen(pen)
+        painter.setBrush(Qt.NoBrush)
+        points = QPolygonF(
+            [
+                self._point(rect, 0.22, 0.55),
+                self._point(rect, 0.45, 0.78),
+                self._point(rect, 0.82, 0.28),
+            ]
+        )
+        painter.drawPolyline(points)
+
+    def _draw_target(self, painter: QPainter, rect: QRectF, spec: IconSpec) -> None:
+        painter.setBrush(Qt.NoBrush)
+        painter.setPen(QPen(QColor(spec.primary), 2.8))
+        painter.drawEllipse(rect)
+        inner = rect.adjusted(
+            rect.width() * 0.18,
+            rect.height() * 0.18,
+            -rect.width() * 0.18,
+            -rect.height() * 0.18,
+        )
+        painter.setPen(QPen(QColor(spec.secondary or spec.primary), 2.0))
+        painter.drawEllipse(inner)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(spec.secondary or spec.primary))
+        painter.drawEllipse(self._circle(rect.center(), rect.width() * 0.09))
+
+    def _draw_trend(self, painter: QPainter, rect: QRectF, spec: IconSpec) -> None:
+        pen = QPen(QColor(spec.primary), 2.8, Qt.RoundCap, Qt.RoundJoin)
+        painter.setBrush(Qt.NoBrush)
+        painter.setPen(pen)
+        points = QPolygonF(
+            [
+                self._point(rect, 0.12, 0.72),
+                self._point(rect, 0.38, 0.52),
+                self._point(rect, 0.58, 0.66),
+                self._point(rect, 0.86, 0.28),
+            ]
+        )
+        painter.drawPolyline(points)
+        if spec.secondary:
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QColor(spec.secondary))
+            painter.drawEllipse(self._circle(points[-1], rect.width() * 0.08))
+
+    def _draw_link(self, painter: QPainter, rect: QRectF, spec: IconSpec) -> None:
+        center_left = self._point(rect, 0.38, 0.5)
+        center_right = self._point(rect, 0.66, 0.5)
+        painter.setBrush(Qt.NoBrush)
+        painter.setPen(QPen(QColor(spec.primary), 3.0, Qt.RoundCap, Qt.RoundJoin))
+        painter.drawLine(center_left, center_right)
+        radius = rect.width() * 0.16
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(spec.primary))
+        painter.drawEllipse(self._circle(center_left, radius))
+        painter.setBrush(QColor(spec.secondary or spec.primary))
+        painter.drawEllipse(self._circle(center_right, radius))
+
+    def _draw_shield(self, painter: QPainter, rect: QRectF, spec: IconSpec) -> None:
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(spec.primary))
+        path = QPainterPath(self._point(rect, 0.5, 0.12))
+        path.quadTo(self._point(rect, 0.82, 0.26), self._point(rect, 0.82, 0.52))
+        path.quadTo(self._point(rect, 0.5, 0.86), self._point(rect, 0.5, 0.94))
+        path.quadTo(self._point(rect, 0.5, 0.86), self._point(rect, 0.18, 0.52))
+        path.quadTo(self._point(rect, 0.18, 0.26), self._point(rect, 0.5, 0.12))
+        painter.drawPath(path)
+
+    def _draw_cart(self, painter: QPainter, rect: QRectF, spec: IconSpec) -> None:
+        body = QRectF(
+            rect.left() + rect.width() * 0.2,
+            rect.top() + rect.height() * 0.32,
+            rect.width() * 0.6,
+            rect.height() * 0.38,
+        )
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(spec.primary))
+        painter.drawRoundedRect(body, 3.0, 3.0)
+        painter.setBrush(QColor(spec.secondary or spec.primary))
+        wheel_radius = rect.width() * 0.1
+        left_center = QPointF(body.left() + wheel_radius * 1.2, body.bottom() + wheel_radius * 1.4)
+        right_center = QPointF(body.right() - wheel_radius * 1.2, body.bottom() + wheel_radius * 1.4)
+        painter.drawEllipse(self._circle(left_center, wheel_radius))
+        painter.drawEllipse(self._circle(right_center, wheel_radius))
+        painter.setBrush(QColor(spec.primary))
+        painter.drawRect(
+            QRectF(
+                body.left() - rect.width() * 0.12,
+                body.top() - rect.height() * 0.16,
+                rect.width() * 0.12,
+                rect.height() * 0.18,
+            )
+        )
+
+    def _draw_coins(self, painter: QPainter, rect: QRectF, spec: IconSpec) -> None:
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(spec.primary))
+        base = self._circle(self._point(rect, 0.45, 0.58), rect.width() * 0.18)
+        painter.drawEllipse(base)
+        painter.setBrush(QColor(spec.secondary or spec.primary))
+        top = base.translated(rect.width() * 0.2, -rect.height() * 0.16)
+        painter.drawEllipse(top)
+        painter.setBrush(QColor(spec.primary))
+        painter.drawRect(
+            QRectF(
+                base.left(),
+                base.top() + base.height() * 0.45,
+                base.width(),
+                base.height() * 0.3,
+            )
+        )
+
+    def _draw_flame(self, painter: QPainter, rect: QRectF, spec: IconSpec) -> None:
+        path = QPainterPath(self._point(rect, 0.5, 0.1))
+        path.cubicTo(self._point(rect, 0.68, 0.24), self._point(rect, 0.82, 0.42), self._point(rect, 0.72, 0.68))
+        path.cubicTo(self._point(rect, 0.6, 0.9), self._point(rect, 0.4, 0.9), self._point(rect, 0.32, 0.7))
+        path.cubicTo(self._point(rect, 0.24, 0.48), self._point(rect, 0.38, 0.3), self._point(rect, 0.5, 0.1))
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(spec.primary))
+        painter.drawPath(path)
+        if spec.secondary:
+            inner = QPainterPath(self._point(rect, 0.5, 0.24))
+            inner.cubicTo(
+                self._point(rect, 0.62, 0.32),
+                self._point(rect, 0.66, 0.46),
+                self._point(rect, 0.58, 0.6),
+            )
+            inner.cubicTo(
+                self._point(rect, 0.52, 0.74),
+                self._point(rect, 0.42, 0.72),
+                self._point(rect, 0.38, 0.6),
+            )
+            inner.cubicTo(
+                self._point(rect, 0.34, 0.46),
+                self._point(rect, 0.42, 0.34),
+                self._point(rect, 0.5, 0.24),
+            )
+            painter.setBrush(QColor(spec.secondary))
+            painter.drawPath(inner)
+
+    def _draw_building(self, painter: QPainter, rect: QRectF, spec: IconSpec) -> None:
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(spec.primary))
+        base = QRectF(
+            rect.left() + rect.width() * 0.18,
+            rect.top() + rect.height() * 0.28,
+            rect.width() * 0.64,
+            rect.height() * 0.6,
+        )
+        painter.drawRoundedRect(base, 3.0, 3.0)
+        roof = QPolygonF(
+            [
+                self._point(rect, 0.18, 0.34),
+                self._point(rect, 0.5, 0.08),
+                self._point(rect, 0.82, 0.34),
+            ]
+        )
+        painter.drawPolygon(roof)
+        painter.setBrush(QColor(spec.secondary or spec.primary))
+        window_width = base.width() / 5
+        spacing = window_width * 0.6
+        for i in range(3):
+            x = base.left() + spacing + i * (window_width + spacing)
+            window = QRectF(x, base.top() + spacing, window_width, window_width)
+            painter.drawRoundedRect(window, 1.6, 1.6)
+
+    def _draw_bank(self, painter: QPainter, rect: QRectF, spec: IconSpec) -> None:
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(spec.primary))
+        roof = QPolygonF(
+            [
+                self._point(rect, 0.2, 0.38),
+                self._point(rect, 0.5, 0.08),
+                self._point(rect, 0.8, 0.38),
+            ]
+        )
+        painter.drawPolygon(roof)
+        painter.setBrush(QColor(spec.secondary or spec.primary))
+        base = QRectF(
+            rect.left() + rect.width() * 0.2,
+            rect.top() + rect.height() * 0.38,
+            rect.width() * 0.6,
+            rect.height() * 0.52,
+        )
+        painter.drawRect(base)
+        col_width = base.width() / 5
+        for i in range(1, 4):
+            x = base.left() + i * col_width
+            col = QRectF(x - col_width * 0.2, base.top(), col_width * 0.4, base.height())
+            painter.setBrush(QColor(spec.primary))
+            painter.drawRect(col)
+
+    def _draw_boxes(self, painter: QPainter, rect: QRectF, spec: IconSpec) -> None:
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(spec.primary))
+        top_box = QRectF(
+            rect.left() + rect.width() * 0.18,
+            rect.top() + rect.height() * 0.18,
+            rect.width() * 0.46,
+            rect.height() * 0.38,
+        )
+        painter.drawRoundedRect(top_box, 3.0, 3.0)
+        painter.setBrush(QColor(spec.secondary or spec.primary))
+        bottom_box = top_box.translated(rect.width() * 0.22, rect.height() * 0.32)
+        painter.drawRoundedRect(bottom_box, 3.0, 3.0)
+
+    def _draw_arrow(self, painter: QPainter, rect: QRectF, spec: IconSpec) -> None:
+        shaft_pen = QPen(QColor(spec.primary), 3.0, Qt.RoundCap, Qt.RoundJoin)
+        painter.setBrush(Qt.NoBrush)
+        painter.setPen(shaft_pen)
+        start = self._point(rect, 0.22, 0.72)
+        peak = self._point(rect, 0.5, 0.18)
+        painter.drawLine(start, peak)
+        painter.drawLine(peak, self._point(rect, 0.78, 0.46))
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(spec.secondary or spec.primary))
+        arrow_head = QPolygonF(
+            [
+                self._point(rect, 0.5, 0.08),
+                self._point(rect, 0.72, 0.4),
+                self._point(rect, 0.28, 0.4),
+            ]
+        )
+        painter.drawPolygon(arrow_head)
+
+    def _draw_percent(self, painter: QPainter, rect: QRectF, spec: IconSpec) -> None:
+        painter.setBrush(Qt.NoBrush)
+        painter.setPen(QPen(QColor(spec.primary), 3.0, Qt.RoundCap, Qt.RoundJoin))
+        painter.drawLine(self._point(rect, 0.25, 0.76), self._point(rect, 0.78, 0.24))
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(spec.secondary or spec.primary))
+        painter.drawEllipse(self._circle(self._point(rect, 0.32, 0.3), rect.width() * 0.12))
+        painter.drawEllipse(self._circle(self._point(rect, 0.68, 0.7), rect.width() * 0.12))
+
+    def _draw_badge(self, painter: QPainter, rect: QRectF, spec: IconSpec) -> None:
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(spec.primary))
+        painter.drawEllipse(rect)
+
+
 @dataclass
 class NavigationItem:
     key: str
@@ -771,6 +1185,8 @@ class NavigationPanel(QFrame):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 32, 24, 32)
         layout.setSpacing(24)
+
+        self._icons = NavigationIconLibrary()
 
         self.logo_label = QLabel("Nordlys")
         self.logo_label.setObjectName("logoLabel")
@@ -791,6 +1207,8 @@ class NavigationPanel(QFrame):
 
     def add_root(self, title: str, key: str | None = None) -> NavigationItem:
         item = QTreeWidgetItem([title])
+        icon_key = key or self._icons.section_key(title)
+        item.setIcon(0, self._icons.icon_for(icon_key))
         if key:
             item.setData(0, Qt.UserRole, key)
             font = item.font(0)
@@ -819,6 +1237,7 @@ class NavigationPanel(QFrame):
     def add_child(self, parent: NavigationItem, title: str, key: str) -> NavigationItem:
         item = QTreeWidgetItem([title])
         item.setData(0, Qt.UserRole, key)
+        item.setIcon(0, self._icons.icon_for(key))
         font = item.font(0)
         font.setWeight(QFont.Medium)
         item.setFont(0, font)
