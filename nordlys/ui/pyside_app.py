@@ -380,23 +380,42 @@ class DataFramePage(QWidget):
         frame_builder: Optional[Callable[[pd.DataFrame], pd.DataFrame]] = None,
         money_columns: Optional[Sequence[str]] = None,
         header_mode: QHeaderView.ResizeMode = QHeaderView.Stretch,
+        full_window: bool = False,
     ) -> None:
         super().__init__()
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(24)
 
-        self.card = CardFrame(title, subtitle)
+        self.card: Optional[CardFrame] = None
         self.info_label = QLabel("Last inn en SAF-T fil for å vise data.")
         self.info_label.setObjectName("infoLabel")
-        self.card.add_widget(self.info_label)
 
         self.table = _create_table_widget()
         self.table.horizontalHeader().setSectionResizeMode(header_mode)
+        self.table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.table.hide()
-        self.card.add_widget(self.table)
-        layout.addWidget(self.card)
-        layout.addStretch(1)
+
+        if full_window:
+            title_label = QLabel(title)
+            title_label.setObjectName("pageTitle")
+            layout.addWidget(title_label)
+
+            if subtitle:
+                subtitle_label = QLabel(subtitle)
+                subtitle_label.setObjectName("pageSubtitle")
+                subtitle_label.setWordWrap(True)
+                layout.addWidget(subtitle_label)
+
+            layout.addWidget(self.info_label)
+            layout.addWidget(self.table, 1)
+        else:
+            self.card = CardFrame(title, subtitle)
+            self.card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+            self.card.add_widget(self.info_label)
+            self.card.add_widget(self.table)
+            layout.addWidget(self.card)
+            layout.addStretch(1)
 
         self._frame_builder = frame_builder
         self._money_columns = tuple(money_columns or [])
@@ -750,6 +769,7 @@ class NordlysWindow(QMainWindow):
             frame_builder=_standard_tb_frame,
             money_columns=("IB", "Endringer", "UB"),
             header_mode=QHeaderView.ResizeToContents,
+            full_window=True,
         )
         self._register_page("plan.saldobalanse", saldobalanse_page)
         self.stack.addWidget(saldobalanse_page)
