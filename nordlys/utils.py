@@ -35,20 +35,28 @@ def findall_any_namespace(inv: ET.Element, localname: str) -> List[ET.Element]:
     return matches
 
 
+def _format_amount(value: float) -> str:
+    formatted = f"{abs(value):,.0f}".replace(",", " ").replace(".", " ")
+    sign = "-" if value < 0 else ""
+    return f"{sign}{formatted} kr"
+
+
 def format_currency(value: Optional[float]) -> str:
-    """Formatterer beløp til heltall med tusenskilletegn."""
+    """Formatterer beløp som hele kroner med norske skilletegn."""
     try:
-        return f"{round(float(value)):,.0f}"
+        amount = round(float(value))
     except Exception:
         return "—"
+    return _format_amount(float(amount))
 
 
 def format_difference(a: Optional[float], b: Optional[float]) -> str:
-    """Formatterer differansen mellom to beløp."""
+    """Formatterer differansen mellom to beløp som hele kroner."""
     try:
-        return f"{round(float(a) - float(b)):,.0f}"
+        amount = round(float(a) - float(b))
     except Exception:
         return "—"
+    return _format_amount(float(amount))
 
 
 __all__ = [

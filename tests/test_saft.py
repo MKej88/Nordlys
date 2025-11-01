@@ -15,6 +15,7 @@ from nordlys.saft import (
     validate_saft_against_xsd,
 )
 from nordlys.utils import format_currency, format_difference
+from nordlys.ui.formatting import format_orgnr, format_period
 
 
 def build_sample_root() -> ET.Element:
@@ -123,8 +124,15 @@ def test_extract_sales_and_ar():
 
 
 def test_format_helpers():
-    assert format_currency(1234.5) == '1,234'
-    assert format_difference(2000, 1500) == '500'
+    assert format_currency(1234.5) == '1 234 kr'
+    assert format_difference(2000, 1500) == '500 kr'
+
+
+def test_dashboard_format_helpers():
+    assert format_orgnr('999999999') == '999 999 999'
+    assert format_orgnr('') == '–'
+    assert format_period('2023', '01', '12') == '2023 · Perioder 01 – 12'
+    assert format_period(None, '2023-01-01', '2023-12-31') == 'Perioder 01.01.2023 – 31.12.2023'
 
 
 def test_validate_saft_against_xsd_unknown_version(tmp_path):

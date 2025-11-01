@@ -52,6 +52,7 @@ from ..saft import (
     validate_saft_against_xsd,
 )
 from ..utils import format_currency, format_difference
+from .formatting import format_account_count, format_orgnr, format_period
 
 
 REVISION_TASKS: Dict[str, List[str]] = {
@@ -839,27 +840,27 @@ class NordlysWindow(QMainWindow):
             self.saldobalanse_page.set_dataframe(df)
             self.kontroll_page.set_dataframe(df)
             self.dashboard_page.update_summary(self._saft_summary)
-            company = self._header.company_name if self._header else None
+            company = (self._header.company_name or "").strip() if self._header else ""
             orgnr = self._header.orgnr if self._header else None
-            period = None
-            if self._header:
-                period = (
-                    f"{self._header.fiscal_year or '—'} P{self._header.period_start or '?'}–P{self._header.period_end or '?'}"
-                )
+            period = format_period(
+                self._header.fiscal_year if self._header else None,
+                self._header.period_start if self._header else None,
+                self._header.period_end if self._header else None,
+            )
             revenue_txt = (
                 format_currency(self._saft_summary.get("driftsinntekter"))
                 if self._saft_summary and self._saft_summary.get("driftsinntekter") is not None
                 else "—"
             )
             account_count = len(df.index)
-            status_bits = [
-                company or "Ukjent selskap",
-                f"Org.nr: {orgnr}" if orgnr else "Org.nr: –",
-                f"Periode: {period}" if period else None,
-                f"{account_count} konti analysert",
+            status_lines = [
+                f"Selskap: {company or 'Ukjent selskap'}",
+                f"Org.nr: {format_orgnr(orgnr)}",
+                f"Periode: {period}",
+                f"Konti analysert: {format_account_count(account_count)}",
                 f"Driftsinntekter: {revenue_txt}",
             ]
-            self.dashboard_page.update_status(" · ".join(bit for bit in status_bits if bit))
+            self.dashboard_page.update_status("\n".join(status_lines))
             self.dashboard_page.update_validation_status(validation)
             if validation.is_valid is False:
                 QMessageBox.warning(
@@ -1057,10 +1058,11 @@ class NordlysWindow(QMainWindow):
     def _update_header_fields(self) -> None:
         if not self._header:
             return
-        self.lbl_company.setText(f"Selskap: {self._header.company_name or '–'}")
-        self.lbl_orgnr.setText(f"Org.nr: {self._header.orgnr or '–'}")
-        per = f"{self._header.fiscal_year or '–'} P{self._header.period_start or '?'}–P{self._header.period_end or '?'}"
-        self.lbl_period.setText(f"Periode: {per}")
+        company = (self._header.company_name or "").strip() or "–"
+        self.lbl_company.setText(f"Selskap: {company}")
+        self.lbl_orgnr.setText(f"Org.nr: {format_orgnr(self._header.orgnr)}")
+        period = format_period(self._header.fiscal_year, self._header.period_start, self._header.period_end)
+        self.lbl_period.setText(f"Periode: {period}")
 
     # endregion
 
