@@ -1,5 +1,5 @@
 """Konstanter for Nordlys."""
 
-APP_TITLE = "Nordlys v3.5 + Regnskapsregister (åpen del)"
+APP_TITLE = "Nordlys"
 BRREG_URL_TMPL = "https://data.brreg.no/regnskapsregisteret/regnskap/{orgnr}"
 NS = {"n1": "urn:StandardAuditFile-Taxation-Financial:NO"}
