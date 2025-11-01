@@ -215,6 +215,52 @@ def test_extract_sales_handles_tax_inclusive_amount():
     assert sales.loc[0, 'OmsetningEksMva'] == pytest.approx(1000)
 
 
+def test_extract_sales_handles_net_total_with_vat():
+    xml = """
+    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <SourceDocuments>
+        <SalesInvoices>
+          <Invoice>
+            <CustomerID>Z1</CustomerID>
+            <DocumentTotals>
+              <NetTotal>1250</NetTotal>
+              <GrossTotal>1250</GrossTotal>
+              <TaxPayable>250</TaxPayable>
+            </DocumentTotals>
+          </Invoice>
+        </SalesInvoices>
+      </SourceDocuments>
+    </AuditFile>
+    """
+    root = ET.fromstring(xml)
+    sales = extract_sales_taxbase_by_customer(root)
+    assert sales.loc[0, 'OmsetningEksMva'] == pytest.approx(1000)
+
+
+def test_extract_sales_handles_invoice_net_total_with_vat():
+    xml = """
+    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <SourceDocuments>
+        <SalesInvoices>
+          <Invoice>
+            <CustomerID>Z2</CustomerID>
+            <DocumentTotals>
+              <InvoiceNetTotal>2500</InvoiceNetTotal>
+              <TaxInclusiveAmount>2500</TaxInclusiveAmount>
+              <TaxTotal>
+                <TaxAmount>500</TaxAmount>
+              </TaxTotal>
+            </DocumentTotals>
+          </Invoice>
+        </SalesInvoices>
+      </SourceDocuments>
+    </AuditFile>
+    """
+    root = ET.fromstring(xml)
+    sales = extract_sales_taxbase_by_customer(root)
+    assert sales.loc[0, 'OmsetningEksMva'] == pytest.approx(2000)
+
+
 def test_validate_saft_against_xsd_without_dependency(monkeypatch, tmp_path):
     saft_module = sys.modules['nordlys.saft']
     monkeypatch.setattr(saft_module, 'XMLSCHEMA_AVAILABLE', False, raising=False)

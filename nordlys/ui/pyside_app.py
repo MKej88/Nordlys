@@ -990,22 +990,16 @@ class NordlysWindow(QMainWindow):
             root = ET.parse(file_name).getroot()
             self._header = parse_saft_header(root)
             df = parse_saldobalanse(root)
-            self._customers = parse_customers(root)
-            self._cust_id_to_nr = {
-                cid: info.customer_number or cid for cid, info in self._customers.items()
-            }
-            self._cust_name_by_nr = {}
-            for info in self._customers.values():
-                number = info.customer_number or info.customer_id
-                if number:
-                    self._cust_name_by_nr[number] = info.name
-                self._cust_name_by_nr.setdefault(info.customer_id, info.name)
+            customers = parse_customers(root)
+            self._ingest_customers(customers)
             self._sales_agg = extract_sales_taxbase_by_customer(root)
             self._ar_agg = extract_ar_from_gl(root)
             if self._sales_agg is not None and not self._sales_agg.empty and "CustomerID" in self._sales_agg.columns:
-                self._sales_agg["Kundenr"] = self._sales_agg["CustomerID"].map(self._cust_id_to_nr).fillna(
-                    self._sales_agg["CustomerID"]
-                )
+                normalized_ids = self._sales_agg["CustomerID"].apply(self._normalize_customer_key)
+                mapped_numbers = normalized_ids.map(self._cust_id_to_nr)
+                fallback_mapped = self._sales_agg["CustomerID"].map(self._cust_id_to_nr)
+                fallback_ids = normalized_ids.fillna(self._sales_agg["CustomerID"])
+                self._sales_agg["Kundenr"] = mapped_numbers.fillna(fallback_mapped).fillna(fallback_ids)
                 self._sales_agg["Kundenavn"] = self._sales_agg.apply(
                     lambda row: self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID")),
                     axis=1,
@@ -1013,9 +1007,11 @@ class NordlysWindow(QMainWindow):
                 cols = ["Kundenr"] + [col for col in self._sales_agg.columns if col != "Kundenr"]
                 self._sales_agg = self._sales_agg.loc[:, cols]
             if self._ar_agg is not None and not self._ar_agg.empty and "CustomerID" in self._ar_agg.columns:
-                self._ar_agg["Kundenr"] = self._ar_agg["CustomerID"].map(self._cust_id_to_nr).fillna(
-                    self._ar_agg["CustomerID"]
-                )
+                normalized_ids = self._ar_agg["CustomerID"].apply(self._normalize_customer_key)
+                mapped_numbers = normalized_ids.map(self._cust_id_to_nr)
+                fallback_mapped = self._ar_agg["CustomerID"].map(self._cust_id_to_nr)
+                fallback_ids = normalized_ids.fillna(self._ar_agg["CustomerID"])
+                self._ar_agg["Kundenr"] = mapped_numbers.fillna(fallback_mapped).fillna(fallback_ids)
                 self._ar_agg["Kundenavn"] = self._ar_agg.apply(
                     lambda row: self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID")),
                     axis=1,
@@ -1086,6 +1082,58 @@ class NordlysWindow(QMainWindow):
             pass
         text = str(value).strip()
         return text or None
+
+    def _ingest_customers(self, customers: Dict[str, CustomerInfo]) -> None:
+        self._customers = {}
+        self._cust_name_by_nr = {}
+        self._cust_id_to_nr = {}
+        for info in customers.values():
+            name = (info.name or '').strip()
+            raw_id = info.customer_id
+            raw_number = info.customer_number or info.customer_id
+            norm_id = self._normalize_customer_key(raw_id)
+            norm_number = self._normalize_customer_key(raw_number)
+            resolved_number = norm_number or norm_id or self._normalize_customer_key(raw_id)
+            if not resolved_number and isinstance(raw_number, str) and raw_number.strip():
+                resolved_number = raw_number.strip()
+            if not resolved_number and isinstance(raw_id, str) and raw_id.strip():
+                resolved_number = raw_id.strip()
+
+            customer_key = norm_id or (raw_id.strip() if isinstance(raw_id, str) and raw_id.strip() else None)
+            if customer_key:
+                self._customers[customer_key] = CustomerInfo(
+                    customer_id=customer_key,
+                    customer_number=resolved_number or customer_key,
+                    name=name,
+                )
+
+            keys = {
+                raw_id,
+                norm_id,
+                raw_number,
+                norm_number,
+                resolved_number,
+            }
+            keys = {key for key in keys if isinstance(key, str) and key}
+
+            if resolved_number:
+                norm_resolved = self._normalize_customer_key(resolved_number)
+                all_number_keys = set(keys)
+                if norm_resolved:
+                    all_number_keys.add(norm_resolved)
+                all_number_keys.add(resolved_number)
+                for key in all_number_keys:
+                    norm_key = self._normalize_customer_key(key)
+                    if norm_key:
+                        self._cust_id_to_nr[norm_key] = resolved_number
+                    self._cust_id_to_nr[key] = resolved_number
+
+            if name:
+                for key in keys:
+                    norm_key = self._normalize_customer_key(key)
+                    if norm_key:
+                        self._cust_name_by_nr[norm_key] = name
+                    self._cust_name_by_nr[key] = name
 
     def _lookup_customer_name(self, number: object, customer_id: object) -> Optional[str]:
         number_key = self._normalize_customer_key(number)

@@ -315,19 +315,26 @@ def parse_customers(root: ET.Element) -> Dict[str, CustomerInfo]:
             or text_or_none(element.find('n1:SupplierAccountID', NS))
             or cid
         )
-        name = (
+        raw_name = (
             text_or_none(element.find('n1:Name', NS))
             or text_or_none(element.find('n1:CompanyName', NS))
             or text_or_none(element.find('n1:Contact/n1:Name', NS))
             or text_or_none(element.find('n1:Contact/n1:ContactName', NS))
             or ''
         )
+        name = raw_name.strip()
         customers[cid] = CustomerInfo(
             customer_id=cid,
             customer_number=number or cid,
             name=name,
         )
     return customers
+
+
+def _approx_equal(a: float, b: float, tolerance: float = 0.5) -> bool:
+    """Sammenligner to flyttall med en liten toleranse for avrunding."""
+
+    return abs(a - b) <= tolerance
 
 
 def extract_sales_taxbase_by_customer(root: ET.Element) -> pd.DataFrame:
@@ -368,22 +375,40 @@ def extract_sales_taxbase_by_customer(root: ET.Element) -> pd.DataFrame:
                 for base in findall_any_namespace(invoice, 'TaxableAmount')
             )
 
-        net_candidates = [tax_exclusive, net_total, invoice_net_total, line_tax_base]
-        if gross_total and tax_payable:
-            net_candidates.append(gross_total - tax_payable)
-        if inclusive_total and tax_payable:
-            net_candidates.append(inclusive_total - tax_payable)
+        candidates: List[float] = []
+        if tax_exclusive > 0.0:
+            candidates.append(tax_exclusive)
+
+        if line_tax_base > 0.0:
+            candidates.append(line_tax_base)
+
+        if net_total > 0.0:
+            if gross_total > 0.0 and tax_payable > 0.0 and _approx_equal(net_total + tax_payable, gross_total):
+                candidates.append(net_total)
+            elif inclusive_total > 0.0 and tax_payable > 0.0 and _approx_equal(net_total, inclusive_total):
+                candidates.append(max(net_total - tax_payable, 0.0))
+            elif tax_payable > 0.0 and net_total > tax_payable:
+                candidates.append(max(net_total - tax_payable, 0.0))
+
+        if invoice_net_total > 0.0:
+            if gross_total > 0.0 and tax_payable > 0.0 and _approx_equal(invoice_net_total + tax_payable, gross_total):
+                candidates.append(invoice_net_total)
+            elif inclusive_total > 0.0 and tax_payable > 0.0 and _approx_equal(invoice_net_total, inclusive_total):
+                candidates.append(max(invoice_net_total - tax_payable, 0.0))
+            elif tax_payable > 0.0 and invoice_net_total > tax_payable:
+                candidates.append(max(invoice_net_total - tax_payable, 0.0))
+
+        if gross_total > 0.0 and tax_payable > 0.0:
+            candidates.append(max(gross_total - tax_payable, 0.0))
+
+        if inclusive_total > 0.0 and tax_payable > 0.0:
+            candidates.append(max(inclusive_total - tax_payable, 0.0))
 
         amount = 0.0
-        for candidate in net_candidates:
+        for candidate in candidates:
             if candidate and candidate > 0.0:
                 amount = candidate
                 break
-
-        if amount > 0.0 and gross_total and tax_payable and abs(amount - gross_total) < 1e-3:
-            amount = gross_total - tax_payable
-        if amount <= 0.0 and line_tax_base > 0.0:
-            amount = line_tax_base
 
         rows.append({'CustomerID': customer_id, 'NetExVAT': float(max(amount, 0.0))})
 
