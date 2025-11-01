@@ -44,6 +44,7 @@ from PySide6.QtWidgets import (
 from ..brreg import fetch_brreg, find_first_by_exact_endkey, map_brreg_metrics
 from ..constants import APP_TITLE
 from ..saft import (
+    CustomerInfo,
     SaftHeader,
     SaftValidationResult,
     extract_ar_from_gl,
@@ -182,11 +183,10 @@ class StatBadge(QFrame):
 
 
 class DashboardPage(QWidget):
-    """Viser nøkkeltall og topp kunder."""
+    """Viser nøkkeltall for selskapet."""
 
-    def __init__(self, on_calc_top: Callable[[str, int], Optional[List[Tuple[str, str, int, float]]]]) -> None:
+    def __init__(self) -> None:
         super().__init__()
-        self._on_calc_top = on_calc_top
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -238,42 +238,7 @@ class DashboardPage(QWidget):
         self.summary_card.add_widget(self.summary_table)
         layout.addWidget(self.summary_card)
 
-        self.top_card = CardFrame("Topp kunder", "Identifiser kunder med høyest omsetning.")
-        controls = QHBoxLayout()
-        controls.setSpacing(12)
-        controls.addWidget(QLabel("Kilde:"))
-        self.source_combo = QComboBox()
-        self.source_combo.addItems(["faktura", "reskontro"])
-        controls.addWidget(self.source_combo)
-        controls.addWidget(QLabel("Antall:"))
-        self.top_spin = QSpinBox()
-        self.top_spin.setRange(5, 100)
-        self.top_spin.setValue(10)
-        controls.addWidget(self.top_spin)
-        controls.addStretch(1)
-        self.calc_button = QPushButton("Beregn topp kunder")
-        self.calc_button.clicked.connect(self._handle_calc_clicked)
-        controls.addWidget(self.calc_button)
-        self.top_card.add_layout(controls)
-
-        self.top_table = _create_table_widget()
-        self.top_table.setColumnCount(4)
-        self.top_table.setHorizontalHeaderLabels([
-            "KundeID",
-            "Kundenavn",
-            "Fakturaer",
-            "Omsetning (eks. mva)",
-        ])
-        self.top_card.add_widget(self.top_table)
-        layout.addWidget(self.top_card)
         layout.addStretch(1)
-
-        self.set_controls_enabled(False)
-
-    def _handle_calc_clicked(self) -> None:
-        rows = self._on_calc_top(self.source_combo.currentText(), int(self.top_spin.value()))
-        if rows:
-            self.set_top_customers(rows)
 
     def update_status(self, message: str) -> None:
         self.status_label.setText(message)
@@ -327,21 +292,6 @@ class DashboardPage(QWidget):
         _populate_table(self.summary_table, ["Nøkkel", "Beløp"], rows, money_cols={1})
         self._update_kpis(summary)
 
-    def set_top_customers(self, rows: Iterable[Tuple[str, str, int, float]]) -> None:
-        _populate_table(
-            self.top_table,
-            ["KundeID", "Kundenavn", "Fakturaer", "Omsetning (eks. mva)"],
-            rows,
-            money_cols={3},
-        )
-
-    def clear_top_customers(self) -> None:
-        self.top_table.setRowCount(0)
-
-    def set_controls_enabled(self, enabled: bool) -> None:
-        self.calc_button.setEnabled(enabled)
-        self.top_spin.setEnabled(enabled)
-        self.source_combo.setEnabled(enabled)
 
     def _update_kpis(self, summary: Optional[Dict[str, float]]) -> None:
         def set_badge(key: str, value: Optional[str]) -> None:
@@ -626,6 +576,88 @@ class ChecklistPage(QWidget):
             QListWidgetItem(item, self.list_widget)
 
 
+class SalesArPage(QWidget):
+    """Revisjonsside for salg og kundefordringer med topp kunder."""
+
+    def __init__(
+        self,
+        title: str,
+        subtitle: str,
+        on_calc_top: Callable[[str, int], Optional[List[Tuple[str, str, int, float]]]],
+    ) -> None:
+        super().__init__()
+        self._on_calc_top = on_calc_top
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(24)
+
+        self.top_card = CardFrame("Topp kunder", "Identifiser kunder med høyest omsetning.")
+        controls = QHBoxLayout()
+        controls.setSpacing(12)
+        controls.addWidget(QLabel("Kilde:"))
+        self.source_combo = QComboBox()
+        self.source_combo.addItems(["faktura", "reskontro"])
+        controls.addWidget(self.source_combo)
+        controls.addWidget(QLabel("Antall:"))
+        self.top_spin = QSpinBox()
+        self.top_spin.setRange(5, 100)
+        self.top_spin.setValue(10)
+        controls.addWidget(self.top_spin)
+        controls.addStretch(1)
+        self.calc_button = QPushButton("Beregn topp kunder")
+        self.calc_button.clicked.connect(self._handle_calc_clicked)
+        controls.addWidget(self.calc_button)
+        self.top_card.add_layout(controls)
+
+        self.top_table = _create_table_widget()
+        self.top_table.setColumnCount(4)
+        self.top_table.setHorizontalHeaderLabels([
+            "Kundenr",
+            "Kundenavn",
+            "Fakturaer",
+            "Omsetning (eks. mva)",
+        ])
+        self.top_card.add_widget(self.top_table)
+        layout.addWidget(self.top_card)
+
+        self.card = CardFrame(title, subtitle)
+        self.list_widget = QListWidget()
+        self.list_widget.setObjectName("checklist")
+        self.card.add_widget(self.list_widget)
+        layout.addWidget(self.card)
+
+        layout.addStretch(1)
+
+        self.set_controls_enabled(False)
+
+    def _handle_calc_clicked(self) -> None:
+        rows = self._on_calc_top(self.source_combo.currentText(), int(self.top_spin.value()))
+        if rows:
+            self.set_top_customers(rows)
+
+    def set_checklist_items(self, items: Iterable[str]) -> None:
+        self.list_widget.clear()
+        for item in items:
+            QListWidgetItem(item, self.list_widget)
+
+    def set_top_customers(self, rows: Iterable[Tuple[str, str, int, float]]) -> None:
+        _populate_table(
+            self.top_table,
+            ["Kundenr", "Kundenavn", "Fakturaer", "Omsetning (eks. mva)"],
+            rows,
+            money_cols={3},
+        )
+
+    def clear_top_customers(self) -> None:
+        self.top_table.setRowCount(0)
+
+    def set_controls_enabled(self, enabled: bool) -> None:
+        self.calc_button.setEnabled(enabled)
+        self.top_spin.setEnabled(enabled)
+        self.source_combo.setEnabled(enabled)
+
+
 @dataclass
 class NavigationItem:
     key: str
@@ -716,12 +748,15 @@ class NordlysWindow(QMainWindow):
         self._header: Optional[SaftHeader] = None
         self._brreg_json: Optional[Dict[str, object]] = None
         self._brreg_map: Optional[Dict[str, Optional[float]]] = None
-        self._cust_map: Dict[str, str] = {}
+        self._customers: Dict[str, CustomerInfo] = {}
+        self._cust_name_by_nr: Dict[str, str] = {}
+        self._cust_id_to_nr: Dict[str, str] = {}
         self._sales_agg: Optional[pd.DataFrame] = None
         self._ar_agg: Optional[pd.DataFrame] = None
         self._validation_result: Optional[SaftValidationResult] = None
 
         self._page_map: Dict[str, QWidget] = {}
+        self.sales_ar_page: Optional[SalesArPage] = None
 
         self._setup_ui()
         self._apply_styles()
@@ -791,7 +826,7 @@ class NordlysWindow(QMainWindow):
         self.setStatusBar(status)
 
     def _create_pages(self) -> None:
-        dashboard = DashboardPage(self._on_calc_top_customers)
+        dashboard = DashboardPage()
         self._register_page("dashboard", dashboard)
         self.stack.addWidget(dashboard)
         self.dashboard_page = dashboard
@@ -834,7 +869,7 @@ class NordlysWindow(QMainWindow):
         self.stack.addWidget(brreg_page)
         self.brreg_page = brreg_page
 
-        self.revision_pages: Dict[str, ChecklistPage] = {}
+        self.revision_pages: Dict[str, QWidget] = {}
         for key, (title, subtitle) in {
             "rev.innkjop": ("Innkjøp og leverandørgjeld", "Fokuser på varekjøp, kredittider og periodisering."),
             "rev.lonn": ("Lønn", "Kontroll av lønnskjøringer, skatt og arbeidsgiveravgift."),
@@ -845,7 +880,11 @@ class NordlysWindow(QMainWindow):
             "rev.salg": ("Salg og kundefordringer", "Omsetning, cut-off og reskontro."),
             "rev.mva": ("MVA", "Kontroll av avgiftsbehandling og rapportering."),
         }.items():
-            page = ChecklistPage(title, subtitle)
+            if key == "rev.salg":
+                page = SalesArPage(title, subtitle, self._on_calc_top_customers)
+                self.sales_ar_page = page
+            else:
+                page = ChecklistPage(title, subtitle)
             self.revision_pages[key] = page
             self._register_page(key, page)
             self.stack.addWidget(page)
@@ -878,7 +917,9 @@ class NordlysWindow(QMainWindow):
 
         for key, items in REVISION_TASKS.items():
             page = self.revision_pages.get(key)
-            if page:
+            if isinstance(page, SalesArPage):
+                page.set_checklist_items(items)
+            elif isinstance(page, ChecklistPage):
                 page.set_items(items)
 
     def _register_page(self, key: str, widget: QWidget) -> None:
@@ -949,9 +990,56 @@ class NordlysWindow(QMainWindow):
             root = ET.parse(file_name).getroot()
             self._header = parse_saft_header(root)
             df = parse_saldobalanse(root)
-            self._cust_map = parse_customers(root)
+            customers = parse_customers(root)
+            self._ingest_customers(customers)
             self._sales_agg = extract_sales_taxbase_by_customer(root)
             self._ar_agg = extract_ar_from_gl(root)
+            if self._sales_agg is not None and not self._sales_agg.empty and "CustomerID" in self._sales_agg.columns:
+                if "Kundenr" not in self._sales_agg.columns or self._sales_agg["Kundenr"].isna().any():
+                    normalized_ids = self._sales_agg["CustomerID"].apply(self._normalize_customer_key)
+                    mapped_numbers = normalized_ids.map(self._cust_id_to_nr)
+                    fallback_mapped = self._sales_agg["CustomerID"].map(self._cust_id_to_nr)
+                    fallback_ids = normalized_ids.fillna(self._sales_agg["CustomerID"])
+                    self._sales_agg["Kundenr"] = mapped_numbers.fillna(fallback_mapped).fillna(fallback_ids)
+                if "Kundenavn" not in self._sales_agg.columns:
+                    self._sales_agg["Kundenavn"] = self._sales_agg.apply(
+                        lambda row: self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID")),
+                        axis=1,
+                    )
+                else:
+                    mask = self._sales_agg["Kundenavn"].isna() | (
+                        self._sales_agg["Kundenavn"].astype(str).str.strip() == ""
+                    )
+                    if mask.any():
+                        self._sales_agg.loc[mask, "Kundenavn"] = self._sales_agg.loc[mask].apply(
+                            lambda row: self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID")),
+                            axis=1,
+                        )
+                cols = ["Kundenr"] + [col for col in self._sales_agg.columns if col != "Kundenr"]
+                self._sales_agg = self._sales_agg.loc[:, cols]
+            if self._ar_agg is not None and not self._ar_agg.empty and "CustomerID" in self._ar_agg.columns:
+                if "Kundenr" not in self._ar_agg.columns or self._ar_agg["Kundenr"].isna().any():
+                    normalized_ids = self._ar_agg["CustomerID"].apply(self._normalize_customer_key)
+                    mapped_numbers = normalized_ids.map(self._cust_id_to_nr)
+                    fallback_mapped = self._ar_agg["CustomerID"].map(self._cust_id_to_nr)
+                    fallback_ids = normalized_ids.fillna(self._ar_agg["CustomerID"])
+                    self._ar_agg["Kundenr"] = mapped_numbers.fillna(fallback_mapped).fillna(fallback_ids)
+                if "Kundenavn" not in self._ar_agg.columns:
+                    self._ar_agg["Kundenavn"] = self._ar_agg.apply(
+                        lambda row: self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID")),
+                        axis=1,
+                    )
+                else:
+                    mask = self._ar_agg["Kundenavn"].isna() | (
+                        self._ar_agg["Kundenavn"].astype(str).str.strip() == ""
+                    )
+                    if mask.any():
+                        self._ar_agg.loc[mask, "Kundenavn"] = self._ar_agg.loc[mask].apply(
+                            lambda row: self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID")),
+                            axis=1,
+                        )
+                cols = ["Kundenr"] + [col for col in self._ar_agg.columns if col != "Kundenr"]
+                self._ar_agg = self._ar_agg.loc[:, cols]
             self._saft_df = df
             self._saft_summary = ns4102_summary_from_tb(df)
             validation = validate_saft_against_xsd(file_name, self._header.file_version if self._header else None)
@@ -991,8 +1079,9 @@ class NordlysWindow(QMainWindow):
                 )
             elif validation.is_valid is None and validation.details:
                 QMessageBox.information(self, "XSD-validering", validation.details)
-            self.dashboard_page.set_controls_enabled(True)
-            self.dashboard_page.clear_top_customers()
+            if self.sales_ar_page:
+                self.sales_ar_page.set_controls_enabled(True)
+                self.sales_ar_page.clear_top_customers()
             self.vesentlig_page.update_summary(self._saft_summary)
             self.regnskap_page.update_comparison(None)
             self.brreg_page.update_mapping(None)
@@ -1005,6 +1094,96 @@ class NordlysWindow(QMainWindow):
             QMessageBox.critical(self, "Feil ved lesing av SAF-T", str(exc))
             self.statusBar().showMessage("Feil ved lesing av SAF-T.")
 
+    def _normalize_customer_key(self, value: object) -> Optional[str]:
+        if value is None:
+            return None
+        try:
+            if pd.isna(value):  # type: ignore[arg-type]
+                return None
+        except Exception:
+            pass
+        text = str(value).strip()
+        return text or None
+
+    def _ingest_customers(self, customers: Dict[str, CustomerInfo]) -> None:
+        self._customers = {}
+        self._cust_name_by_nr = {}
+        self._cust_id_to_nr = {}
+        for info in customers.values():
+            name = (info.name or '').strip()
+            raw_id = info.customer_id
+            raw_number = info.customer_number or info.customer_id
+            norm_id = self._normalize_customer_key(raw_id)
+            norm_number = self._normalize_customer_key(raw_number)
+            resolved_number = norm_number or norm_id or self._normalize_customer_key(raw_id)
+            if not resolved_number and isinstance(raw_number, str) and raw_number.strip():
+                resolved_number = raw_number.strip()
+            if not resolved_number and isinstance(raw_id, str) and raw_id.strip():
+                resolved_number = raw_id.strip()
+
+            customer_key = norm_id or (raw_id.strip() if isinstance(raw_id, str) and raw_id.strip() else None)
+            if customer_key:
+                self._customers[customer_key] = CustomerInfo(
+                    customer_id=customer_key,
+                    customer_number=resolved_number or customer_key,
+                    name=name,
+                )
+
+            keys = {
+                raw_id,
+                norm_id,
+                raw_number,
+                norm_number,
+                resolved_number,
+            }
+            keys = {key for key in keys if isinstance(key, str) and key}
+
+            if resolved_number:
+                norm_resolved = self._normalize_customer_key(resolved_number)
+                all_number_keys = set(keys)
+                if norm_resolved:
+                    all_number_keys.add(norm_resolved)
+                all_number_keys.add(resolved_number)
+                for key in all_number_keys:
+                    norm_key = self._normalize_customer_key(key)
+                    if norm_key:
+                        self._cust_id_to_nr[norm_key] = resolved_number
+                    self._cust_id_to_nr[key] = resolved_number
+
+            if name:
+                for key in keys:
+                    norm_key = self._normalize_customer_key(key)
+                    if norm_key:
+                        self._cust_name_by_nr[norm_key] = name
+                    self._cust_name_by_nr[key] = name
+
+    def _lookup_customer_name(self, number: object, customer_id: object) -> Optional[str]:
+        number_key = self._normalize_customer_key(number)
+        if number_key:
+            name = self._cust_name_by_nr.get(number_key)
+            if name:
+                return name
+        cid_key = self._normalize_customer_key(customer_id)
+        if cid_key:
+            info = self._customers.get(cid_key)
+            if info and info.name:
+                return info.name
+            name = self._cust_name_by_nr.get(cid_key)
+            if name:
+                return name
+        return None
+
+    def _safe_float(self, value: object) -> float:
+        try:
+            if pd.isna(value):  # type: ignore[arg-type]
+                return 0.0
+        except Exception:
+            pass
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return 0.0
+
     def _on_calc_top_customers(self, source: str, topn: int) -> Optional[List[Tuple[str, str, int, float]]]:
         if source == "faktura":
             if self._sales_agg is None or self._sales_agg.empty:
@@ -1015,17 +1194,43 @@ class NordlysWindow(QMainWindow):
                 )
                 return None
             data = self._sales_agg.copy()
-            data["Kundenavn"] = data["CustomerID"].map(self._cust_map).fillna("")
-            data = data.sort_values("OmsetningEksMva", ascending=False).head(topn)
-            rows = [
-                (
-                    str(row["CustomerID"]),
-                    str(row["Kundenavn"] or ""),
-                    int(row["Fakturaer"]),
-                    float(row["OmsetningEksMva"]),
+            if "Kundenr" not in data.columns:
+                data["Kundenr"] = data["CustomerID"].map(self._cust_id_to_nr).fillna(data["CustomerID"])
+            if "Kundenavn" not in data.columns:
+                data["Kundenavn"] = data.apply(
+                    lambda row: self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID")),
+                    axis=1,
                 )
-                for _, row in data.iterrows()
-            ]
+            else:
+                mask = data["Kundenavn"].isna() | (data["Kundenavn"].astype(str).str.strip() == "")
+                if mask.any():
+                    data.loc[mask, "Kundenavn"] = data.loc[mask].apply(
+                        lambda row: self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID")),
+                        axis=1,
+                    )
+            data = data.sort_values("OmsetningEksMva", ascending=False).head(topn)
+            rows = []
+            for _, row in data.iterrows():
+                number = row.get("Kundenr") or row.get("CustomerNumber")
+                if not number:
+                    number = row.get("CustomerID")
+                number_text = self._normalize_customer_key(number)
+                name = row.get("Kundenavn") or row.get("CustomerName")
+                if not name:
+                    name = self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID"))
+                count_val = row.get("Fakturaer", 0)
+                try:
+                    count_int = int(count_val)
+                except (TypeError, ValueError):
+                    count_int = 0
+                rows.append(
+                    (
+                        number_text or "—",
+                        name or "—",
+                        count_int,
+                        self._safe_float(row.get("OmsetningEksMva")),
+                    )
+                )
             self.statusBar().showMessage(f"Topp kunder (faktura) beregnet. N={topn}.")
             return rows
 
@@ -1037,19 +1242,53 @@ class NordlysWindow(QMainWindow):
             )
             return None
         data = self._ar_agg.copy()
-        data["Kundenavn"] = data["CustomerID"].map(self._cust_map).fillna("")
-        data["OmsetningEksMva"] = data["AR_Debit"]
-        data["Fakturaer"] = 0
-        data = data.sort_values("AR_Debit", ascending=False).head(topn)
-        rows = [
-            (
-                str(row["CustomerID"]),
-                str(row["Kundenavn"] or ""),
-                int(row.get("Fakturaer", 0)),
-                float(row["OmsetningEksMva"]),
+        if "Kundenr" not in data.columns:
+            data["Kundenr"] = data["CustomerID"].map(self._cust_id_to_nr).fillna(data["CustomerID"])
+        if "Kundenavn" not in data.columns:
+            data["Kundenavn"] = data.apply(
+                lambda row: self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID")),
+                axis=1,
             )
-            for _, row in data.iterrows()
-        ]
+        else:
+            mask = data["Kundenavn"].isna() | (data["Kundenavn"].astype(str).str.strip() == "")
+            if mask.any():
+                data.loc[mask, "Kundenavn"] = data.loc[mask].apply(
+                    lambda row: self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID")),
+                    axis=1,
+                )
+        if "OmsetningEksMva" not in data.columns:
+            data["OmsetningEksMva"] = data["AR_Debit"] - data.get("TaxAmount", 0)
+        else:
+            if "TaxAmount" in data.columns:
+                mask = data["OmsetningEksMva"] <= 0
+                data.loc[mask, "OmsetningEksMva"] = (
+                    data.loc[mask, "AR_Debit"] - data.loc[mask, "TaxAmount"]
+                )
+        data["OmsetningEksMva"] = data["OmsetningEksMva"].clip(lower=0.0)
+        data["Fakturaer"] = data.get("Fakturaer", 0)
+        data = data.sort_values("OmsetningEksMva", ascending=False).head(topn)
+        rows = []
+        for _, row in data.iterrows():
+            number = row.get("Kundenr") or row.get("CustomerNumber")
+            if not number:
+                number = row.get("CustomerID")
+            number_text = self._normalize_customer_key(number)
+            name = row.get("Kundenavn") or row.get("CustomerName")
+            if not name:
+                name = self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID"))
+            count_val = row.get("Fakturaer", 0)
+            try:
+                count_int = int(count_val)
+            except (TypeError, ValueError):
+                count_int = 0
+            rows.append(
+                (
+                    number_text or "—",
+                    name or "—",
+                    count_int,
+                    self._safe_float(row.get("OmsetningEksMva")),
+                )
+            )
         self.statusBar().showMessage(f"Topp kunder (reskontro) beregnet. N={topn}.")
         return rows
 
