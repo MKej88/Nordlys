@@ -44,6 +44,7 @@ from PySide6.QtWidgets import (
 from ..brreg import fetch_brreg, find_first_by_exact_endkey, map_brreg_metrics
 from ..constants import APP_TITLE
 from ..saft import (
+    CustomerInfo,
     SaftHeader,
     SaftValidationResult,
     extract_ar_from_gl,
@@ -612,7 +613,7 @@ class SalesArPage(QWidget):
         self.top_table = _create_table_widget()
         self.top_table.setColumnCount(4)
         self.top_table.setHorizontalHeaderLabels([
-            "KundeID",
+            "Kundenr",
             "Kundenavn",
             "Fakturaer",
             "Omsetning (eks. mva)",
@@ -643,7 +644,7 @@ class SalesArPage(QWidget):
     def set_top_customers(self, rows: Iterable[Tuple[str, str, int, float]]) -> None:
         _populate_table(
             self.top_table,
-            ["KundeID", "Kundenavn", "Fakturaer", "Omsetning (eks. mva)"],
+            ["Kundenr", "Kundenavn", "Fakturaer", "Omsetning (eks. mva)"],
             rows,
             money_cols={3},
         )
@@ -747,7 +748,9 @@ class NordlysWindow(QMainWindow):
         self._header: Optional[SaftHeader] = None
         self._brreg_json: Optional[Dict[str, object]] = None
         self._brreg_map: Optional[Dict[str, Optional[float]]] = None
-        self._cust_map: Dict[str, str] = {}
+        self._customers: Dict[str, CustomerInfo] = {}
+        self._cust_name_by_nr: Dict[str, str] = {}
+        self._cust_id_to_nr: Dict[str, str] = {}
         self._sales_agg: Optional[pd.DataFrame] = None
         self._ar_agg: Optional[pd.DataFrame] = None
         self._validation_result: Optional[SaftValidationResult] = None
@@ -987,9 +990,30 @@ class NordlysWindow(QMainWindow):
             root = ET.parse(file_name).getroot()
             self._header = parse_saft_header(root)
             df = parse_saldobalanse(root)
-            self._cust_map = parse_customers(root)
+            self._customers = parse_customers(root)
+            self._cust_id_to_nr = {
+                cid: info.customer_number or cid for cid, info in self._customers.items()
+            }
+            self._cust_name_by_nr = {}
+            for info in self._customers.values():
+                number = info.customer_number or info.customer_id
+                if number:
+                    self._cust_name_by_nr[number] = info.name
+                self._cust_name_by_nr.setdefault(info.customer_id, info.name)
             self._sales_agg = extract_sales_taxbase_by_customer(root)
             self._ar_agg = extract_ar_from_gl(root)
+            if self._sales_agg is not None and not self._sales_agg.empty and "CustomerID" in self._sales_agg.columns:
+                self._sales_agg["Kundenr"] = self._sales_agg["CustomerID"].map(self._cust_id_to_nr).fillna(
+                    self._sales_agg["CustomerID"]
+                )
+                cols = ["Kundenr"] + [col for col in self._sales_agg.columns if col != "Kundenr"]
+                self._sales_agg = self._sales_agg.loc[:, cols]
+            if self._ar_agg is not None and not self._ar_agg.empty and "CustomerID" in self._ar_agg.columns:
+                self._ar_agg["Kundenr"] = self._ar_agg["CustomerID"].map(self._cust_id_to_nr).fillna(
+                    self._ar_agg["CustomerID"]
+                )
+                cols = ["Kundenr"] + [col for col in self._ar_agg.columns if col != "Kundenr"]
+                self._ar_agg = self._ar_agg.loc[:, cols]
             self._saft_df = df
             self._saft_summary = ns4102_summary_from_tb(df)
             validation = validate_saft_against_xsd(file_name, self._header.file_version if self._header else None)
@@ -1054,11 +1078,13 @@ class NordlysWindow(QMainWindow):
                 )
                 return None
             data = self._sales_agg.copy()
-            data["Kundenavn"] = data["CustomerID"].map(self._cust_map).fillna("")
+            if "Kundenr" not in data.columns:
+                data["Kundenr"] = data["CustomerID"].map(self._cust_id_to_nr).fillna(data["CustomerID"])
+            data["Kundenavn"] = data["Kundenr"].map(self._cust_name_by_nr).fillna("")
             data = data.sort_values("OmsetningEksMva", ascending=False).head(topn)
             rows = [
                 (
-                    str(row["CustomerID"]),
+                    str(row.get("Kundenr", row.get("CustomerID", ""))),
                     str(row["Kundenavn"] or ""),
                     int(row["Fakturaer"]),
                     float(row["OmsetningEksMva"]),
@@ -1076,13 +1102,16 @@ class NordlysWindow(QMainWindow):
             )
             return None
         data = self._ar_agg.copy()
-        data["Kundenavn"] = data["CustomerID"].map(self._cust_map).fillna("")
-        data["OmsetningEksMva"] = data["AR_Debit"]
-        data["Fakturaer"] = 0
-        data = data.sort_values("AR_Debit", ascending=False).head(topn)
+        if "Kundenr" not in data.columns:
+            data["Kundenr"] = data["CustomerID"].map(self._cust_id_to_nr).fillna(data["CustomerID"])
+        data["Kundenavn"] = data["Kundenr"].map(self._cust_name_by_nr).fillna("")
+        if "OmsetningEksMva" not in data.columns:
+            data["OmsetningEksMva"] = data["AR_Debit"]
+        data["Fakturaer"] = data.get("Fakturaer", 0)
+        data = data.sort_values("OmsetningEksMva", ascending=False).head(topn)
         rows = [
             (
-                str(row["CustomerID"]),
+                str(row.get("Kundenr", row.get("CustomerID", ""))),
                 str(row["Kundenavn"] or ""),
                 int(row.get("Fakturaer", 0)),
                 float(row["OmsetningEksMva"]),

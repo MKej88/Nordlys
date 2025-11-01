@@ -47,6 +47,15 @@ class SaftValidationResult:
     details: Optional[str] = None
 
 
+@dataclass
+class CustomerInfo:
+    """Kundedata hentet fra masterfilen."""
+
+    customer_id: str
+    customer_number: str
+    name: str
+
+
 SAFT_RESOURCE_DIR = Path(__file__).resolve().parent / 'resources' / 'saf_t'
 
 
@@ -292,14 +301,30 @@ def ns4102_summary_from_tb(df: pd.DataFrame) -> Dict[str, float]:
     }
 
 
-def parse_customers(root: ET.Element) -> Dict[str, str]:
-    """Returnerer et oppslag over kunde-id til navn."""
-    customers: Dict[str, str] = {}
+def parse_customers(root: ET.Element) -> Dict[str, CustomerInfo]:
+    """Returnerer oppslag over kunder med kundenummer og navn."""
+
+    customers: Dict[str, CustomerInfo] = {}
     for element in root.findall('.//n1:MasterFiles/n1:Customer', NS):
         cid = text_or_none(element.find('n1:CustomerID', NS))
-        name = text_or_none(element.find('n1:Name', NS)) or ''
-        if cid:
-            customers[cid] = name
+        if not cid:
+            continue
+        number = (
+            text_or_none(element.find('n1:CustomerNumber', NS))
+            or text_or_none(element.find('n1:AccountID', NS))
+            or text_or_none(element.find('n1:SupplierAccountID', NS))
+            or cid
+        )
+        name = (
+            text_or_none(element.find('n1:Name', NS))
+            or text_or_none(element.find('n1:CompanyName', NS))
+            or ''
+        )
+        customers[cid] = CustomerInfo(
+            customer_id=cid,
+            customer_number=number or cid,
+            name=name,
+        )
     return customers
 
 
@@ -315,15 +340,24 @@ def extract_sales_taxbase_by_customer(root: ET.Element) -> pd.DataFrame:
                 break
         if not customer_id:
             continue
-        net_el = invoice.find('n1:DocumentTotals/n1:NetTotal', NS)
-        amount = to_float(text_or_none(net_el))
+        amount = to_float(
+            text_or_none(invoice.find('n1:DocumentTotals/n1:TaxExclusiveAmount', NS))
+        )
+        if amount == 0.0:
+            net_el = invoice.find('n1:DocumentTotals/n1:NetTotal', NS)
+            amount = to_float(text_or_none(net_el))
         if amount == 0.0:
             net2 = invoice.find('n1:DocumentTotals/n1:InvoiceNetTotal', NS)
             amount = to_float(text_or_none(net2))
         if amount == 0.0:
             bases = findall_any_namespace(invoice, 'TaxBase')
             amount = sum(to_float(text_or_none(base)) for base in bases)
-        rows.append({'CustomerID': customer_id, 'NetExVAT': float(amount)})
+        if amount == 0.0:
+            gross = to_float(text_or_none(invoice.find('n1:DocumentTotals/n1:GrossTotal', NS)))
+            tax = to_float(text_or_none(invoice.find('n1:DocumentTotals/n1:TaxPayable', NS)))
+            if gross and tax:
+                amount = gross - tax
+        rows.append({'CustomerID': customer_id, 'NetExVAT': float(max(amount, 0.0))})
 
     df = pd.DataFrame(rows)
     if df.empty:
@@ -361,19 +395,45 @@ def extract_ar_from_gl(root: ET.Element) -> pd.DataFrame:
         if 1500 <= account_int <= 1599:
             debit = get_amount(line, 'DebitAmount')
             credit = get_amount(line, 'CreditAmount')
-            rows.append({'CustomerID': customer_id, 'AR_Debit': debit, 'AR_Credit': credit})
+            tax_base_elements = findall_any_namespace(line, 'TaxBase')
+            taxable_amount_elements = findall_any_namespace(line, 'TaxableAmount')
+            tax_amount_elements = findall_any_namespace(line, 'TaxAmount')
+            tax_base = sum(to_float(text_or_none(el)) for el in tax_base_elements)
+            taxable_amount = sum(to_float(text_or_none(el)) for el in taxable_amount_elements)
+            tax_amount = sum(to_float(text_or_none(el)) for el in tax_amount_elements)
+            effective_base = tax_base or taxable_amount
+            if effective_base == 0.0 and tax_amount > 0.0:
+                effective_base = max(debit - tax_amount, 0.0)
+            rows.append(
+                {
+                    'CustomerID': customer_id,
+                    'AR_Debit': debit,
+                    'AR_Credit': credit,
+                    'TaxBase': effective_base,
+                    'TaxAmount': tax_amount,
+                }
+            )
 
     df = pd.DataFrame(rows)
     if df.empty:
         return df
-    grouped = df.groupby('CustomerID').agg({'AR_Debit': 'sum', 'AR_Credit': 'sum'}).reset_index()
+    grouped = (
+        df.groupby('CustomerID')
+        .agg({'AR_Debit': 'sum', 'AR_Credit': 'sum', 'TaxBase': 'sum', 'TaxAmount': 'sum'})
+        .reset_index()
+    )
     grouped['AR_Netto'] = grouped['AR_Debit'] - grouped['AR_Credit']
+    grouped['OmsetningEksMva'] = grouped['TaxBase']
+    mask = grouped['OmsetningEksMva'] == 0
+    grouped.loc[mask, 'OmsetningEksMva'] = grouped.loc[mask, 'AR_Debit'] - grouped.loc[mask, 'TaxAmount']
+    grouped['OmsetningEksMva'] = grouped['OmsetningEksMva'].clip(lower=0.0)
     return grouped
 
 
 __all__ = [
     'SaftHeader',
     'SaftValidationResult',
+    'CustomerInfo',
     'parse_saft_header',
     'parse_saldobalanse',
     'ns4102_summary_from_tb',

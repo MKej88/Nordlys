@@ -61,6 +61,7 @@ def build_sample_root() -> ET.Element:
         </GeneralLedgerAccounts>
         <Customer>
           <CustomerID>K1</CustomerID>
+          <CustomerNumber>1001</CustomerNumber>
           <Name>Kunde 1</Name>
         </Customer>
       </MasterFiles>
@@ -69,7 +70,10 @@ def build_sample_root() -> ET.Element:
           <Invoice>
             <CustomerID>K1</CustomerID>
             <DocumentTotals>
+              <TaxExclusiveAmount>1000</TaxExclusiveAmount>
               <NetTotal>1000</NetTotal>
+              <GrossTotal>1250</GrossTotal>
+              <TaxPayable>250</TaxPayable>
             </DocumentTotals>
           </Invoice>
         </SalesInvoices>
@@ -82,6 +86,10 @@ def build_sample_root() -> ET.Element:
               <DebitAmount>1000</DebitAmount>
               <CreditAmount>0</CreditAmount>
               <CustomerID>K1</CustomerID>
+              <TaxInformation>
+                <TaxBase>1000</TaxBase>
+                <TaxAmount>250</TaxAmount>
+              </TaxInformation>
             </Line>
           </Transaction>
         </Journal>
@@ -98,7 +106,9 @@ def test_parse_header_and_customers():
     assert header.orgnr == "999999999"
     assert header.fiscal_year == "2023"
     customers = parse_customers(root)
-    assert customers == {"K1": "Kunde 1"}
+    assert "K1" in customers
+    assert customers["K1"].customer_number == "1001"
+    assert customers["K1"].name == "Kunde 1"
 
 
 def test_parse_saldobalanse_and_summary():
@@ -120,6 +130,7 @@ def test_extract_sales_and_ar():
     ar = extract_ar_from_gl(root)
     assert ar.loc[0, 'AR_Debit'] == 1000
     assert ar.loc[0, 'AR_Netto'] == 1000
+    assert ar.loc[0, 'OmsetningEksMva'] == 1000
 
 
 def test_format_helpers():
