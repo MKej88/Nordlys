@@ -1,6 +1,12 @@
 # Nordlys
 
-Nordlys er et Python-basert analyseverktøy som hjelper revisorer og controllere med å få oversikt over SAF-T-filer. Programmet kombinerer informasjon fra regnskapsregisteret med data som leses fra SAF-T-filer, og presenterer resultatet i et moderne skrivebordsgrensesnitt bygget med PySide6.
+Nordlys er et Python-basert analyseverktøy som hjelper revisorer og controllere med å få oversikt over SAF-T-filer. Navnevalget Nordlys gjenspeiler målet om å gi klar sikt i komplekse regnskapsdata gjennom et moderne skrivebordsgrensesnitt bygget med PySide6. Løsningen kombinerer informasjon fra regnskapsregisteret med data som leses fra SAF-T-filer og presenterer resultatet i et visuelt og interaktivt grensesnitt.
+
+## Hvorfor Nordlys?
+
+- ✨ Konsekvent profilering gjør det enklere å introdusere løsningen internt og eksternt.
+- 🧭 Klart navn i vinduer, dokumentasjon og installasjonslister reduserer forvirring for sluttbrukere.
+- 🔁 Ensartet navnebruk forenkler vedlikehold, testing og videreutvikling.
 
 ## Hovedfunksjoner
 
@@ -16,6 +22,17 @@ Nordlys er et Python-basert analyseverktøy som hjelper revisorer og controllere
 - Python 3.10 eller nyere.
 - Operativsystem med støtte for PySide6 (Windows, macOS eller Linux med X11/Wayland).
 - Tilgang til internett dersom Brønnøysund-data skal hentes.
+- Tilgang til `xmlschema` dersom Nordlys skal utføre utvidet XSD-validering (se under).
+
+## Avhengigheter og teknologi
+
+Nordlys bygger på følgende Python-bibliotek. Alle er oppført i `requirements.txt` slik at navnet Nordlys følger avhengighetene gjennom hele oppsettet:
+
+- `pandas>=1.5` – tabell- og dataserieoperasjoner for saldobalanse og fakturadata.
+- `PySide6>=6.5` – grafisk grensesnitt der Nordlys presenterer analyser og arbeidskort.
+- `requests>=2.31` – innhenting av regnskapsdata fra Brønnøysundregistrene.
+- `pytest>=7.4` – kjøring av enhetstester som sikrer at Nordlys-parsingen fungerer som forventet.
+- `xmlschema>=2.2` – valgfri validering av SAF-T-filer mot XSD-skjema for mer presise feilmeldinger.
 
 ## Komme i gang
 
@@ -28,12 +45,12 @@ Nordlys er et Python-basert analyseverktøy som hjelper revisorer og controllere
    ```bash
    pip install -r requirements.txt
    ```
-3. **Start applikasjonen**:
+3. **Start Nordlys**:
    ```bash
    python main.py
    ```
 
-Når programmet kjøres åpnes et PySide6-basert brukergrensesnitt som lar deg:
+Når Nordlys kjøres åpnes et PySide6-basert brukergrensesnitt som lar deg:
 
 - Velge en SAF-T-fil via filvelgeren.
 - Se oversiktskort med nøkkeltall og avstemningsforslag.
@@ -68,7 +85,7 @@ Nordlys/
 ## Nyttige tips for videre utvikling
 
 - Behold funksjonelle endringer i egne moduler og legg til nye tester i `tests/` for å dokumentere forventet oppførsel.
-- Når nye tredjepartsbibliotek tas i bruk bør `requirements.txt` oppdateres og minimumsversjoner vurderes.
+- Når nye tredjepartsbibliotek tas i bruk bør `requirements.txt` oppdateres og minimumsversjoner vurderes for å beholde Nordlys-navnet tydelig i alle miljø.
 - Brønnøysund-integrasjonen (`nordlys/brreg.py`) har en timeout på 20 sekunder. Håndter eventuelle feil med passende feilmeldinger i UI-et.
 
 ## Lisens
