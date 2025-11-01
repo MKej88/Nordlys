@@ -318,6 +318,8 @@ def parse_customers(root: ET.Element) -> Dict[str, CustomerInfo]:
         name = (
             text_or_none(element.find('n1:Name', NS))
             or text_or_none(element.find('n1:CompanyName', NS))
+            or text_or_none(element.find('n1:Contact/n1:Name', NS))
+            or text_or_none(element.find('n1:Contact/n1:ContactName', NS))
             or ''
         )
         customers[cid] = CustomerInfo(
@@ -333,30 +335,56 @@ def extract_sales_taxbase_by_customer(root: ET.Element) -> pd.DataFrame:
     rows: List[Dict[str, float]] = []
     for invoice in root.findall('.//n1:SourceDocuments/n1:SalesInvoices/n1:Invoice', NS):
         customer_id = None
-        for path in ['n1:CustomerID', 'n1:Customer/n1:CustomerID']:
+        for path in ['n1:CustomerID', 'n1:Customer/n1:CustomerID', 'n1:CustomerParty/n1:CustomerID']:
             element = invoice.find(path, NS)
             if element is not None and element.text and element.text.strip():
                 customer_id = element.text.strip()
                 break
         if not customer_id:
             continue
-        amount = to_float(
+        tax_exclusive = to_float(
             text_or_none(invoice.find('n1:DocumentTotals/n1:TaxExclusiveAmount', NS))
         )
-        if amount == 0.0:
-            net_el = invoice.find('n1:DocumentTotals/n1:NetTotal', NS)
-            amount = to_float(text_or_none(net_el))
-        if amount == 0.0:
-            net2 = invoice.find('n1:DocumentTotals/n1:InvoiceNetTotal', NS)
-            amount = to_float(text_or_none(net2))
-        if amount == 0.0:
-            bases = findall_any_namespace(invoice, 'TaxBase')
-            amount = sum(to_float(text_or_none(base)) for base in bases)
-        if amount == 0.0:
-            gross = to_float(text_or_none(invoice.find('n1:DocumentTotals/n1:GrossTotal', NS)))
-            tax = to_float(text_or_none(invoice.find('n1:DocumentTotals/n1:TaxPayable', NS)))
-            if gross and tax:
-                amount = gross - tax
+        net_total = to_float(text_or_none(invoice.find('n1:DocumentTotals/n1:NetTotal', NS)))
+        invoice_net_total = to_float(
+            text_or_none(invoice.find('n1:DocumentTotals/n1:InvoiceNetTotal', NS))
+        )
+        gross_total = to_float(text_or_none(invoice.find('n1:DocumentTotals/n1:GrossTotal', NS)))
+        inclusive_total = to_float(
+            text_or_none(invoice.find('n1:DocumentTotals/n1:TaxInclusiveAmount', NS))
+        )
+        tax_payable = to_float(text_or_none(invoice.find('n1:DocumentTotals/n1:TaxPayable', NS)))
+        if tax_payable == 0.0:
+            tax_payable = to_float(
+                text_or_none(invoice.find('n1:DocumentTotals/n1:TaxTotal/n1:TaxAmount', NS))
+            )
+
+        line_tax_base = sum(
+            to_float(text_or_none(base)) for base in findall_any_namespace(invoice, 'TaxBase')
+        )
+        if line_tax_base == 0.0:
+            line_tax_base = sum(
+                to_float(text_or_none(base))
+                for base in findall_any_namespace(invoice, 'TaxableAmount')
+            )
+
+        net_candidates = [tax_exclusive, net_total, invoice_net_total, line_tax_base]
+        if gross_total and tax_payable:
+            net_candidates.append(gross_total - tax_payable)
+        if inclusive_total and tax_payable:
+            net_candidates.append(inclusive_total - tax_payable)
+
+        amount = 0.0
+        for candidate in net_candidates:
+            if candidate and candidate > 0.0:
+                amount = candidate
+                break
+
+        if amount > 0.0 and gross_total and tax_payable and abs(amount - gross_total) < 1e-3:
+            amount = gross_total - tax_payable
+        if amount <= 0.0 and line_tax_base > 0.0:
+            amount = line_tax_base
+
         rows.append({'CustomerID': customer_id, 'NetExVAT': float(max(amount, 0.0))})
 
     df = pd.DataFrame(rows)

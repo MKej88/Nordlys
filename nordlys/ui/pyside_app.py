@@ -1006,11 +1006,19 @@ class NordlysWindow(QMainWindow):
                 self._sales_agg["Kundenr"] = self._sales_agg["CustomerID"].map(self._cust_id_to_nr).fillna(
                     self._sales_agg["CustomerID"]
                 )
+                self._sales_agg["Kundenavn"] = self._sales_agg.apply(
+                    lambda row: self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID")),
+                    axis=1,
+                )
                 cols = ["Kundenr"] + [col for col in self._sales_agg.columns if col != "Kundenr"]
                 self._sales_agg = self._sales_agg.loc[:, cols]
             if self._ar_agg is not None and not self._ar_agg.empty and "CustomerID" in self._ar_agg.columns:
                 self._ar_agg["Kundenr"] = self._ar_agg["CustomerID"].map(self._cust_id_to_nr).fillna(
                     self._ar_agg["CustomerID"]
+                )
+                self._ar_agg["Kundenavn"] = self._ar_agg.apply(
+                    lambda row: self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID")),
+                    axis=1,
                 )
                 cols = ["Kundenr"] + [col for col in self._ar_agg.columns if col != "Kundenr"]
                 self._ar_agg = self._ar_agg.loc[:, cols]
@@ -1068,6 +1076,44 @@ class NordlysWindow(QMainWindow):
             QMessageBox.critical(self, "Feil ved lesing av SAF-T", str(exc))
             self.statusBar().showMessage("Feil ved lesing av SAF-T.")
 
+    def _normalize_customer_key(self, value: object) -> Optional[str]:
+        if value is None:
+            return None
+        try:
+            if pd.isna(value):  # type: ignore[arg-type]
+                return None
+        except Exception:
+            pass
+        text = str(value).strip()
+        return text or None
+
+    def _lookup_customer_name(self, number: object, customer_id: object) -> Optional[str]:
+        number_key = self._normalize_customer_key(number)
+        if number_key:
+            name = self._cust_name_by_nr.get(number_key)
+            if name:
+                return name
+        cid_key = self._normalize_customer_key(customer_id)
+        if cid_key:
+            info = self._customers.get(cid_key)
+            if info and info.name:
+                return info.name
+            name = self._cust_name_by_nr.get(cid_key)
+            if name:
+                return name
+        return None
+
+    def _safe_float(self, value: object) -> float:
+        try:
+            if pd.isna(value):  # type: ignore[arg-type]
+                return 0.0
+        except Exception:
+            pass
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return 0.0
+
     def _on_calc_top_customers(self, source: str, topn: int) -> Optional[List[Tuple[str, str, int, float]]]:
         if source == "faktura":
             if self._sales_agg is None or self._sales_agg.empty:
@@ -1080,17 +1126,30 @@ class NordlysWindow(QMainWindow):
             data = self._sales_agg.copy()
             if "Kundenr" not in data.columns:
                 data["Kundenr"] = data["CustomerID"].map(self._cust_id_to_nr).fillna(data["CustomerID"])
-            data["Kundenavn"] = data["Kundenr"].map(self._cust_name_by_nr).fillna("")
+            data["Kundenavn"] = data.apply(
+                lambda row: self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID")),
+                axis=1,
+            )
             data = data.sort_values("OmsetningEksMva", ascending=False).head(topn)
-            rows = [
-                (
-                    str(row.get("Kundenr", row.get("CustomerID", ""))),
-                    str(row["Kundenavn"] or ""),
-                    int(row["Fakturaer"]),
-                    float(row["OmsetningEksMva"]),
+            rows = []
+            for _, row in data.iterrows():
+                number = self._normalize_customer_key(row.get("Kundenr"))
+                if not number:
+                    number = self._normalize_customer_key(row.get("CustomerID"))
+                name = self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID"))
+                count_val = row.get("Fakturaer", 0)
+                try:
+                    count_int = int(count_val)
+                except (TypeError, ValueError):
+                    count_int = 0
+                rows.append(
+                    (
+                        number or "—",
+                        name or "—",
+                        count_int,
+                        self._safe_float(row.get("OmsetningEksMva")),
+                    )
                 )
-                for _, row in data.iterrows()
-            ]
             self.statusBar().showMessage(f"Topp kunder (faktura) beregnet. N={topn}.")
             return rows
 
@@ -1104,20 +1163,40 @@ class NordlysWindow(QMainWindow):
         data = self._ar_agg.copy()
         if "Kundenr" not in data.columns:
             data["Kundenr"] = data["CustomerID"].map(self._cust_id_to_nr).fillna(data["CustomerID"])
-        data["Kundenavn"] = data["Kundenr"].map(self._cust_name_by_nr).fillna("")
+        data["Kundenavn"] = data.apply(
+            lambda row: self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID")),
+            axis=1,
+        )
         if "OmsetningEksMva" not in data.columns:
-            data["OmsetningEksMva"] = data["AR_Debit"]
+            data["OmsetningEksMva"] = data["AR_Debit"] - data.get("TaxAmount", 0)
+        else:
+            if "TaxAmount" in data.columns:
+                mask = data["OmsetningEksMva"] <= 0
+                data.loc[mask, "OmsetningEksMva"] = (
+                    data.loc[mask, "AR_Debit"] - data.loc[mask, "TaxAmount"]
+                )
+        data["OmsetningEksMva"] = data["OmsetningEksMva"].clip(lower=0.0)
         data["Fakturaer"] = data.get("Fakturaer", 0)
         data = data.sort_values("OmsetningEksMva", ascending=False).head(topn)
-        rows = [
-            (
-                str(row.get("Kundenr", row.get("CustomerID", ""))),
-                str(row["Kundenavn"] or ""),
-                int(row.get("Fakturaer", 0)),
-                float(row["OmsetningEksMva"]),
+        rows = []
+        for _, row in data.iterrows():
+            number = self._normalize_customer_key(row.get("Kundenr"))
+            if not number:
+                number = self._normalize_customer_key(row.get("CustomerID"))
+            name = self._lookup_customer_name(row.get("Kundenr"), row.get("CustomerID"))
+            count_val = row.get("Fakturaer", 0)
+            try:
+                count_int = int(count_val)
+            except (TypeError, ValueError):
+                count_int = 0
+            rows.append(
+                (
+                    number or "—",
+                    name or "—",
+                    count_int,
+                    self._safe_float(row.get("OmsetningEksMva")),
+                )
             )
-            for _, row in data.iterrows()
-        ]
         self.statusBar().showMessage(f"Topp kunder (reskontro) beregnet. N={topn}.")
         return rows
 

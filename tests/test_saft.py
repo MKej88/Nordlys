@@ -4,6 +4,7 @@ import sys
 import xml.etree.ElementTree as ET
 
 import pandas as pd
+import pytest
 
 from nordlys.saft import (
     extract_ar_from_gl,
@@ -173,6 +174,45 @@ def test_validate_saft_against_xsd_known_version(tmp_path):
     else:
         assert result.is_valid is None
         assert 'xmlschema' in (result.details or '').lower()
+
+
+def test_extract_sales_handles_tax_inclusive_amount():
+    xml = """
+    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <Header>
+        <AuditFileVersion>1.0</AuditFileVersion>
+      </Header>
+      <MasterFiles>
+        <Customer>
+          <CustomerID>ABC</CustomerID>
+          <CustomerNumber>5001</CustomerNumber>
+          <Contact>
+            <Name>Testkunde AS</Name>
+          </Contact>
+        </Customer>
+      </MasterFiles>
+      <SourceDocuments>
+        <SalesInvoices>
+          <Invoice>
+            <Customer>
+              <CustomerID>ABC</CustomerID>
+            </Customer>
+            <DocumentTotals>
+              <TaxInclusiveAmount>1250</TaxInclusiveAmount>
+              <TaxTotal>
+                <TaxAmount>250</TaxAmount>
+              </TaxTotal>
+            </DocumentTotals>
+          </Invoice>
+        </SalesInvoices>
+      </SourceDocuments>
+    </AuditFile>
+    """
+    root = ET.fromstring(xml)
+    sales = extract_sales_taxbase_by_customer(root)
+    assert not sales.empty
+    assert sales.loc[0, 'CustomerID'] == 'ABC'
+    assert sales.loc[0, 'OmsetningEksMva'] == pytest.approx(1000)
 
 
 def test_validate_saft_against_xsd_without_dependency(monkeypatch, tmp_path):
