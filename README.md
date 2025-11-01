@@ -59,7 +59,7 @@ Prosjektet benytter `pytest` til enhetstester. Kjør testene lokalt med:
 pytest
 ```
 
-Testene bruker eksempeldata som ligger i `tests/`-mappen for å validere parsing av SAF-T-filer og aggregering av regnskapstall.
+Testene genererer alle nødvendige SAF-T- og regnskapsdata programmatisk ved kjøring. Det finnes derfor ingen egne eksempeldatafiler lagret i `tests/`, og du trenger ikke å laste ned eller opprette tilleggsfiler for å få testene til å passere.
 
 ## Struktur
 
@@ -73,7 +73,7 @@ Nordlys/
 │   ├── constants.py       # Konstanter som brukes på tvers av modulene
 │   └── ui/
 │       └── pyside_app.py  # GUI-komponenter og interaksjon
-└── tests/                 # Pytest-tester og eksempeldata
+└── tests/                 # Pytest-tester som genererer data programmatisk
 ```
 
 ## Nyttige tips for videre utvikling
