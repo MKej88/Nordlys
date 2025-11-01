@@ -535,8 +535,8 @@ class NavigationPanel(QFrame):
         self.tree.setExpandsOnDoubleClick(False)
         self.tree.setIndentation(12)
         self.tree.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.tree.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.tree.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.tree.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.tree.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         layout.addWidget(self.tree, 1)
 
     def add_root(self, title: str, key: str | None = None) -> NavigationItem:
@@ -562,6 +562,10 @@ class NordlysWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle(APP_TITLE)
         self.resize(1460, 940)
+        # Sikrer at hovedvinduet kan maksimeres uten Qt-advarsler selv om enkelte
+        # underliggende widgets har begrensende størrelseshint.
+        self.setMinimumSize(1100, 720)
+        self.setMaximumSize(16777215, 16777215)
 
         self._saft_df: Optional[pd.DataFrame] = None
         self._saft_summary: Optional[Dict[str, float]] = None
@@ -589,6 +593,7 @@ class NordlysWindow(QMainWindow):
         root_layout.addWidget(self.nav_panel, 0)
 
         content_wrapper = QWidget()
+        content_wrapper.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         content_layout = QVBoxLayout(content_wrapper)
         content_layout.setContentsMargins(32, 32, 32, 32)
         content_layout.setSpacing(24)
