@@ -52,6 +52,9 @@ from ..saft import (
 from ..utils import format_currency, format_difference
 
 
+LOCK_COLLAPSE_ROLE = Qt.UserRole + 1
+
+
 REVISION_TASKS: Dict[str, List[str]] = {
     "rev.innkjop": [
         "Avstem leverandørreskontro mot hovedbok",
@@ -235,6 +238,7 @@ class DashboardPage(QWidget):
         controls.addStretch(1)
         self.calc_button = QPushButton("Beregn topp kunder")
         self.calc_button.clicked.connect(self._handle_calc_clicked)
+        self.calc_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         controls.addWidget(self.calc_button)
         self.top_card.add_layout(controls)
 
@@ -512,6 +516,7 @@ class ChecklistPage(QWidget):
 class NavigationItem:
     key: str
     item: QTreeWidgetItem
+    collapsible: bool = True
 
 
 class NavigationPanel(QFrame):
@@ -537,22 +542,33 @@ class NavigationPanel(QFrame):
         self.tree.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.tree.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.tree.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.tree.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.tree.itemCollapsed.connect(self._on_item_collapsed)
         layout.addWidget(self.tree, 1)
 
-    def add_root(self, title: str, key: str | None = None) -> NavigationItem:
+    def add_root(self, title: str, key: str | None = None, collapsible: bool = True) -> NavigationItem:
         item = QTreeWidgetItem([title])
         if key:
             item.setData(0, Qt.UserRole, key)
+        item.setData(0, LOCK_COLLAPSE_ROLE, not collapsible)
         self.tree.addTopLevelItem(item)
-        self.tree.expandItem(item)
-        return NavigationItem(key or title.lower(), item)
+        item.setExpanded(True)
+        if not collapsible:
+            item.setChildIndicatorPolicy(QTreeWidgetItem.ChildIndicatorPolicy.DontShowIndicator)
+        return NavigationItem(key or title.lower(), item, collapsible)
 
     def add_child(self, parent: NavigationItem, title: str, key: str) -> NavigationItem:
         item = QTreeWidgetItem([title])
         item.setData(0, Qt.UserRole, key)
         parent.item.addChild(item)
         parent.item.setExpanded(True)
+        if not parent.collapsible:
+            parent.item.setChildIndicatorPolicy(QTreeWidgetItem.ChildIndicatorPolicy.DontShowIndicator)
         return NavigationItem(key, item)
+
+    def _on_item_collapsed(self, item: QTreeWidgetItem) -> None:
+        if item.data(0, LOCK_COLLAPSE_ROLE):
+            self.tree.expandItem(item)
 
 
 class NordlysWindow(QMainWindow):
@@ -620,6 +636,9 @@ class NordlysWindow(QMainWindow):
         self.btn_export.setEnabled(False)
         header_layout.addWidget(self.btn_export)
 
+        for button in (self.btn_open, self.btn_brreg, self.btn_export):
+            button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+
         content_layout.addLayout(header_layout)
 
         info_card = CardFrame("Selskapsinformasjon")
@@ -650,6 +669,14 @@ class NordlysWindow(QMainWindow):
         self._register_page("dashboard", dashboard)
         self.stack.addWidget(dashboard)
         self.dashboard_page = dashboard
+
+        saldo_page = DataFramePage(
+            "Saldobalanse",
+            "Full oversikt over alle konti og saldi fra SAF-T-filen.",
+        )
+        self._register_page("plan.saldo", saldo_page)
+        self.stack.addWidget(saldo_page)
+        self.saldobalanse_page = saldo_page
 
         kontroll_page = DataFramePage(
             "Kontroll av inngående balanse",
@@ -699,13 +726,14 @@ class NordlysWindow(QMainWindow):
         nav = self.nav_panel
         dashboard_item = nav.add_root("Dashboard", "dashboard")
 
-        planning_root = nav.add_root("Planlegging")
+        planning_root = nav.add_root("Planlegging", collapsible=False)
+        nav.add_child(planning_root, "Saldobalanse", "plan.saldo")
         nav.add_child(planning_root, "Kontroll IB", "plan.kontroll")
         nav.add_child(planning_root, "Vesentlighetsvurdering", "plan.vesentlighet")
         nav.add_child(planning_root, "Regnskapsanalyse", "plan.regnskapsanalyse")
         nav.add_child(planning_root, "Sammenstillingsanalyse", "plan.sammenstilling")
 
-        revision_root = nav.add_root("Revisjon")
+        revision_root = nav.add_root("Revisjon", collapsible=False)
         nav.add_child(revision_root, "Innkjøp og leverandørgjeld", "rev.innkjop")
         nav.add_child(revision_root, "Lønn", "rev.lonn")
         nav.add_child(revision_root, "Kostnad", "rev.kostnad")
@@ -785,6 +813,7 @@ class NordlysWindow(QMainWindow):
             self._saft_summary = ns4102_summary_from_tb(df)
 
             self._update_header_fields()
+            self.saldobalanse_page.set_dataframe(df)
             self.kontroll_page.set_dataframe(df)
             self.dashboard_page.update_summary(self._saft_summary)
             company = self._header.company_name if self._header else None
