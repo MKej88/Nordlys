@@ -1,4 +1,4 @@
-"""Nordlys SAF-T analysator biblioteksgrensesnitt."""
+"""Nordlys-bibliotekets grensesnitt."""
 
 from . import brreg, saft, utils
 from .constants import APP_TITLE, BRREG_URL_TMPL, NS

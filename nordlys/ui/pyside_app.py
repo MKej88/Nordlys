@@ -1,4 +1,4 @@
-"""PySide6-basert GUI for Nordlys SAF-T analysator."""
+"""PySide6-basert GUI for Nordlys."""
 from __future__ import annotations
 
 import json
