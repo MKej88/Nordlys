@@ -1,0 +1,5 @@
+"""Konstanter for Nordlys SAF-T analysator."""
+
+APP_TITLE = "SAF-T Analysator v3.5 + Regnskapsregister (åpen del)"
+BRREG_URL_TMPL = "https://data.brreg.no/regnskapsregisteret/regnskap/{orgnr}"
+NS = {"n1": "urn:StandardAuditFile-Taxation-Financial:NO"}
