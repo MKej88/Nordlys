@@ -11,6 +11,7 @@ from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import pandas as pd
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QBrush, QColor, QFont
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -18,6 +19,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QFrame,
     QGridLayout,
+    QGraphicsDropShadowEffect,
     QHeaderView,
     QHBoxLayout,
     QLabel,
@@ -118,6 +120,13 @@ class CardFrame(QFrame):
         self.setObjectName("card")
         self.setFrameShape(QFrame.StyledPanel)
         self.setFrameShadow(QFrame.Raised)
+        self.setAttribute(Qt.WA_StyledBackground, True)
+
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(24)
+        shadow.setOffset(0, 8)
+        shadow.setColor(QColor(15, 23, 42, 32))
+        self.setGraphicsEffect(shadow)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
         layout.setSpacing(16)
@@ -149,6 +158,7 @@ class StatBadge(QFrame):
     def __init__(self, title: str, description: str) -> None:
         super().__init__()
         self.setObjectName("statBadge")
+        self.setAttribute(Qt.WA_StyledBackground, True)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(18, 18, 18, 18)
@@ -654,6 +664,25 @@ class NavigationPanel(QFrame):
         item = QTreeWidgetItem([title])
         if key:
             item.setData(0, Qt.UserRole, key)
+            font = item.font(0)
+            font.setPointSize(font.pointSize() + 1)
+            font.setWeight(QFont.DemiBold)
+            item.setFont(0, font)
+            item.setForeground(0, QBrush(QColor("#f8fafc")))
+        else:
+            font = item.font(0)
+            font.setPointSize(max(font.pointSize() - 1, 9))
+            font.setWeight(QFont.DemiBold)
+            font.setCapitalization(QFont.AllUppercase)
+            font.setLetterSpacing(QFont.PercentageSpacing, 115)
+            item.setFont(0, font)
+            item.setForeground(0, QBrush(QColor("#94a3b8")))
+            item.setFlags(
+                item.flags()
+                & ~Qt.ItemIsSelectable
+                & ~Qt.ItemIsDragEnabled
+                & ~Qt.ItemIsDropEnabled
+            )
         self.tree.addTopLevelItem(item)
         self.tree.expandItem(item)
         return NavigationItem(key or title.lower(), item)
@@ -661,6 +690,10 @@ class NavigationPanel(QFrame):
     def add_child(self, parent: NavigationItem, title: str, key: str) -> NavigationItem:
         item = QTreeWidgetItem([title])
         item.setData(0, Qt.UserRole, key)
+        font = item.font(0)
+        font.setWeight(QFont.Medium)
+        item.setFont(0, font)
+        item.setForeground(0, QBrush(QColor("#e2e8f0")))
         parent.item.addChild(item)
         parent.item.setExpanded(True)
         return NavigationItem(key, item)
@@ -854,39 +887,49 @@ class NordlysWindow(QMainWindow):
     def _apply_styles(self) -> None:
         self.setStyleSheet(
             """
-            QWidget { font-family: 'Inter', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; font-size: 13px; color: #0f172a; }
-            QMainWindow { background-color: #f4f6fb; }
-            #navPanel { background-color: #0f172a; color: #e2e8f0; }
-            #logoLabel { font-size: 24px; font-weight: 700; letter-spacing: 0.4px; color: #f8fafc; }
-            #navTree { background: transparent; border: none; color: #cbd5f5; font-size: 14px; }
+            QWidget { font-family: 'Inter', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; font-size: 14px; color: #0f172a; }
+            QMainWindow { background-color: #edf1f7; }
+            #navPanel { background-color: #0b1120; color: #e2e8f0; border-right: 1px solid rgba(148, 163, 184, 0.18); }
+            #logoLabel { font-size: 26px; font-weight: 700; letter-spacing: 0.6px; color: #f8fafc; }
+            #navTree { background: transparent; border: none; color: #dbeafe; font-size: 14px; }
             #navTree:focus { outline: none; border: none; }
             QTreeWidget::item:focus { outline: none; }
-            #navTree::item { height: 34px; padding: 4px 6px; }
-            #navTree::item:selected { background-color: #2563eb; color: #ffffff; border-radius: 8px; }
-            #navTree::item:hover { background-color: rgba(37, 99, 235, 0.25); }
-            QPushButton { background-color: #2563eb; color: white; border-radius: 8px; padding: 9px 18px; font-weight: 600; }
+            #navTree::item { height: 34px; padding: 6px 10px; border-radius: 10px; margin: 2px 0; }
+            #navTree::item:selected { background-color: rgba(59, 130, 246, 0.35); color: #f8fafc; font-weight: 600; }
+            #navTree::item:hover { background-color: rgba(59, 130, 246, 0.18); }
+            QPushButton { background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 #2563eb, stop:1 #1d4ed8); color: white; border-radius: 10px; padding: 10px 20px; font-weight: 600; letter-spacing: 0.2px; }
             QPushButton:focus { outline: none; }
-            QPushButton:disabled { background-color: #9ca3af; color: #e5e7eb; }
-            QPushButton:hover:!disabled { background-color: #1d4ed8; }
-            QPushButton:pressed { background-color: #1e40af; }
-            #card { background-color: #ffffff; border-radius: 20px; border: 1px solid #e2e8f0; }
-            #cardTitle { font-size: 18px; font-weight: 600; color: #0f172a; }
-            #cardSubtitle { color: #64748b; font-size: 12px; }
-            #pageTitle { font-size: 26px; font-weight: 700; color: #020617; letter-spacing: 0.2px; }
-            #statusLabel { color: #1f2937; font-size: 14px; }
-            #infoLabel { color: #64748b; }
-            #jsonView { background-color: #0f172a; color: #f9fafb; font-family: "Fira Code", monospace; border-radius: 12px; padding: 12px; }
-            #cardTable { border: none; gridline-color: #e2e8f0; }
-            QTableWidget::item { padding: 6px; }
-            QHeaderView::section { background-color: transparent; border: none; font-weight: 600; color: #475569; padding: 6px 4px; }
+            QPushButton:disabled { background-color: #94a3b8; color: #e5e7eb; }
+            QPushButton:hover:!disabled { background-color: #1e40af; }
+            QPushButton:pressed { background-color: #1d4ed8; }
+            #card { background-color: #ffffff; border-radius: 18px; border: 1px solid rgba(148, 163, 184, 0.28); }
+            #cardTitle { font-size: 20px; font-weight: 600; color: #0f172a; letter-spacing: 0.2px; }
+            #cardSubtitle { color: #64748b; font-size: 13px; line-height: 1.4; }
+            #pageTitle { font-size: 28px; font-weight: 700; color: #020617; letter-spacing: 0.4px; }
+            #statusLabel { color: #1f2937; font-size: 14px; line-height: 1.5; }
+            #infoLabel { color: #475569; font-size: 14px; }
+            #jsonView { background-color: #0f172a; color: #f9fafb; font-family: "Fira Code", monospace; border-radius: 12px; padding: 14px; border: 1px solid #1e293b; }
+            #cardTable { border: none; gridline-color: rgba(148, 163, 184, 0.35); background-color: transparent; alternate-background-color: #f8fafc; }
+            QTableWidget { background-color: transparent; alternate-background-color: #f8fafc; }
+            QTableWidget::item { padding: 10px 8px; }
+            QTableWidget::item:selected { background-color: rgba(37, 99, 235, 0.22); color: #0f172a; }
+            QHeaderView::section { background-color: transparent; border: none; font-weight: 600; color: #1f2937; padding: 10px 6px; }
+            QHeaderView::section:horizontal { border-bottom: 1px solid rgba(148, 163, 184, 0.45); }
             QListWidget#checklist { border: none; }
-            QListWidget#checklist::item { padding: 10px; margin: 3px 0; border-radius: 8px; }
-            QListWidget#checklist::item:selected { background-color: rgba(37, 99, 235, 0.18); color: #0f172a; }
-            #statBadge { background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 16px; }
-            #statTitle { font-size: 13px; font-weight: 600; color: #475569; text-transform: uppercase; letter-spacing: 1px; }
-            #statValue { font-size: 24px; font-weight: 700; color: #0f172a; }
+            QListWidget#checklist::item { padding: 12px 14px; margin: 4px 0; border-radius: 10px; }
+            QListWidget#checklist::item:selected { background-color: rgba(37, 99, 235, 0.16); color: #0f172a; font-weight: 600; }
+            QListWidget#checklist::item:hover { background-color: rgba(15, 23, 42, 0.05); }
+            #statBadge { background-color: #f8fafc; border: 1px solid rgba(148, 163, 184, 0.35); border-radius: 16px; }
+            #statTitle { font-size: 12px; font-weight: 600; color: #475569; text-transform: uppercase; letter-spacing: 1.2px; }
+            #statValue { font-size: 26px; font-weight: 700; color: #0f172a; }
             #statDescription { font-size: 12px; color: #64748b; }
-            QStatusBar { background: transparent; color: #475569; }
+            QStatusBar { background: transparent; color: #475569; padding-right: 24px; border-top: 1px solid rgba(148, 163, 184, 0.3); }
+            QComboBox, QSpinBox { background-color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.5); border-radius: 8px; padding: 6px 10px; min-height: 32px; }
+            QComboBox QAbstractItemView { border-radius: 8px; padding: 6px; }
+            QComboBox::drop-down { border: none; width: 24px; }
+            QComboBox::down-arrow { image: none; }
+            QSpinBox::up-button, QSpinBox::down-button { border: none; background: transparent; width: 20px; }
+            QToolTip { background-color: #0f172a; color: #f8fafc; border: none; padding: 8px 10px; border-radius: 8px; }
             """
         )
 
