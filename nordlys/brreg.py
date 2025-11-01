@@ -34,14 +34,17 @@ def find_numbers(data: object, path: str = '') -> List[Tuple[str, float]]:
 
 
 def _last_key(segment_path: str) -> str:
+    """Returnerer siste nøkkelkomponent i en punktseparert sti."""
+
     parts = segment_path.split('.')
-    while parts:
-        last = parts[-1]
-        if '[' in last:
-            last = last.split(']')[-1]
-        if last and not last.endswith(']'):
-            return last
-        parts = parts[:-1]
+    for part in reversed(parts):
+        if not part:
+            continue
+        if '[' in part:
+            part = part.split('[', 1)[0]
+        part = part.strip()
+        if part:
+            return part
     return ''
 
 
