@@ -443,8 +443,6 @@ class NavigationPanel(QFrame):
         self.tree.setExpandsOnDoubleClick(False)
         self.tree.setIndentation(12)
         self.tree.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.tree.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.tree.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         layout.addWidget(self.tree, 1)
         layout.addStretch(1)
 
