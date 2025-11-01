@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
     QSpinBox,
     QStackedWidget,
     QStatusBar,
@@ -427,6 +428,7 @@ class NavigationPanel(QFrame):
     def __init__(self) -> None:
         super().__init__()
         self.setObjectName("navPanel")
+        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 32, 24, 32)
         layout.setSpacing(24)
@@ -440,8 +442,10 @@ class NavigationPanel(QFrame):
         self.tree.setHeaderHidden(True)
         self.tree.setExpandsOnDoubleClick(False)
         self.tree.setIndentation(12)
+        self.tree.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.tree.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.tree.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         layout.addWidget(self.tree, 1)
-        layout.addStretch(1)
 
     def add_root(self, title: str, key: str | None = None) -> NavigationItem:
         item = QTreeWidgetItem([title])
