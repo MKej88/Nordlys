@@ -1,4 +1,4 @@
-"""Inngangspunkt for Nordlys SAF-T analysator."""
+"""Inngangspunkt for Nordlys."""
 from __future__ import annotations
 
 from nordlys.ui.pyside_app import run
