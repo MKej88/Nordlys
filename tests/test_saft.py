@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 import xml.etree.ElementTree as ET
 
 import pandas as pd
@@ -155,4 +156,28 @@ def test_validate_saft_against_xsd_known_version(tmp_path):
     result = validate_saft_against_xsd(xml_path)
     assert result.version_family == '1.3'
     assert result.schema_version == '1.30'
-    assert result.is_valid is False
+    saft_module = sys.modules['nordlys.saft']
+    if saft_module.XMLSCHEMA_AVAILABLE:
+        assert result.is_valid is False
+    else:
+        assert result.is_valid is None
+        assert 'xmlschema' in (result.details or '').lower()
+
+
+def test_validate_saft_against_xsd_without_dependency(monkeypatch, tmp_path):
+    saft_module = sys.modules['nordlys.saft']
+    monkeypatch.setattr(saft_module, 'XMLSCHEMA_AVAILABLE', False, raising=False)
+    monkeypatch.setattr(saft_module, 'XMLSchema', None, raising=False)
+    xml_path = tmp_path / 'saft_12.xml'
+    xml_path.write_text(
+        '<AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">'
+        '  <Header>'
+        '    <AuditFileVersion>1.20</AuditFileVersion>'
+        '  </Header>'
+        '</AuditFile>',
+        encoding='utf-8',
+    )
+    result = validate_saft_against_xsd(xml_path)
+    assert result.version_family == '1.2'
+    assert result.is_valid is None
+    assert 'xmlschema' in (result.details or '').lower()

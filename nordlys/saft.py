@@ -1,16 +1,29 @@
 """Funksjoner for å lese og analysere SAF-T filer."""
 from __future__ import annotations
 
+import importlib.util
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 import xml.etree.ElementTree as ET
 
 import pandas as pd
-from xmlschema import XMLSchema, XMLSchemaException
 
 from .constants import NS
 from .utils import findall_any_namespace, text_or_none, to_float
+
+
+_XMLSCHEMA_SPEC = importlib.util.find_spec("xmlschema")
+if _XMLSCHEMA_SPEC is not None:
+    from xmlschema import XMLSchema, XMLSchemaException  # type: ignore[import]
+    XMLSCHEMA_AVAILABLE = True
+else:  # pragma: no cover - kjøres kun uten opsjonal avhengighet
+    XMLSchema = None  # type: ignore[assignment]
+
+    class XMLSchemaException(Exception):
+        """Fallback-unntak når xmlschema ikke er tilgjengelig."""
+
+    XMLSCHEMA_AVAILABLE = False
 
 
 @dataclass
@@ -90,6 +103,18 @@ def validate_saft_against_xsd(xml_source: Path | str, version: Optional[str] = N
         )
 
     schema_path, schema_version = schema_info
+    if not XMLSCHEMA_AVAILABLE or XMLSchema is None:
+        return SaftValidationResult(
+            audit_file_version=audit_version,
+            version_family=family,
+            schema_version=schema_version,
+            is_valid=None,
+            details=(
+                "XSD-validering er ikke tilgjengelig fordi pakken "
+                "`xmlschema` ikke er installert. Installer den for full validering."
+            ),
+        )
+
     if not schema_path.exists():
         return SaftValidationResult(
             audit_file_version=audit_version,
