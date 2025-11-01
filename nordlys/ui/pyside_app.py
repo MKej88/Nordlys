@@ -182,11 +182,10 @@ class StatBadge(QFrame):
 
 
 class DashboardPage(QWidget):
-    """Viser nøkkeltall og topp kunder."""
+    """Viser nøkkeltall for selskapet."""
 
-    def __init__(self, on_calc_top: Callable[[str, int], Optional[List[Tuple[str, str, int, float]]]]) -> None:
+    def __init__(self) -> None:
         super().__init__()
-        self._on_calc_top = on_calc_top
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -238,42 +237,7 @@ class DashboardPage(QWidget):
         self.summary_card.add_widget(self.summary_table)
         layout.addWidget(self.summary_card)
 
-        self.top_card = CardFrame("Topp kunder", "Identifiser kunder med høyest omsetning.")
-        controls = QHBoxLayout()
-        controls.setSpacing(12)
-        controls.addWidget(QLabel("Kilde:"))
-        self.source_combo = QComboBox()
-        self.source_combo.addItems(["faktura", "reskontro"])
-        controls.addWidget(self.source_combo)
-        controls.addWidget(QLabel("Antall:"))
-        self.top_spin = QSpinBox()
-        self.top_spin.setRange(5, 100)
-        self.top_spin.setValue(10)
-        controls.addWidget(self.top_spin)
-        controls.addStretch(1)
-        self.calc_button = QPushButton("Beregn topp kunder")
-        self.calc_button.clicked.connect(self._handle_calc_clicked)
-        controls.addWidget(self.calc_button)
-        self.top_card.add_layout(controls)
-
-        self.top_table = _create_table_widget()
-        self.top_table.setColumnCount(4)
-        self.top_table.setHorizontalHeaderLabels([
-            "KundeID",
-            "Kundenavn",
-            "Fakturaer",
-            "Omsetning (eks. mva)",
-        ])
-        self.top_card.add_widget(self.top_table)
-        layout.addWidget(self.top_card)
         layout.addStretch(1)
-
-        self.set_controls_enabled(False)
-
-    def _handle_calc_clicked(self) -> None:
-        rows = self._on_calc_top(self.source_combo.currentText(), int(self.top_spin.value()))
-        if rows:
-            self.set_top_customers(rows)
 
     def update_status(self, message: str) -> None:
         self.status_label.setText(message)
@@ -327,21 +291,6 @@ class DashboardPage(QWidget):
         _populate_table(self.summary_table, ["Nøkkel", "Beløp"], rows, money_cols={1})
         self._update_kpis(summary)
 
-    def set_top_customers(self, rows: Iterable[Tuple[str, str, int, float]]) -> None:
-        _populate_table(
-            self.top_table,
-            ["KundeID", "Kundenavn", "Fakturaer", "Omsetning (eks. mva)"],
-            rows,
-            money_cols={3},
-        )
-
-    def clear_top_customers(self) -> None:
-        self.top_table.setRowCount(0)
-
-    def set_controls_enabled(self, enabled: bool) -> None:
-        self.calc_button.setEnabled(enabled)
-        self.top_spin.setEnabled(enabled)
-        self.source_combo.setEnabled(enabled)
 
     def _update_kpis(self, summary: Optional[Dict[str, float]]) -> None:
         def set_badge(key: str, value: Optional[str]) -> None:
@@ -626,6 +575,88 @@ class ChecklistPage(QWidget):
             QListWidgetItem(item, self.list_widget)
 
 
+class SalesArPage(QWidget):
+    """Revisjonsside for salg og kundefordringer med topp kunder."""
+
+    def __init__(
+        self,
+        title: str,
+        subtitle: str,
+        on_calc_top: Callable[[str, int], Optional[List[Tuple[str, str, int, float]]]],
+    ) -> None:
+        super().__init__()
+        self._on_calc_top = on_calc_top
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(24)
+
+        self.top_card = CardFrame("Topp kunder", "Identifiser kunder med høyest omsetning.")
+        controls = QHBoxLayout()
+        controls.setSpacing(12)
+        controls.addWidget(QLabel("Kilde:"))
+        self.source_combo = QComboBox()
+        self.source_combo.addItems(["faktura", "reskontro"])
+        controls.addWidget(self.source_combo)
+        controls.addWidget(QLabel("Antall:"))
+        self.top_spin = QSpinBox()
+        self.top_spin.setRange(5, 100)
+        self.top_spin.setValue(10)
+        controls.addWidget(self.top_spin)
+        controls.addStretch(1)
+        self.calc_button = QPushButton("Beregn topp kunder")
+        self.calc_button.clicked.connect(self._handle_calc_clicked)
+        controls.addWidget(self.calc_button)
+        self.top_card.add_layout(controls)
+
+        self.top_table = _create_table_widget()
+        self.top_table.setColumnCount(4)
+        self.top_table.setHorizontalHeaderLabels([
+            "KundeID",
+            "Kundenavn",
+            "Fakturaer",
+            "Omsetning (eks. mva)",
+        ])
+        self.top_card.add_widget(self.top_table)
+        layout.addWidget(self.top_card)
+
+        self.card = CardFrame(title, subtitle)
+        self.list_widget = QListWidget()
+        self.list_widget.setObjectName("checklist")
+        self.card.add_widget(self.list_widget)
+        layout.addWidget(self.card)
+
+        layout.addStretch(1)
+
+        self.set_controls_enabled(False)
+
+    def _handle_calc_clicked(self) -> None:
+        rows = self._on_calc_top(self.source_combo.currentText(), int(self.top_spin.value()))
+        if rows:
+            self.set_top_customers(rows)
+
+    def set_checklist_items(self, items: Iterable[str]) -> None:
+        self.list_widget.clear()
+        for item in items:
+            QListWidgetItem(item, self.list_widget)
+
+    def set_top_customers(self, rows: Iterable[Tuple[str, str, int, float]]) -> None:
+        _populate_table(
+            self.top_table,
+            ["KundeID", "Kundenavn", "Fakturaer", "Omsetning (eks. mva)"],
+            rows,
+            money_cols={3},
+        )
+
+    def clear_top_customers(self) -> None:
+        self.top_table.setRowCount(0)
+
+    def set_controls_enabled(self, enabled: bool) -> None:
+        self.calc_button.setEnabled(enabled)
+        self.top_spin.setEnabled(enabled)
+        self.source_combo.setEnabled(enabled)
+
+
 @dataclass
 class NavigationItem:
     key: str
@@ -722,6 +753,7 @@ class NordlysWindow(QMainWindow):
         self._validation_result: Optional[SaftValidationResult] = None
 
         self._page_map: Dict[str, QWidget] = {}
+        self.sales_ar_page: Optional[SalesArPage] = None
 
         self._setup_ui()
         self._apply_styles()
@@ -791,7 +823,7 @@ class NordlysWindow(QMainWindow):
         self.setStatusBar(status)
 
     def _create_pages(self) -> None:
-        dashboard = DashboardPage(self._on_calc_top_customers)
+        dashboard = DashboardPage()
         self._register_page("dashboard", dashboard)
         self.stack.addWidget(dashboard)
         self.dashboard_page = dashboard
@@ -834,7 +866,7 @@ class NordlysWindow(QMainWindow):
         self.stack.addWidget(brreg_page)
         self.brreg_page = brreg_page
 
-        self.revision_pages: Dict[str, ChecklistPage] = {}
+        self.revision_pages: Dict[str, QWidget] = {}
         for key, (title, subtitle) in {
             "rev.innkjop": ("Innkjøp og leverandørgjeld", "Fokuser på varekjøp, kredittider og periodisering."),
             "rev.lonn": ("Lønn", "Kontroll av lønnskjøringer, skatt og arbeidsgiveravgift."),
@@ -845,7 +877,11 @@ class NordlysWindow(QMainWindow):
             "rev.salg": ("Salg og kundefordringer", "Omsetning, cut-off og reskontro."),
             "rev.mva": ("MVA", "Kontroll av avgiftsbehandling og rapportering."),
         }.items():
-            page = ChecklistPage(title, subtitle)
+            if key == "rev.salg":
+                page = SalesArPage(title, subtitle, self._on_calc_top_customers)
+                self.sales_ar_page = page
+            else:
+                page = ChecklistPage(title, subtitle)
             self.revision_pages[key] = page
             self._register_page(key, page)
             self.stack.addWidget(page)
@@ -878,7 +914,9 @@ class NordlysWindow(QMainWindow):
 
         for key, items in REVISION_TASKS.items():
             page = self.revision_pages.get(key)
-            if page:
+            if isinstance(page, SalesArPage):
+                page.set_checklist_items(items)
+            elif isinstance(page, ChecklistPage):
                 page.set_items(items)
 
     def _register_page(self, key: str, widget: QWidget) -> None:
@@ -991,8 +1029,9 @@ class NordlysWindow(QMainWindow):
                 )
             elif validation.is_valid is None and validation.details:
                 QMessageBox.information(self, "XSD-validering", validation.details)
-            self.dashboard_page.set_controls_enabled(True)
-            self.dashboard_page.clear_top_customers()
+            if self.sales_ar_page:
+                self.sales_ar_page.set_controls_enabled(True)
+                self.sales_ar_page.clear_top_customers()
             self.vesentlig_page.update_summary(self._saft_summary)
             self.regnskap_page.update_comparison(None)
             self.brreg_page.update_mapping(None)
