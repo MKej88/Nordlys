@@ -125,7 +125,7 @@ def _schema_info_for_family(family: Optional[str]) -> Optional[Tuple[Path, str]]
 def _extract_version_from_file(xml_path: Path) -> Optional[str]:
     try:
         root = ET.parse(xml_path).getroot()
-    except ET.ParseError:
+    except (ET.ParseError, OSError):
         return None
     header = parse_saft_header(root)
     return header.file_version if header else None

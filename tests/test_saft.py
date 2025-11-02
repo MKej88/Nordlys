@@ -172,6 +172,14 @@ def test_parse_saft_detects_namespace(tmp_path):
     assert ns['n1'] == 'urn:StandardAuditFile-Taxation-Financial:NO'
 
 
+def test_validate_saft_handles_missing_file(tmp_path):
+    missing_path = tmp_path / 'finnes_ikke.xml'
+    result = validate_saft_against_xsd(missing_path)
+
+    assert result.is_valid in (None, False)
+    assert result.details is not None and result.details.strip() != ''
+
+
 def test_get_amount_handles_nested_amount():
     line_xml = """
     <Line xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
