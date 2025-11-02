@@ -1013,6 +1013,7 @@ class NordlysWindow(QMainWindow):
         self._page_map: Dict[str, QWidget] = {}
         self.sales_ar_page: Optional[SalesArPage] = None
         self.purchases_ap_page: Optional['PurchasesApPage'] = None
+        self.regnskap_page: Optional[ComparisonPage] = None
 
         self._setup_ui()
         self._apply_styles()
@@ -1107,6 +1108,11 @@ class NordlysWindow(QMainWindow):
         self.stack.addWidget(kontroll_page)
         self.kontroll_page = kontroll_page
 
+        regnskap_page = ComparisonPage()
+        self._register_page("plan.regnskapsanalyse", regnskap_page)
+        self.stack.addWidget(regnskap_page)
+        self.regnskap_page = regnskap_page
+
         vesentlig_page = SummaryPage(
             "Vesentlighetsvurdering",
             "Nøkkeltall som understøtter fastsettelse av vesentlighetsgrenser.",
@@ -1152,6 +1158,7 @@ class NordlysWindow(QMainWindow):
         planning_root = nav.add_root("Planlegging")
         nav.add_child(planning_root, "Saldobalanse", "plan.saldobalanse")
         nav.add_child(planning_root, "Kontroll IB", "plan.kontroll")
+        nav.add_child(planning_root, "Regnskapsanalyse", "plan.regnskapsanalyse")
         nav.add_child(planning_root, "Vesentlighetsvurdering", "plan.vesentlighet")
         nav.add_child(planning_root, "Sammenstillingsanalyse", "plan.sammenstilling")
 
@@ -1444,6 +1451,8 @@ class NordlysWindow(QMainWindow):
             self.purchases_ap_page.clear_top_suppliers()
 
         self.vesentlig_page.update_summary(self._saft_summary)
+        if self.regnskap_page:
+            self.regnskap_page.update_comparison(None)
         self.brreg_page.update_mapping(None)
         self.brreg_page.update_json(None)
 
@@ -1721,6 +1730,9 @@ class NordlysWindow(QMainWindow):
         self.brreg_page.update_json(js)
 
         if not self._saft_summary:
+            self.kontroll_page.update_comparison(None)
+            if self.regnskap_page:
+                self.regnskap_page.update_comparison(None)
             self.statusBar().showMessage("Brreg-data hentet, men ingen SAF-T oppsummering å sammenligne mot.")
             return
 
@@ -1763,6 +1775,8 @@ class NordlysWindow(QMainWindow):
             ),
         ]
         self.kontroll_page.update_comparison(cmp_rows)
+        if self.regnskap_page:
+            self.regnskap_page.update_comparison(cmp_rows)
         self.statusBar().showMessage("Data hentet fra Regnskapsregisteret.")
 
     def on_export(self) -> None:
