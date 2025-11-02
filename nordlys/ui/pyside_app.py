@@ -781,16 +781,10 @@ class SalesArPage(QWidget):
             "Fakturaer",
             "Omsetning (eks. mva)",
         ])
+        self.top_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.top_card.add_widget(self.top_table)
-        layout.addWidget(self.top_card)
-
-        self.card = CardFrame(title, subtitle)
-        self.list_widget = QListWidget()
-        self.list_widget.setObjectName("checklist")
-        self.card.add_widget(self.list_widget)
-        layout.addWidget(self.card)
-
-        layout.addStretch(1)
+        self.top_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        layout.addWidget(self.top_card, 1)
 
         self.set_controls_enabled(False)
 
@@ -800,9 +794,8 @@ class SalesArPage(QWidget):
             self.set_top_customers(rows)
 
     def set_checklist_items(self, items: Iterable[str]) -> None:
-        self.list_widget.clear()
-        for item in items:
-            QListWidgetItem(item, self.list_widget)
+        # Sjekkpunkter støttes ikke lenger visuelt, men metoden beholdes for kompatibilitet.
+        del items
 
     def set_top_customers(self, rows: Iterable[Tuple[str, str, int, float]]) -> None:
         _populate_table(
