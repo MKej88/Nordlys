@@ -1074,6 +1074,11 @@ class NavigationPanel(QFrame):
         self.logo_label.setObjectName("logoLabel")
         layout.addWidget(self.logo_label)
 
+        self.logo_subtitle = QLabel("Revisjonsanalyse og innsikt")
+        self.logo_subtitle.setObjectName("logoSubtitle")
+        self.logo_subtitle.setWordWrap(True)
+        layout.addWidget(self.logo_subtitle)
+
         self.tree = QTreeWidget()
         self.tree.setObjectName("navTree")
         self.tree.setHeaderHidden(True)
@@ -1191,28 +1196,45 @@ class NordlysWindow(QMainWindow):
         content_layout.setSpacing(24)
         root_layout.addWidget(content_wrapper, 1)
 
-        header_layout = QHBoxLayout()
-        header_layout.setSpacing(16)
+        header_bar = QFrame()
+        header_bar.setObjectName("headerBar")
+        header_bar.setAttribute(Qt.WA_StyledBackground, True)
+        header_bar.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        header_layout = QHBoxLayout(header_bar)
+        header_layout.setContentsMargins(28, 20, 28, 20)
+        header_layout.setSpacing(18)
 
         self.title_label = QLabel("Dashboard")
         self.title_label.setObjectName("pageTitle")
         header_layout.addWidget(self.title_label, 1)
 
+        button_bar = QHBoxLayout()
+        button_bar.setContentsMargins(0, 0, 0, 0)
+        button_bar.setSpacing(12)
+
         self.btn_open = QPushButton("Åpne SAF-T XML …")
+        self.btn_open.setProperty("variant", "primary")
         self.btn_open.clicked.connect(self.on_open)
-        header_layout.addWidget(self.btn_open)
+        button_bar.addWidget(self.btn_open)
 
         self.btn_brreg = QPushButton("Hent Regnskapsregisteret")
+        self.btn_brreg.setProperty("variant", "secondary")
         self.btn_brreg.clicked.connect(self.on_brreg)
         self.btn_brreg.setEnabled(False)
-        header_layout.addWidget(self.btn_brreg)
+        button_bar.addWidget(self.btn_brreg)
 
         self.btn_export = QPushButton("Eksporter rapport (Excel)")
+        self.btn_export.setProperty("variant", "secondary")
         self.btn_export.clicked.connect(self.on_export)
         self.btn_export.setEnabled(False)
-        header_layout.addWidget(self.btn_export)
+        button_bar.addWidget(self.btn_export)
 
-        content_layout.addLayout(header_layout)
+        button_container = QWidget()
+        button_container.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Preferred)
+        button_container.setLayout(button_bar)
+        header_layout.addWidget(button_container)
+
+        content_layout.addWidget(header_bar)
 
         self.info_card = CardFrame("Selskapsinformasjon")
         info_grid = QGridLayout()
@@ -1344,18 +1366,25 @@ class NordlysWindow(QMainWindow):
         self.setStyleSheet(
             """
             QWidget { font-family: 'Inter', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; font-size: 14px; color: #0f172a; }
-            QMainWindow { background-color: #edf1f7; }
-            #navPanel { background-color: #0b1120; color: #e2e8f0; border-right: 1px solid rgba(148, 163, 184, 0.18); }
+            QMainWindow { background-color: #e8edf6; }
+            #navPanel { background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 #0f172a, stop:1 #111827); color: #e2e8f0; border-right: 1px solid rgba(148, 163, 184, 0.18); }
             #logoLabel { font-size: 26px; font-weight: 700; letter-spacing: 0.6px; color: #f8fafc; }
+            #logoSubtitle { color: #94a3b8; font-size: 12px; letter-spacing: 0.4px; }
             #navTree { background: transparent; border: none; color: #dbeafe; font-size: 14px; }
             #navTree:focus { outline: none; border: none; }
             QTreeWidget::item:focus { outline: none; }
-            #navTree::item { height: 34px; padding: 6px 10px; border-radius: 10px; margin: 2px 0; }
-            #navTree::item:selected { background-color: rgba(59, 130, 246, 0.35); color: #f8fafc; font-weight: 600; }
-            #navTree::item:hover { background-color: rgba(59, 130, 246, 0.18); }
-            QPushButton { background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 #2563eb, stop:1 #1d4ed8); color: white; border-radius: 10px; padding: 10px 20px; font-weight: 600; letter-spacing: 0.2px; }
+            #navTree::item { height: 34px; padding: 6px 12px; border-radius: 10px; margin: 2px 0; border-left: 3px solid transparent; }
+            #navTree::item:selected { background-color: rgba(59, 130, 246, 0.35); color: #f8fafc; font-weight: 600; border-left-color: #3b82f6; }
+            #navTree::item:hover { background-color: rgba(59, 130, 246, 0.18); border-left-color: rgba(59, 130, 246, 0.4); }
+            #headerBar { background-color: rgba(255, 255, 255, 0.94); border-radius: 20px; border: 1px solid rgba(148, 163, 184, 0.25); }
+            #headerBar QPushButton { min-height: 40px; }
+            QPushButton { background-color: #2563eb; color: white; border-radius: 10px; padding: 10px 20px; font-weight: 600; letter-spacing: 0.2px; border: none; }
+            QPushButton[variant="primary"] { background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 #2563eb, stop:1 #1d4ed8); color: #ffffff; }
+            QPushButton[variant="secondary"] { background-color: rgba(37, 99, 235, 0.08); color: #1d4ed8; border: 1px solid rgba(37, 99, 235, 0.35); }
+            QPushButton[variant="secondary"]:hover:!disabled { background-color: rgba(37, 99, 235, 0.16); }
+            QPushButton[variant="secondary"]:disabled { background-color: rgba(226, 232, 240, 0.6); color: #94a3b8; border: 1px dashed rgba(148, 163, 184, 0.5); }
             QPushButton:focus { outline: none; }
-            QPushButton:disabled { background-color: #94a3b8; color: #e5e7eb; }
+            QPushButton:disabled { background-color: #94a3b8; color: #e5e7eb; border: none; }
             QPushButton:hover:!disabled { background-color: #1e40af; }
             QPushButton:pressed { background-color: #1d4ed8; }
             #card { background-color: #ffffff; border-radius: 18px; border: 1px solid rgba(148, 163, 184, 0.28); }
