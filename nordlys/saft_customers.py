@@ -172,6 +172,8 @@ def get_tx_customer_id(transaction: ET.Element, ns: Dict[str, str]) -> Optional[
     first_dimensions_id: Optional[str] = None
     first_analysis_id: Optional[str] = None
 
+    have_all_non_priority_ids = False
+
     for line in lines:
         line_customer_id: Optional[str] = None
 
@@ -179,6 +181,9 @@ def get_tx_customer_id(transaction: ET.Element, ns: Dict[str, str]) -> Optional[
             line_customer_id = _line_customer_id(line, ns)
             if line_customer_id:
                 return line_customer_id
+
+        if have_all_non_priority_ids:
+            continue
 
         if first_customer_id is None:
             if line_customer_id is None:
@@ -196,8 +201,11 @@ def get_tx_customer_id(transaction: ET.Element, ns: Dict[str, str]) -> Optional[
             if customer_id:
                 first_analysis_id = customer_id
 
-        if first_customer_id and first_dimensions_id and first_analysis_id:
-            break
+        have_all_non_priority_ids = (
+            first_customer_id is not None
+            and first_dimensions_id is not None
+            and first_analysis_id is not None
+        )
 
     if first_customer_id:
         return first_customer_id
@@ -220,6 +228,8 @@ def get_tx_supplier_id(transaction: ET.Element, ns: Dict[str, str]) -> Optional[
     first_dimensions_id: Optional[str] = None
     first_analysis_id: Optional[str] = None
 
+    have_all_non_priority_ids = False
+
     for line in lines:
         line_supplier_id: Optional[str] = None
 
@@ -227,6 +237,9 @@ def get_tx_supplier_id(transaction: ET.Element, ns: Dict[str, str]) -> Optional[
             line_supplier_id = _line_supplier_id(line, ns)
             if line_supplier_id:
                 return line_supplier_id
+
+        if have_all_non_priority_ids:
+            continue
 
         if first_supplier_id is None:
             if line_supplier_id is None:
@@ -244,8 +257,11 @@ def get_tx_supplier_id(transaction: ET.Element, ns: Dict[str, str]) -> Optional[
             if supplier_id:
                 first_analysis_id = supplier_id
 
-        if first_supplier_id and first_dimensions_id and first_analysis_id:
-            break
+        have_all_non_priority_ids = (
+            first_supplier_id is not None
+            and first_dimensions_id is not None
+            and first_analysis_id is not None
+        )
 
     if first_supplier_id:
         return first_supplier_id
