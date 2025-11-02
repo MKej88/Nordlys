@@ -44,6 +44,7 @@ from PySide6.QtWidgets import (
 
 from ..brreg import fetch_brreg, find_first_by_exact_endkey, map_brreg_metrics
 from ..constants import APP_TITLE
+from ..regnskap import compute_balance_analysis, compute_result_analysis, prepare_regnskap_dataframe
 from ..saft import (
     CustomerInfo,
     SaftHeader,
@@ -680,21 +681,164 @@ class ComparisonPage(QWidget):
         )
 
 
-class EmptyRegnskapPage(QWidget):
-    """Tom plassholder for regnskapsanalysesiden."""
+class RegnskapsanalysePage(QWidget):
+    """Visning som oppsummerer balanse og resultat fra saldobalansen."""
 
     def __init__(self) -> None:
         super().__init__()
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
+        layout.setSpacing(24)
+
+        self.balance_card = CardFrame(
+            "Balanse",
+            "Aggregert oversikt over balansen basert på hovedkontoklasser.",
+        )
+        self.balance_info = QLabel(
+            "Importer en SAF-T saldobalanse for å se fordelingen av eiendeler og gjeld."
+        )
+        self.balance_info.setWordWrap(True)
+        self.balance_table = _create_table_widget()
+        self.balance_card.add_widget(self.balance_info)
+        self.balance_card.add_widget(self.balance_table)
+        self.balance_table.hide()
+        layout.addWidget(self.balance_card)
+
+        self.result_card = CardFrame(
+            "Resultat",
+            "Oppsummerer resultatkonti for gjeldende periode mot fjoråret.",
+        )
+        self.result_info = QLabel(
+            "Importer en SAF-T saldobalanse for å beregne resultatpostene."
+        )
+        self.result_info.setWordWrap(True)
+        self.result_table = _create_table_widget()
+        self.result_card.add_widget(self.result_info)
+        self.result_card.add_widget(self.result_table)
+        self.result_table.hide()
+        layout.addWidget(self.result_card)
+
+        self.compare_card = CardFrame(
+            "Sammenligning mot Regnskapsregisteret",
+            "Viser nøkkeltall fra SAF-T opp mot tall hentet fra Regnskapsregisteret.",
+        )
+        self.compare_info = QLabel(
+            "Hent data fra Regnskapsregisteret for å sammenligne nøkkeltallene."
+        )
+        self.compare_info.setWordWrap(True)
+        self.compare_table = _create_table_widget()
+        self.compare_card.add_widget(self.compare_info)
+        self.compare_card.add_widget(self.compare_table)
+        self.compare_table.hide()
+        layout.addWidget(self.compare_card)
+
         layout.addStretch(1)
+
+        self._prepared_df: Optional[pd.DataFrame] = None
+        self._fiscal_year: Optional[str] = None
+
+    def set_dataframe(self, df: Optional[pd.DataFrame], fiscal_year: Optional[str] = None) -> None:
+        self._fiscal_year = fiscal_year.strip() if fiscal_year and fiscal_year.strip() else None
+        if df is None or df.empty:
+            self._prepared_df = None
+            self._clear_balance_table()
+            self._clear_result_table()
+            return
+
+        self._prepared_df = prepare_regnskap_dataframe(df)
+        self._update_balance_table()
+        self._update_result_table()
+
+    def _year_headers(self) -> Tuple[str, str]:
+        if self._fiscal_year and self._fiscal_year.isdigit():
+            current = self._fiscal_year
+            previous = str(int(self._fiscal_year) - 1)
+        else:
+            current = self._fiscal_year or "Nå"
+            previous = "I fjor"
+        return current, previous
+
+    def _clear_balance_table(self) -> None:
+        self.balance_table.hide()
+        self.balance_table.setRowCount(0)
+        self.balance_info.show()
+
+    def _clear_result_table(self) -> None:
+        self.result_table.hide()
+        self.result_table.setRowCount(0)
+        self.result_info.show()
+
+    def _update_balance_table(self) -> None:
+        if self._prepared_df is None or self._prepared_df.empty:
+            self._clear_balance_table()
+            return
+
+        rows = compute_balance_analysis(self._prepared_df)
+        current_label, previous_label = self._year_headers()
+        table_rows: List[Tuple[object, object, object, object]] = []
+        for row in rows:
+            if row.is_header:
+                table_rows.append((row.label, "", "", ""))
+            else:
+                table_rows.append((row.label, row.current, row.previous, row.change))
+        _populate_table(
+            self.balance_table,
+            ["Kategori", current_label, previous_label, "Endring"],
+            table_rows,
+            money_cols={1, 2, 3},
+        )
+        self.balance_info.hide()
+        self.balance_table.show()
+
+    def _update_result_table(self) -> None:
+        if self._prepared_df is None or self._prepared_df.empty:
+            self._clear_result_table()
+            return
+
+        rows = compute_result_analysis(self._prepared_df)
+        current_label, previous_label = self._year_headers()
+        table_rows: List[Tuple[object, object, object, object]] = []
+        for row in rows:
+            if row.is_header:
+                table_rows.append((row.label, "", "", ""))
+            else:
+                table_rows.append((row.label, row.current, row.previous, row.change))
+        _populate_table(
+            self.result_table,
+            ["Kategori", current_label, previous_label, "Endring"],
+            table_rows,
+            money_cols={1, 2, 3},
+        )
+        self.result_info.hide()
+        self.result_table.show()
 
     def update_comparison(
         self,
-        _rows: Optional[Sequence[Tuple[str, Optional[float], Optional[float], Optional[float]]]],
+        rows: Optional[Sequence[Tuple[str, Optional[float], Optional[float], Optional[float]]]],
     ) -> None:
-        """Metode beholdt for kompatibilitet, men gjør ingenting."""
+        if not rows:
+            self.compare_table.hide()
+            self.compare_table.setRowCount(0)
+            self.compare_info.show()
+            return
+
+        formatted_rows = [
+            (
+                label,
+                format_currency(saf_v),
+                format_currency(brreg_v),
+                format_difference(saf_v, brreg_v),
+            )
+            for label, saf_v, brreg_v, _ in rows
+        ]
+        _populate_table(
+            self.compare_table,
+            ["Nøkkel", "SAF-T", "Brreg", "Avvik"],
+            formatted_rows,
+            money_cols={1, 2, 3},
+        )
+        self.compare_info.hide()
+        self.compare_table.show()
 
 
 class BrregPage(QWidget):
@@ -1024,7 +1168,7 @@ class NordlysWindow(QMainWindow):
         self._page_map: Dict[str, QWidget] = {}
         self.sales_ar_page: Optional[SalesArPage] = None
         self.purchases_ap_page: Optional['PurchasesApPage'] = None
-        self.regnskap_page: Optional['EmptyRegnskapPage'] = None
+        self.regnskap_page: Optional['RegnskapsanalysePage'] = None
 
         self._setup_ui()
         self._apply_styles()
@@ -1119,7 +1263,7 @@ class NordlysWindow(QMainWindow):
         self.stack.addWidget(kontroll_page)
         self.kontroll_page = kontroll_page
 
-        regnskap_page = EmptyRegnskapPage()
+        regnskap_page = RegnskapsanalysePage()
         self._register_page("plan.regnskapsanalyse", regnskap_page)
         self.stack.addWidget(regnskap_page)
         self.regnskap_page = regnskap_page
@@ -1463,6 +1607,8 @@ class NordlysWindow(QMainWindow):
 
         self.vesentlig_page.update_summary(self._saft_summary)
         if self.regnskap_page:
+            fiscal_year = self._header.fiscal_year if self._header else None
+            self.regnskap_page.set_dataframe(df, fiscal_year)
             self.regnskap_page.update_comparison(None)
         self.brreg_page.update_mapping(None)
         self.brreg_page.update_json(None)
