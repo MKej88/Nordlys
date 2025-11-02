@@ -111,6 +111,7 @@ NAV_ICON_FILENAMES: Dict[str, str] = {
     "plan.saldobalanse": "balance-scale.svg",
     "plan.kontroll": "shield-check.svg",
     "plan.regnskapsanalyse": "analytics.svg",
+    "plan.sammenstillingsanalyse": "layers.svg",
     "plan.vesentlighet": "target.svg",
     "rev.innkjop": "shopping-bag.svg",
     "rev.lonn": "people.svg",
@@ -710,7 +711,7 @@ class ComparisonPage(QWidget):
 
 
 class EmptyRegnskapPage(QWidget):
-    """Tom plassholder for regnskapsanalysesiden."""
+    """Tom plassholder for sammenstillingsanalysen."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -723,7 +724,7 @@ class EmptyRegnskapPage(QWidget):
         self,
         _rows: Optional[Sequence[Tuple[str, Optional[float], Optional[float], Optional[float]]]],
     ) -> None:
-        """Metode beholdt for kompatibilitet, men gjør ingenting."""
+        """Beholder signatur for kompatibilitet, men viser ingen data."""
 
 
 class ChecklistPage(QWidget):
@@ -1111,7 +1112,7 @@ class NordlysWindow(QMainWindow):
         self.kontroll_page = kontroll_page
 
         regnskap_page = EmptyRegnskapPage()
-        self._register_page("plan.regnskapsanalyse", regnskap_page)
+        self._register_page("plan.sammenstillingsanalyse", regnskap_page)
         self.stack.addWidget(regnskap_page)
         self.regnskap_page = regnskap_page
 
@@ -1155,7 +1156,11 @@ class NordlysWindow(QMainWindow):
         planning_root = nav.add_root("Planlegging")
         nav.add_child(planning_root, "Saldobalanse", "plan.saldobalanse")
         nav.add_child(planning_root, "Kontroll IB", "plan.kontroll")
-        nav.add_child(planning_root, "Regnskapsanalyse", "plan.regnskapsanalyse")
+        nav.add_child(
+            planning_root,
+            "Sammenstillingsanalyse",
+            "plan.sammenstillingsanalyse",
+        )
         nav.add_child(planning_root, "Vesentlighetsvurdering", "plan.vesentlighet")
         revision_root = nav.add_root("Revisjon")
         nav.add_child(revision_root, "Innkjøp og leverandørgjeld", "rev.innkjop")
