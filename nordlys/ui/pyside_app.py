@@ -907,11 +907,16 @@ class NavigationPanel(QFrame):
         self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 32, 24, 32)
-        layout.setSpacing(24)
+        layout.setSpacing(20)
 
         self.logo_label = QLabel("Nordlys")
         self.logo_label.setObjectName("logoLabel")
         layout.addWidget(self.logo_label)
+
+        self.logo_tagline = QLabel("Automatisert revisjon")
+        self.logo_tagline.setObjectName("logoTagline")
+        layout.addWidget(self.logo_tagline)
+        layout.addSpacing(12)
 
         self.tree = QTreeWidget()
         self.tree.setObjectName("navTree")
@@ -1011,6 +1016,7 @@ class NordlysWindow(QMainWindow):
 
         self._setup_ui()
         self._apply_styles()
+        self._update_file_badge(None)
 
     # region UI
     def _setup_ui(self) -> None:
@@ -1030,12 +1036,29 @@ class NordlysWindow(QMainWindow):
         content_layout.setSpacing(24)
         root_layout.addWidget(content_wrapper, 1)
 
-        header_layout = QHBoxLayout()
-        header_layout.setSpacing(16)
+        header_frame = QFrame()
+        header_frame.setObjectName("headerBar")
+        header_frame.setAttribute(Qt.WA_StyledBackground, True)
+        header_shadow = QGraphicsDropShadowEffect(header_frame)
+        header_shadow.setBlurRadius(22)
+        header_shadow.setOffset(0, 6)
+        header_shadow.setColor(QColor(15, 23, 42, 32))
+        header_frame.setGraphicsEffect(header_shadow)
+
+        header_layout = QHBoxLayout(header_frame)
+        header_layout.setContentsMargins(24, 20, 24, 20)
+        header_layout.setSpacing(18)
 
         self.title_label = QLabel("Dashboard")
         self.title_label.setObjectName("pageTitle")
-        header_layout.addWidget(self.title_label, 1)
+        self.title_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        header_layout.addWidget(self.title_label)
+
+        self.file_badge = QLabel()
+        self.file_badge.setObjectName("fileBadge")
+        header_layout.addWidget(self.file_badge)
+
+        header_layout.addStretch(1)
 
         self.btn_open = QPushButton("Åpne SAF-T XML …")
         self.btn_open.clicked.connect(self.on_open)
@@ -1051,7 +1074,7 @@ class NordlysWindow(QMainWindow):
         self.btn_export.setEnabled(False)
         header_layout.addWidget(self.btn_export)
 
-        content_layout.addLayout(header_layout)
+        content_layout.addWidget(header_frame)
 
         self.info_card = CardFrame("Selskapsinformasjon")
         info_grid = QGridLayout()
@@ -1186,12 +1209,18 @@ class NordlysWindow(QMainWindow):
             QMainWindow { background-color: #edf1f7; }
             #navPanel { background-color: #0b1120; color: #e2e8f0; border-right: 1px solid rgba(148, 163, 184, 0.18); }
             #logoLabel { font-size: 26px; font-weight: 700; letter-spacing: 0.6px; color: #f8fafc; }
+            #logoTagline { color: #94a3b8; font-size: 12px; letter-spacing: 1.1px; text-transform: uppercase; font-weight: 600; }
             #navTree { background: transparent; border: none; color: #dbeafe; font-size: 14px; }
             #navTree:focus { outline: none; border: none; }
             QTreeWidget::item:focus { outline: none; }
             #navTree::item { height: 34px; padding: 6px 10px; border-radius: 10px; margin: 2px 0; }
             #navTree::item:selected { background-color: rgba(59, 130, 246, 0.35); color: #f8fafc; font-weight: 600; }
             #navTree::item:hover { background-color: rgba(59, 130, 246, 0.18); }
+            #headerBar { background-color: rgba(255, 255, 255, 0.96); border-radius: 20px; border: 1px solid rgba(148, 163, 184, 0.24); }
+            #headerBar QPushButton { margin-left: 0; }
+            #fileBadge { background-color: rgba(37, 99, 235, 0.16); color: #1d4ed8; padding: 6px 14px; border-radius: 14px; font-size: 13px; font-weight: 600; }
+            #fileBadge[state="empty"] { background-color: rgba(148, 163, 184, 0.18); color: #64748b; font-weight: 500; }
+            #fileBadge[state="loading"] { background-color: rgba(37, 99, 235, 0.24); color: #1d4ed8; }
             QPushButton { background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 #2563eb, stop:1 #1d4ed8); color: white; border-radius: 10px; padding: 10px 20px; font-weight: 600; letter-spacing: 0.2px; }
             QPushButton:focus { outline: none; }
             QPushButton:disabled { background-color: #94a3b8; color: #e5e7eb; }
@@ -1272,6 +1301,7 @@ class NordlysWindow(QMainWindow):
         message = "Laster SAF-T …"
         if self._loading_file:
             message = f"Laster SAF-T: {Path(self._loading_file).name} …"
+            self._update_file_badge(self._loading_file, loading=True)
         self._set_loading_state(True, message)
         self._show_progress_dialog(message)
 
@@ -1329,6 +1359,7 @@ class NordlysWindow(QMainWindow):
         if status_message:
             self.statusBar().showMessage(status_message)
         self._loading_file = None
+        self._update_file_badge(self._current_file)
 
     @Slot(object)
     def _on_load_finished(self, result_obj: object) -> None:
@@ -1342,6 +1373,7 @@ class NordlysWindow(QMainWindow):
         self._saft_summary = result.summary
         self._validation_result = result.validation
         self._current_file = result.file_path
+        self._update_file_badge(self._current_file)
 
         self._ingest_customers(result.customers)
         self._ingest_suppliers(result.suppliers)
@@ -1827,6 +1859,23 @@ class NordlysWindow(QMainWindow):
         self.lbl_orgnr.setText(f"Org.nr: {self._header.orgnr or '–'}")
         per = f"{self._header.fiscal_year or '–'} P{self._header.period_start or '?'}–P{self._header.period_end or '?'}"
         self.lbl_period.setText(f"Periode: {per}")
+
+    def _update_file_badge(self, file_path: Optional[str], *, loading: bool = False) -> None:
+        if not hasattr(self, "file_badge"):
+            return
+        state = "empty"
+        text = "Ingen fil lastet"
+        if loading and file_path:
+            text = f"Laster {Path(file_path).name} …"
+            state = "loading"
+        elif file_path:
+            text = f"Fil: {Path(file_path).name}"
+            state = "ready"
+        self.file_badge.setText(text)
+        self.file_badge.setProperty("state", state)
+        self.file_badge.style().unpolish(self.file_badge)
+        self.file_badge.style().polish(self.file_badge)
+        self.file_badge.update()
 
     # endregion
 
