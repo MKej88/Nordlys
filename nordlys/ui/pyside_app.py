@@ -680,6 +680,23 @@ class ComparisonPage(QWidget):
         )
 
 
+class EmptyRegnskapPage(QWidget):
+    """Tom plassholder for regnskapsanalysesiden."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        layout.addStretch(1)
+
+    def update_comparison(
+        self,
+        _rows: Optional[Sequence[Tuple[str, Optional[float], Optional[float], Optional[float]]]],
+    ) -> None:
+        """Metode beholdt for kompatibilitet, men gjør ingenting."""
+
+
 class BrregPage(QWidget):
     """Visning av mapping mot Regnskapsregisteret og rådata."""
 
@@ -1007,7 +1024,7 @@ class NordlysWindow(QMainWindow):
         self._page_map: Dict[str, QWidget] = {}
         self.sales_ar_page: Optional[SalesArPage] = None
         self.purchases_ap_page: Optional['PurchasesApPage'] = None
-        self.regnskap_page: Optional[ComparisonPage] = None
+        self.regnskap_page: Optional['EmptyRegnskapPage'] = None
 
         self._setup_ui()
         self._apply_styles()
@@ -1102,7 +1119,7 @@ class NordlysWindow(QMainWindow):
         self.stack.addWidget(kontroll_page)
         self.kontroll_page = kontroll_page
 
-        regnskap_page = ComparisonPage()
+        regnskap_page = EmptyRegnskapPage()
         self._register_page("plan.regnskapsanalyse", regnskap_page)
         self.stack.addWidget(regnskap_page)
         self.regnskap_page = regnskap_page
