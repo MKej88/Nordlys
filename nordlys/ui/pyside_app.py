@@ -913,6 +913,12 @@ class NavigationPanel(QFrame):
         self.logo_label.setObjectName("logoLabel")
         layout.addWidget(self.logo_label)
 
+        self.tagline_label = QLabel("ANALYTISK OVERSIKT")
+        self.tagline_label.setObjectName("taglineLabel")
+        self.tagline_label.setWordWrap(True)
+        layout.addWidget(self.tagline_label)
+        layout.addSpacing(12)
+
         self.tree = QTreeWidget()
         self.tree.setObjectName("navTree")
         self.tree.setHeaderHidden(True)
@@ -1008,6 +1014,7 @@ class NordlysWindow(QMainWindow):
         self.sales_ar_page: Optional[SalesArPage] = None
         self.purchases_ap_page: Optional['PurchasesApPage'] = None
         self.regnskap_page: Optional[ComparisonPage] = None
+        self.file_badge: Optional[QLabel] = None
 
         self._setup_ui()
         self._apply_styles()
@@ -1024,34 +1031,70 @@ class NordlysWindow(QMainWindow):
         root_layout.addWidget(self.nav_panel, 0)
 
         content_wrapper = QWidget()
+        content_wrapper.setObjectName("contentArea")
+        content_wrapper.setAttribute(Qt.WA_StyledBackground, True)
         content_wrapper.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         content_layout = QVBoxLayout(content_wrapper)
         content_layout.setContentsMargins(32, 32, 32, 32)
         content_layout.setSpacing(24)
         root_layout.addWidget(content_wrapper, 1)
 
-        header_layout = QHBoxLayout()
-        header_layout.setSpacing(16)
+        header_frame = QFrame()
+        header_frame.setObjectName("headerBar")
+        header_frame.setAttribute(Qt.WA_StyledBackground, True)
+        header_layout = QHBoxLayout(header_frame)
+        header_layout.setContentsMargins(28, 20, 28, 20)
+        header_layout.setSpacing(20)
+
+        title_layout = QVBoxLayout()
+        title_layout.setContentsMargins(0, 0, 0, 0)
+        title_layout.setSpacing(6)
 
         self.title_label = QLabel("Dashboard")
         self.title_label.setObjectName("pageTitle")
-        header_layout.addWidget(self.title_label, 1)
+        title_layout.addWidget(self.title_label)
+
+        file_badge = QLabel()
+        file_badge.setObjectName("fileBadge")
+        file_badge.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
+        file_badge.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.file_badge = file_badge
+        title_layout.addWidget(file_badge)
+
+        header_layout.addLayout(title_layout)
+
+        button_row = QHBoxLayout()
+        button_row.setContentsMargins(0, 0, 0, 0)
+        button_row.setSpacing(12)
+        button_row.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
 
         self.btn_open = QPushButton("Åpne SAF-T XML …")
+        self.btn_open.setObjectName("primaryButton")
         self.btn_open.clicked.connect(self.on_open)
-        header_layout.addWidget(self.btn_open)
+        button_row.addWidget(self.btn_open)
 
         self.btn_brreg = QPushButton("Hent Regnskapsregisteret")
+        self.btn_brreg.setObjectName("secondaryButton")
         self.btn_brreg.clicked.connect(self.on_brreg)
         self.btn_brreg.setEnabled(False)
-        header_layout.addWidget(self.btn_brreg)
+        button_row.addWidget(self.btn_brreg)
 
         self.btn_export = QPushButton("Eksporter rapport (Excel)")
+        self.btn_export.setObjectName("ghostButton")
         self.btn_export.clicked.connect(self.on_export)
         self.btn_export.setEnabled(False)
-        header_layout.addWidget(self.btn_export)
+        button_row.addWidget(self.btn_export)
 
-        content_layout.addLayout(header_layout)
+        header_layout.addLayout(button_row)
+        header_layout.setStretch(0, 1)
+
+        header_shadow = QGraphicsDropShadowEffect(header_frame)
+        header_shadow.setBlurRadius(30)
+        header_shadow.setOffset(0, 12)
+        header_shadow.setColor(QColor(15, 23, 42, 30))
+        header_frame.setGraphicsEffect(header_shadow)
+
+        content_layout.addWidget(header_frame)
 
         self.info_card = CardFrame("Selskapsinformasjon")
         info_grid = QGridLayout()
@@ -1071,6 +1114,7 @@ class NordlysWindow(QMainWindow):
         content_layout.addWidget(self.stack, 1)
 
         self._create_pages()
+        self._update_file_badge()
 
         status = QStatusBar()
         status.showMessage("Klar.")
@@ -1183,24 +1227,46 @@ class NordlysWindow(QMainWindow):
         self.setStyleSheet(
             """
             QWidget { font-family: 'Inter', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; font-size: 14px; color: #0f172a; }
-            QMainWindow { background-color: #edf1f7; }
-            #navPanel { background-color: #0b1120; color: #e2e8f0; border-right: 1px solid rgba(148, 163, 184, 0.18); }
+            QMainWindow { background-color: #e9edf5; }
+            #contentArea { background-color: transparent; }
+            #navPanel {
+                background-color: #020617;
+                background-image: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 #0b1120, stop:1 #111827);
+                color: #e2e8f0;
+                border-right: 1px solid rgba(148, 163, 184, 0.18);
+            }
             #logoLabel { font-size: 26px; font-weight: 700; letter-spacing: 0.6px; color: #f8fafc; }
+            #taglineLabel { font-size: 12px; font-weight: 500; color: rgba(226, 232, 240, 0.78); letter-spacing: 1.6px; }
             #navTree { background: transparent; border: none; color: #dbeafe; font-size: 14px; }
             #navTree:focus { outline: none; border: none; }
             QTreeWidget::item:focus { outline: none; }
-            #navTree::item { height: 34px; padding: 6px 10px; border-radius: 10px; margin: 2px 0; }
-            #navTree::item:selected { background-color: rgba(59, 130, 246, 0.35); color: #f8fafc; font-weight: 600; }
-            #navTree::item:hover { background-color: rgba(59, 130, 246, 0.18); }
-            QPushButton { background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 #2563eb, stop:1 #1d4ed8); color: white; border-radius: 10px; padding: 10px 20px; font-weight: 600; letter-spacing: 0.2px; }
+            #navTree::item { height: 34px; padding: 6px 12px; border-radius: 10px; margin: 2px 0; }
+            #navTree::item:selected { background-color: rgba(59, 130, 246, 0.38); color: #f8fafc; font-weight: 600; }
+            #navTree::item:hover { background-color: rgba(59, 130, 246, 0.2); }
+            #headerBar { background-color: rgba(255, 255, 255, 0.94); border-radius: 24px; border: 1px solid rgba(148, 163, 184, 0.2); }
+            #pageTitle { font-size: 28px; font-weight: 700; color: #020617; letter-spacing: 0.4px; }
+            #fileBadge { font-size: 13px; font-weight: 500; color: #475569; padding: 6px 14px; border-radius: 999px; background-color: rgba(148, 163, 184, 0.16); border: 1px solid rgba(148, 163, 184, 0.28); }
+            #fileBadge[state="empty"] { background-color: rgba(148, 163, 184, 0.12); color: #64748b; border-style: dashed; }
+            #fileBadge[state="loading"] { background-color: rgba(59, 130, 246, 0.18); color: #1d4ed8; border: 1px solid rgba(59, 130, 246, 0.32); }
+            #fileBadge[state="active"] { background-color: rgba(16, 185, 129, 0.15); color: #047857; border: 1px solid rgba(16, 185, 129, 0.32); }
+            QPushButton { background-color: rgba(15, 23, 42, 0.04); border-radius: 12px; padding: 10px 22px; font-weight: 600; letter-spacing: 0.2px; border: 1px solid rgba(15, 23, 42, 0.08); color: #0f172a; }
             QPushButton:focus { outline: none; }
-            QPushButton:disabled { background-color: #94a3b8; color: #e5e7eb; }
-            QPushButton:hover:!disabled { background-color: #1e40af; }
-            QPushButton:pressed { background-color: #1d4ed8; }
-            #card { background-color: #ffffff; border-radius: 18px; border: 1px solid rgba(148, 163, 184, 0.28); }
+            QPushButton:hover:enabled { background-color: rgba(15, 23, 42, 0.08); border: 1px solid rgba(15, 23, 42, 0.12); }
+            QPushButton:pressed { background-color: rgba(15, 23, 42, 0.12); }
+            QPushButton:disabled { background-color: rgba(148, 163, 184, 0.1); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.2); }
+            QPushButton#primaryButton { background-color: #1d4ed8; color: #f8fafc; border: none; }
+            QPushButton#primaryButton:hover:enabled { background-color: #1e40af; border: none; }
+            QPushButton#primaryButton:pressed { background-color: #1d4ed8; border: none; }
+            QPushButton#primaryButton:disabled { background-color: #93c5fd; color: #e0e7ff; border: none; }
+            QPushButton#secondaryButton { background-color: rgba(59, 130, 246, 0.16); color: #1d4ed8; border: 1px solid rgba(59, 130, 246, 0.38); }
+            QPushButton#secondaryButton:hover:enabled { background-color: rgba(59, 130, 246, 0.26); border: 1px solid rgba(59, 130, 246, 0.45); }
+            QPushButton#secondaryButton:disabled { background-color: rgba(148, 163, 184, 0.16); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.4); }
+            QPushButton#ghostButton { background-color: transparent; color: #0f172a; border: 1px solid rgba(15, 23, 42, 0.18); }
+            QPushButton#ghostButton:hover:enabled { background-color: rgba(15, 23, 42, 0.06); }
+            QPushButton#ghostButton:disabled { color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.32); }
+            #card { background-color: #ffffff; border-radius: 20px; border: 1px solid rgba(148, 163, 184, 0.22); }
             #cardTitle { font-size: 20px; font-weight: 600; color: #0f172a; letter-spacing: 0.2px; }
             #cardSubtitle { color: #64748b; font-size: 13px; line-height: 1.4; }
-            #pageTitle { font-size: 28px; font-weight: 700; color: #020617; letter-spacing: 0.4px; }
             #statusLabel { color: #1f2937; font-size: 14px; line-height: 1.5; }
             #infoLabel { color: #475569; font-size: 14px; }
             #jsonView { background-color: #0f172a; color: #f9fafb; font-family: "Fira Code", monospace; border-radius: 12px; padding: 14px; border: 1px solid #1e293b; }
@@ -1215,7 +1281,7 @@ class NordlysWindow(QMainWindow):
             QListWidget#checklist::item:selected { background-color: rgba(37, 99, 235, 0.16); color: #0f172a; font-weight: 600; }
             QListWidget#checklist::item:hover { background-color: rgba(15, 23, 42, 0.05); }
             #statBadge { background-color: #f8fafc; border: 1px solid rgba(148, 163, 184, 0.35); border-radius: 16px; }
-            #statTitle { font-size: 12px; font-weight: 600; color: #475569; text-transform: uppercase; letter-spacing: 1.2px; }
+            #statTitle { font-size: 12px; font-weight: 600; color: #475569; letter-spacing: 1.2px; }
             #statValue { font-size: 26px; font-weight: 700; color: #0f172a; }
             #statDescription { font-size: 12px; color: #64748b; }
             QStatusBar { background: transparent; color: #475569; padding-right: 24px; border-top: 1px solid rgba(148, 163, 184, 0.3); }
@@ -1227,6 +1293,27 @@ class NordlysWindow(QMainWindow):
             QToolTip { background-color: #0f172a; color: #f8fafc; border: none; padding: 8px 10px; border-radius: 8px; }
             """
         )
+
+    def _update_file_badge(self, *, loading: bool = False) -> None:
+        if self.file_badge is None:
+            return
+
+        if loading:
+            name = Path(self._loading_file).name if self._loading_file else "Laster SAF-T …"
+            text = f"Laster: {name}"
+            state = "loading"
+        elif self._current_file:
+            text = f"Aktiv fil: {Path(self._current_file).name}"
+            state = "active"
+        else:
+            text = "Ingen SAF-T-fil lastet"
+            state = "empty"
+
+        self.file_badge.setText(text)
+        self.file_badge.setProperty("state", state)
+        self.file_badge.style().unpolish(self.file_badge)
+        self.file_badge.style().polish(self.file_badge)
+        self.file_badge.update()
 
     # endregion
 
@@ -1300,6 +1387,11 @@ class NordlysWindow(QMainWindow):
         self._progress_dialog = None
 
     def _set_loading_state(self, loading: bool, status_message: Optional[str] = None) -> None:
+        if loading:
+            self._update_file_badge(loading=True)
+        else:
+            self._update_file_badge()
+
         self.btn_open.setEnabled(not loading)
         has_data = self._saft_df is not None
         self.btn_brreg.setEnabled(False if loading else has_data)
@@ -1329,6 +1421,7 @@ class NordlysWindow(QMainWindow):
         if status_message:
             self.statusBar().showMessage(status_message)
         self._loading_file = None
+        self._update_file_badge()
 
     @Slot(object)
     def _on_load_finished(self, result_obj: object) -> None:
@@ -1342,6 +1435,7 @@ class NordlysWindow(QMainWindow):
         self._saft_summary = result.summary
         self._validation_result = result.validation
         self._current_file = result.file_path
+        self._update_file_badge()
 
         self._ingest_customers(result.customers)
         self._ingest_suppliers(result.suppliers)
