@@ -1,4 +1,4 @@
-"""SAF-T verktøy for omsetning per kunde basert på hovedbok."""
+"""SAF-T verktøy for kunde- og leverandøranalyse av hovedbok med eksportfunksjoner."""
 from __future__ import annotations
 
 from collections import defaultdict
