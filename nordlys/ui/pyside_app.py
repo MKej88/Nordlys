@@ -261,6 +261,38 @@ class SaftLoadWorker(QObject):
             self.error.emit(str(exc))
 
 
+@dataclass
+class BrregFetchResult:
+    """Resultatobjekt fra bakgrunnshenting av Brreg-data."""
+
+    generation: int
+    data: Optional[Dict[str, object]]
+    error: Optional[str]
+
+
+class BrregFetchWorker(QObject):
+    """Arbeider som henter Brreg-data i bakgrunnen."""
+
+    finished: Signal = Signal(object)
+
+    def __init__(self, orgnr: str, generation: int) -> None:
+        super().__init__()
+        self._orgnr = orgnr
+        self._generation = generation
+
+    @Slot()
+    def run(self) -> None:
+        try:
+            data = fetch_brreg(self._orgnr)
+            self.finished.emit(
+                BrregFetchResult(generation=self._generation, data=data, error=None)
+            )
+        except Exception as exc:  # pragma: no cover - vises i GUI
+            self.finished.emit(
+                BrregFetchResult(generation=self._generation, data=None, error=str(exc))
+            )
+
+
 def _create_table_widget() -> QTableWidget:
     table = QTableWidget()
     table.setAlternatingRowColors(True)
@@ -980,6 +1012,10 @@ class NordlysWindow(QMainWindow):
         self._load_thread: Optional[QThread] = None
         self._load_worker: Optional[SaftLoadWorker] = None
         self._progress_dialog: Optional[QProgressDialog] = None
+        self._brreg_fetch_thread: Optional[QThread] = None
+        self._brreg_fetch_worker: Optional[BrregFetchWorker] = None
+        self._brreg_status_base: Optional[str] = None
+        self._brreg_fetch_generation: int = 0
 
         self._page_map: Dict[str, QWidget] = {}
         self.sales_ar_page: Optional[SalesArPage] = None
@@ -1413,12 +1449,8 @@ class NordlysWindow(QMainWindow):
         if self.regnskap_page:
             self.regnskap_page.update_comparison(None)
         self.btn_export.setEnabled(True)
-        brreg_status = self._refresh_brreg_data()
         base_message = f"SAF-T lastet: {result.file_path}"
-        if brreg_status:
-            self.statusBar().showMessage(f"{base_message} · {brreg_status}")
-        else:
-            self.statusBar().showMessage(base_message)
+        self._start_brreg_refresh(base_message)
 
     @Slot(str)
     def _on_load_error(self, message: str) -> None:
@@ -1710,21 +1742,15 @@ class NordlysWindow(QMainWindow):
             ),
         ]
 
-    def _refresh_brreg_data(self) -> str:
-        """Henter og oppdaterer data fra Regnskapsregisteret."""
+    def _reset_brreg_state(self) -> None:
+        """Nullstiller viste Brreg-data i grensesnittet."""
 
         self._brreg_json = None
         self._brreg_map = None
         self._update_brreg_comparison(None)
 
-        if not self._header or not self._header.orgnr:
-            return "Regnskapsregister import feilet: org.nr mangler i SAF-T."
-
-        orgnr = self._header.orgnr
-        try:
-            data = fetch_brreg(orgnr)
-        except Exception as exc:  # pragma: no cover - vises i GUI
-            return f"Regnskapsregister import feilet: {exc}"
+    def _apply_brreg_data(self, data: Dict[str, object]) -> str:
+        """Oppdaterer grensesnittet med hentede Brreg-data."""
 
         self._brreg_json = data
         self._brreg_map = map_brreg_metrics(data)
@@ -1736,6 +1762,88 @@ class NordlysWindow(QMainWindow):
             return "Regnskapsregister import vellykket, ingen SAF-T-oppsummering å sammenligne mot."
 
         return "Regnskapsregister import vellykket."
+
+    def _refresh_brreg_data(self) -> str:
+        """Henter og oppdaterer data fra Regnskapsregisteret."""
+
+        self._reset_brreg_state()
+
+        if not self._header or not self._header.orgnr:
+            return "Regnskapsregister import feilet: org.nr mangler i SAF-T."
+
+        orgnr = self._header.orgnr
+        try:
+            data = fetch_brreg(orgnr)
+        except Exception as exc:  # pragma: no cover - vises i GUI
+            return f"Regnskapsregister import feilet: {exc}"
+
+        return self._apply_brreg_data(data)
+
+    def _start_brreg_refresh(self, base_message: str) -> None:
+        """Starter bakgrunnshenting av Brreg-data."""
+
+        self._brreg_status_base = base_message
+        self._reset_brreg_state()
+
+        if not self._header or not self._header.orgnr:
+            status = "Regnskapsregister import feilet: org.nr mangler i SAF-T."
+            self.statusBar().showMessage(f"{base_message} · {status}")
+            self._brreg_fetch_worker = None
+            self._brreg_fetch_thread = None
+            return
+
+        self._brreg_fetch_generation += 1
+        generation = self._brreg_fetch_generation
+
+        worker = BrregFetchWorker(self._header.orgnr, generation)
+        thread = QThread(self)
+        worker.moveToThread(thread)
+
+        thread.started.connect(worker.run)
+        worker.finished.connect(self._on_brreg_fetch_finished)
+        worker.finished.connect(worker.deleteLater)
+        worker.finished.connect(thread.quit)
+        thread.finished.connect(
+            lambda gen=generation: self._on_brreg_thread_finished(gen)
+        )
+        thread.finished.connect(thread.deleteLater)
+
+        self._brreg_fetch_worker = worker
+        self._brreg_fetch_thread = thread
+
+        self.statusBar().showMessage(f"{base_message} · Henter Regnskapsregisteret …")
+        thread.start()
+
+    @Slot(object)
+    def _on_brreg_fetch_finished(self, result_obj: object) -> None:
+        result = cast(BrregFetchResult, result_obj)
+
+        if result.generation != self._brreg_fetch_generation:
+            return
+
+        if result.error:
+            status = f"Regnskapsregister import feilet: {result.error}"
+        elif result.data is None:
+            status = "Regnskapsregister import feilet."
+        else:
+            status = self._apply_brreg_data(result.data)
+
+        base = self._brreg_status_base
+        if base and status:
+            self.statusBar().showMessage(f"{base} · {status}")
+        elif base:
+            self.statusBar().showMessage(base)
+        elif status:
+            self.statusBar().showMessage(status)
+
+    @Slot(int)
+    def _on_brreg_thread_finished(self, generation: int) -> None:
+        if generation != self._brreg_fetch_generation:
+            return
+
+        self._brreg_fetch_worker = None
+        self._brreg_fetch_thread = None
+        self._brreg_status_base = None
 
     def on_export(self) -> None:
         if self._saft_df is None:
