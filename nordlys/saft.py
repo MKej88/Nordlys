@@ -220,24 +220,12 @@ def parse_saldobalanse(root: ET.Element) -> pd.DataFrame:
     """Returnerer saldobalansen som Pandas DataFrame."""
     gl = root.find('n1:MasterFiles/n1:GeneralLedgerAccounts', NS)
     rows: List[Dict[str, Optional[float]]] = []
-    if gl is None:
-        return pd.DataFrame(
-            columns=[
-                'Konto',
-                'Kontonavn',
-                'IB Debet',
-                'IB Kredit',
-                'Endring Debet',
-                'Endring Kredit',
-                'UB Debet',
-                'UB Kredit',
-            ]
-        )
+    accounts = gl.findall('n1:Account', NS) if gl is not None else []
 
     def get(acct: ET.Element, tag: str) -> Optional[str]:
         return text_or_none(acct.find(f"n1:{tag}", NS))
 
-    for account in gl.findall('n1:Account', NS):
+    for account in accounts:
         konto = get(account, 'AccountID')
         navn = get(account, 'AccountDescription') or ''
         opening_debit = to_float(get(account, 'OpeningDebitBalance'))
@@ -257,23 +245,28 @@ def parse_saldobalanse(root: ET.Element) -> pd.DataFrame:
             }
         )
 
-    df = pd.DataFrame(rows)
+    df = pd.DataFrame(
+        rows,
+        columns=[
+            'Konto',
+            'Kontonavn',
+            'IB Debet',
+            'IB Kredit',
+            'Endring Debet',
+            'Endring Kredit',
+            'UB Debet',
+            'UB Kredit',
+        ],
+    )
     df['IB_netto'] = df['IB Debet'].fillna(0) - df['IB Kredit'].fillna(0)
     df['UB_netto'] = df['UB Debet'].fillna(0) - df['UB Kredit'].fillna(0)
     endring = df['UB_netto'] - df['IB_netto']
     df['Endring Debet'] = endring.where(endring > 0, 0.0)
     df['Endring Kredit'] = (-endring).where(endring < 0, 0.0)
 
-    def konto_to_int(value: Optional[str]) -> Optional[int]:
-        if value is None:
-            return None
-        try:
-            return int(float(str(value).strip()))
-        except Exception:
-            digits = ''.join(ch for ch in str(value) if ch.isdigit())
-            return int(digits) if digits else None
-
-    df['Konto_int'] = df['Konto'].apply(konto_to_int)
+    konto_series = df['Konto'].fillna('').astype(str)
+    konto_digits = konto_series.str.extract(r'(-?\d+)', expand=False)
+    df['Konto_int'] = pd.to_numeric(konto_digits, errors='coerce')
     return df
 
 
@@ -286,28 +279,33 @@ def ns4102_summary_from_tb(df: pd.DataFrame) -> Dict[str, float]:
     work['UB_netto'] = work['UB Debet'].fillna(0) - work['UB Kredit'].fillna(0)
     work['END_netto'] = work['Endring Debet'].fillna(0) - work['Endring Kredit'].fillna(0)
 
-    def sum_in_range(column: str, start: int, stop: int) -> float:
-        mask = (work['Konto_int'] >= start) & (work['Konto_int'] <= stop)
-        return float(work.loc[mask, column].sum())
+    konto_values = work['Konto_int'].to_numpy()
+    end_values = work['END_netto'].to_numpy()
+    ub_values = work['UB_netto'].to_numpy()
 
-    driftsinntekter = -sum_in_range('END_netto', 3000, 3999)
-    varekostnad = sum_in_range('END_netto', 4000, 4999)
-    lonn = sum_in_range('END_netto', 5000, 5999)
-    avskr = sum_in_range('END_netto', 6000, 6099) + sum_in_range('END_netto', 7800, 7899)
-    andre_drift = sum_in_range('END_netto', 6100, 7999) - sum_in_range('END_netto', 7800, 7899)
+    def sum_in_range(values, start: int, stop: int) -> float:
+        mask = (konto_values >= start) & (konto_values <= stop)
+        return float(values[mask].sum())
+
+    driftsinntekter = -sum_in_range(end_values, 3000, 3999)
+    varekostnad = sum_in_range(end_values, 4000, 4999)
+    lonn = sum_in_range(end_values, 5000, 5999)
+    avskr = sum_in_range(end_values, 6000, 6099) + sum_in_range(end_values, 7800, 7899)
+    andre_drift = sum_in_range(end_values, 6100, 7999) - sum_in_range(end_values, 7800, 7899)
     ebitda = driftsinntekter - (varekostnad + lonn + andre_drift)
     ebit = ebitda - avskr
-    finans = -(sum_in_range('END_netto', 8000, 8299) + sum_in_range('END_netto', 8400, 8899))
-    skatt = sum_in_range('END_netto', 8300, 8399)
+    finans = -(sum_in_range(end_values, 8000, 8299) + sum_in_range(end_values, 8400, 8899))
+    skatt = sum_in_range(end_values, 8300, 8399)
     ebt = ebit + finans
     arsresultat = ebt - skatt
-    anlegg_UB = sum_in_range('UB_netto', 1000, 1399)
-    omlop_UB = sum_in_range('UB_netto', 1400, 1999)
+    anlegg_UB = sum_in_range(ub_values, 1000, 1399)
+    omlop_UB = sum_in_range(ub_values, 1400, 1999)
     eiendeler_netto = anlegg_UB + omlop_UB
-    egenkap_UB = -sum_in_range('UB_netto', 2000, 2099)
-    liab = work[(work['Konto_int'] >= 2100) & (work['Konto_int'] <= 2999)]
-    liab_kreditt = -liab.loc[liab['UB_netto'] < 0, 'UB_netto'].sum()
-    liab_debet = liab.loc[liab['UB_netto'] > 0, 'UB_netto'].sum()
+    egenkap_UB = -sum_in_range(ub_values, 2000, 2099)
+    liab_mask = (konto_values >= 2100) & (konto_values <= 2999)
+    liab_values = ub_values[liab_mask]
+    liab_kreditt = float(-liab_values[liab_values < 0].sum())
+    liab_debet = float(liab_values[liab_values > 0].sum())
     gjeld_netto = liab_kreditt - liab_debet
     balanse_diff_netto = eiendeler_netto - (egenkap_UB + gjeld_netto)
     eiendeler_brreg = eiendeler_netto + liab_debet
