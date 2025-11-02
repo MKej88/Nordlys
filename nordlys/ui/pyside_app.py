@@ -1679,7 +1679,7 @@ class NordlysWindow(QMainWindow):
             ),
             (
                 "Egenkapital (UB)",
-                self._saft_summary.get("egenkapital_UB_brreg"),
+                self._saft_summary.get("egenkapital_UB"),
                 self._brreg_map.get("egenkapital_UB"),
                 None,
             ),
