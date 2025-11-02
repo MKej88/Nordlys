@@ -1058,7 +1058,7 @@ class NordlysWindow(QMainWindow):
 
         content_layout.addLayout(header_layout)
 
-        info_card = CardFrame("Selskapsinformasjon")
+        self.info_card = CardFrame("Selskapsinformasjon")
         info_grid = QGridLayout()
         info_grid.setHorizontalSpacing(24)
         info_grid.setVerticalSpacing(8)
@@ -1069,8 +1069,8 @@ class NordlysWindow(QMainWindow):
         info_grid.addWidget(self.lbl_company, 0, 0)
         info_grid.addWidget(self.lbl_orgnr, 0, 1)
         info_grid.addWidget(self.lbl_period, 0, 2)
-        info_card.add_layout(info_grid)
-        content_layout.addWidget(info_card)
+        self.info_card.add_layout(info_grid)
+        content_layout.addWidget(self.info_card)
 
         self.stack = QStackedWidget()
         content_layout.addWidget(self.stack, 1)
@@ -1813,6 +1813,8 @@ class NordlysWindow(QMainWindow):
             widget = self._page_map[key]
             self.stack.setCurrentWidget(widget)
             self.title_label.setText(current.text(0))
+            if hasattr(self, "info_card"):
+                self.info_card.setVisible(key == "dashboard")
 
     # endregion
 
