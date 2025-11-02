@@ -1,7 +1,6 @@
 """PySide6-basert GUI for Nordlys."""
 from __future__ import annotations
 
-import json
 import math
 import sys
 from datetime import date, datetime
@@ -33,7 +32,6 @@ from PySide6.QtWidgets import (
     QSpinBox,
     QStackedWidget,
     QStatusBar,
-    QTextEdit,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -42,7 +40,7 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
 )
 
-from ..brreg import fetch_brreg, find_first_by_exact_endkey, map_brreg_metrics
+from ..brreg import fetch_brreg, map_brreg_metrics
 from ..constants import APP_TITLE
 from ..regnskap import compute_balance_analysis, compute_result_analysis, prepare_regnskap_dataframe
 from ..saft import (
@@ -164,6 +162,9 @@ class SaftLoadResult:
     supplier_purchases: Optional[pd.DataFrame]
     summary: Optional[Dict[str, float]]
     validation: SaftValidationResult
+    brreg_json: Optional[Dict[str, object]]
+    brreg_map: Optional[Dict[str, Optional[float]]]
+    brreg_error: Optional[str]
 
 
 class SaftLoadWorker(QObject):
@@ -249,6 +250,17 @@ class SaftLoadWorker(QObject):
                 self._file_path,
                 header.file_version if header else None,
             )
+
+            brreg_json: Optional[Dict[str, object]] = None
+            brreg_map: Optional[Dict[str, Optional[float]]] = None
+            brreg_error: Optional[str] = None
+            if header and header.orgnr:
+                try:
+                    brreg_json = fetch_brreg(header.orgnr)
+                    brreg_map = map_brreg_metrics(brreg_json)
+                except Exception as exc:  # pragma: no cover - nettverksfeil vises i GUI
+                    brreg_error = str(exc)
+
             result = SaftLoadResult(
                 file_path=self._file_path,
                 header=header,
@@ -259,6 +271,9 @@ class SaftLoadWorker(QObject):
                 supplier_purchases=supplier_purchases,
                 summary=summary,
                 validation=validation,
+                brreg_json=brreg_json,
+                brreg_map=brreg_map,
+                brreg_error=brreg_error,
             )
             self.finished.emit(result)
         except Exception as exc:  # pragma: no cover - presenteres i GUI
@@ -842,40 +857,19 @@ class RegnskapsanalysePage(QWidget):
 
 
 class BrregPage(QWidget):
-    """Visning av mapping mot Regnskapsregisteret og rådata."""
+    """Plassholder-side for sammenstillingsanalyse uten innhold."""
 
     def __init__(self) -> None:
         super().__init__()
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(24)
-
-        self.map_card = CardFrame("Brreg-nøkler", "Mapping mellom SAF-T og Regnskapsregisteret.")
-        self.map_table = _create_table_widget()
-        self.map_table.setColumnCount(2)
-        self.map_table.setHorizontalHeaderLabels(["Felt", "Sti = Verdi"])
-        self.map_card.add_widget(self.map_table)
-        layout.addWidget(self.map_card)
-
-        self.json_card = CardFrame("Detaljert JSON", "Rådata fra Regnskapsregisteret for videre analyse.")
-        self.json_view = QTextEdit()
-        self.json_view.setReadOnly(True)
-        self.json_view.setObjectName("jsonView")
-        self.json_card.add_widget(self.json_view)
-        layout.addWidget(self.json_card)
         layout.addStretch(1)
 
     def update_mapping(self, rows: Optional[Sequence[Tuple[str, str]]]) -> None:
-        if not rows:
-            self.map_table.setRowCount(0)
-            return
-        _populate_table(self.map_table, ["Felt", "Sti = Verdi"], rows)
+        _ = rows
 
     def update_json(self, data: Optional[Dict[str, object]]) -> None:
-        if not data:
-            self.json_view.clear()
-            return
-        self.json_view.setPlainText(json.dumps(data, indent=2, ensure_ascii=False))
+        _ = data
 
 
 class ChecklistPage(QWidget):
@@ -1202,11 +1196,6 @@ class NordlysWindow(QMainWindow):
         self.btn_open.clicked.connect(self.on_open)
         header_layout.addWidget(self.btn_open)
 
-        self.btn_brreg = QPushButton("Hent Regnskapsregisteret")
-        self.btn_brreg.clicked.connect(self.on_brreg)
-        self.btn_brreg.setEnabled(False)
-        header_layout.addWidget(self.btn_brreg)
-
         self.btn_export = QPushButton("Eksporter rapport (Excel)")
         self.btn_export.clicked.connect(self.on_export)
         self.btn_export.setEnabled(False)
@@ -1364,7 +1353,6 @@ class NordlysWindow(QMainWindow):
             #pageTitle { font-size: 28px; font-weight: 700; color: #020617; letter-spacing: 0.4px; }
             #statusLabel { color: #1f2937; font-size: 14px; line-height: 1.5; }
             #infoLabel { color: #475569; font-size: 14px; }
-            #jsonView { background-color: #0f172a; color: #f9fafb; font-family: "Fira Code", monospace; border-radius: 12px; padding: 14px; border: 1px solid #1e293b; }
             #cardTable { border: none; gridline-color: rgba(148, 163, 184, 0.35); background-color: transparent; alternate-background-color: #f8fafc; }
             QTableWidget { background-color: transparent; alternate-background-color: #f8fafc; }
             QTableWidget::item { padding: 10px 8px; }
@@ -1463,7 +1451,6 @@ class NordlysWindow(QMainWindow):
     def _set_loading_state(self, loading: bool, status_message: Optional[str] = None) -> None:
         self.btn_open.setEnabled(not loading)
         has_data = self._saft_df is not None
-        self.btn_brreg.setEnabled(False if loading else has_data)
         self.btn_export.setEnabled(False if loading else has_data)
         if self.sales_ar_page:
             if loading:
@@ -1609,13 +1596,100 @@ class NordlysWindow(QMainWindow):
         if self.regnskap_page:
             fiscal_year = self._header.fiscal_year if self._header else None
             self.regnskap_page.set_dataframe(df, fiscal_year)
-            self.regnskap_page.update_comparison(None)
-        self.brreg_page.update_mapping(None)
-        self.brreg_page.update_json(None)
+        brreg_status = self._process_brreg_result(result)
 
-        self.btn_brreg.setEnabled(True)
         self.btn_export.setEnabled(True)
-        self.statusBar().showMessage(f"SAF-T lastet: {result.file_path}")
+        status_parts = [f"SAF-T lastet: {result.file_path}."]
+        if brreg_status:
+            status_parts.append(brreg_status)
+        self.statusBar().showMessage(" ".join(status_parts))
+
+    def _process_brreg_result(self, result: SaftLoadResult) -> str:
+        """Oppdaterer interne strukturer med data fra Regnskapsregisteret."""
+
+        self._brreg_json = result.brreg_json
+        self._brreg_map = result.brreg_map
+
+        if getattr(self, "brreg_page", None):
+            self.brreg_page.update_mapping(None)
+            self.brreg_page.update_json(None)
+
+        if result.brreg_json is None:
+            self._update_comparison_tables(None)
+            if result.brreg_error:
+                error_text = str(result.brreg_error).strip()
+                if "\n" in error_text:
+                    error_text = error_text.splitlines()[0]
+                return f"Regnskapsregister: import feilet ({error_text})."
+            if result.header and result.header.orgnr:
+                return "Regnskapsregister: import feilet."
+            return "Regnskapsregister: ikke tilgjengelig (mangler org.nr.)."
+
+        if not self._saft_summary:
+            self._update_comparison_tables(None)
+            return "Regnskapsregister: import vellykket, men ingen SAF-T-oppsummering å sammenligne."
+
+        comparison_rows = self._build_brreg_comparison_rows()
+        self._update_comparison_tables(comparison_rows)
+        return "Regnskapsregister: import vellykket."
+
+    def _update_comparison_tables(
+        self,
+        rows: Optional[Sequence[Tuple[str, Optional[float], Optional[float], Optional[float]]]],
+    ) -> None:
+        """Oppdaterer tabellene som sammenligner SAF-T med Regnskapsregisteret."""
+
+        if getattr(self, "kontroll_page", None):
+            self.kontroll_page.update_comparison(rows)
+        if getattr(self, "regnskap_page", None):
+            self.regnskap_page.update_comparison(rows)
+
+    def _build_brreg_comparison_rows(
+        self,
+    ) -> Optional[List[Tuple[str, Optional[float], Optional[float], Optional[float]]]]:
+        """Konstruerer rader for sammenligning mot Regnskapsregisteret."""
+
+        if not self._saft_summary or not self._brreg_map:
+            return None
+
+        return [
+            (
+                "Driftsinntekter",
+                self._saft_summary.get("driftsinntekter"),
+                self._brreg_map.get("driftsinntekter"),
+                None,
+            ),
+            (
+                "EBIT",
+                self._saft_summary.get("ebit"),
+                self._brreg_map.get("ebit"),
+                None,
+            ),
+            (
+                "Årsresultat",
+                self._saft_summary.get("arsresultat"),
+                self._brreg_map.get("arsresultat"),
+                None,
+            ),
+            (
+                "Eiendeler (UB)",
+                self._saft_summary.get("eiendeler_UB_brreg"),
+                self._brreg_map.get("eiendeler_UB"),
+                None,
+            ),
+            (
+                "Egenkapital (UB)",
+                self._saft_summary.get("egenkapital_UB_brreg"),
+                self._brreg_map.get("egenkapital_UB"),
+                None,
+            ),
+            (
+                "Gjeld (UB)",
+                self._saft_summary.get("gjeld_UB_brreg"),
+                self._brreg_map.get("gjeld_UB"),
+                None,
+            ),
+        ]
 
     @Slot(str)
     def _on_load_error(self, message: str) -> None:
@@ -1854,87 +1928,6 @@ class NordlysWindow(QMainWindow):
             f"Innkjøp per leverandør (kostnadskonti 4xxx–8xxx) beregnet. N={topn}."
         )
         return rows
-
-    def on_brreg(self) -> None:
-        if not self._header or not self._header.orgnr:
-            QMessageBox.warning(self, "Mangler org.nr", "Fant ikke org.nr i SAF-T-headeren.")
-            return
-        orgnr = self._header.orgnr
-        try:
-            js = fetch_brreg(orgnr)
-        except Exception as exc:  # pragma: no cover - vises i GUI
-            QMessageBox.critical(self, "Feil ved henting", str(exc))
-            return
-        self._brreg_json = js
-        self._brreg_map = map_brreg_metrics(js)
-
-        rows: List[Tuple[str, str]] = []
-
-        def add_row(label: str, prefer_keys: Iterable[str]) -> None:
-            hit = find_first_by_exact_endkey(js, prefer_keys, disallow_contains=["egenkapitalOgGjeld"] if "sumEgenkapital" in prefer_keys else None)
-            if not hit and "sumEiendeler" in prefer_keys:
-                hit = find_first_by_exact_endkey(js, ["sumEgenkapitalOgGjeld"])
-            rows.append((label, f"{hit[0]} = {hit[1]}" if hit else "—"))
-
-        add_row("Eiendeler (UB)", ["sumEiendeler"])
-        add_row("Egenkapital (UB)", ["sumEgenkapital"])
-        add_row("Gjeld (UB)", ["sumGjeld"])
-        add_row("Driftsinntekter", ["driftsinntekter", "sumDriftsinntekter", "salgsinntekter"])
-        add_row("EBIT", ["driftsresultat", "ebit", "driftsresultatFoerFinans"])
-        add_row("Årsresultat", ["arsresultat", "resultat", "resultatEtterSkatt"])
-
-        self.brreg_page.update_mapping(rows)
-        self.brreg_page.update_json(js)
-
-        if not self._saft_summary:
-            self.kontroll_page.update_comparison(None)
-            if self.regnskap_page:
-                self.regnskap_page.update_comparison(None)
-            self.statusBar().showMessage("Brreg-data hentet, men ingen SAF-T oppsummering å sammenligne mot.")
-            return
-
-        cmp_rows = [
-            (
-                "Driftsinntekter",
-                self._saft_summary.get("driftsinntekter"),
-                self._brreg_map.get("driftsinntekter") if self._brreg_map else None,
-                None,
-            ),
-            (
-                "EBIT",
-                self._saft_summary.get("ebit"),
-                self._brreg_map.get("ebit") if self._brreg_map else None,
-                None,
-            ),
-            (
-                "Årsresultat",
-                self._saft_summary.get("arsresultat"),
-                self._brreg_map.get("arsresultat") if self._brreg_map else None,
-                None,
-            ),
-            (
-                "Eiendeler (UB)",
-                self._saft_summary.get("eiendeler_UB_brreg"),
-                self._brreg_map.get("eiendeler_UB") if self._brreg_map else None,
-                None,
-            ),
-            (
-                "Egenkapital (UB)",
-                self._saft_summary.get("egenkapital_UB"),
-                self._brreg_map.get("egenkapital_UB") if self._brreg_map else None,
-                None,
-            ),
-            (
-                "Gjeld (UB)",
-                self._saft_summary.get("gjeld_UB_brreg"),
-                self._brreg_map.get("gjeld_UB") if self._brreg_map else None,
-                None,
-            ),
-        ]
-        self.kontroll_page.update_comparison(cmp_rows)
-        if self.regnskap_page:
-            self.regnskap_page.update_comparison(cmp_rows)
-        self.statusBar().showMessage("Data hentet fra Regnskapsregisteret.")
 
     def on_export(self) -> None:
         if self._saft_df is None:
