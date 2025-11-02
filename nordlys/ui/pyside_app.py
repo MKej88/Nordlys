@@ -344,6 +344,33 @@ class StatBadge(QFrame):
         self.value_label.setText(value)
 
 
+class InfoField(QWidget):
+    """Viser et navngitt felt i informasjonspanelet."""
+
+    def __init__(self, title: str) -> None:
+        super().__init__()
+        self.setObjectName("infoField")
+        self.setAttribute(Qt.WA_StyledBackground, True)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 12, 16, 12)
+        layout.setSpacing(6)
+
+        self.caption_label = QLabel(title)
+        self.caption_label.setObjectName("infoCaption")
+        self.caption_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        layout.addWidget(self.caption_label)
+
+        self.value_label = QLabel("–")
+        self.value_label.setObjectName("infoValue")
+        self.value_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.value_label.setWordWrap(True)
+        layout.addWidget(self.value_label)
+
+    def set_value(self, value: str) -> None:
+        self.value_label.setText(value)
+
+
 class DashboardPage(QWidget):
     """Viser nøkkeltall for selskapet."""
 
@@ -930,6 +957,16 @@ class NavigationPanel(QFrame):
         self.logo_label.setObjectName("logoLabel")
         layout.addWidget(self.logo_label)
 
+        self.tagline_label = QLabel("Revisjonsanalyseplattform")
+        self.tagline_label.setObjectName("logoTagline")
+        layout.addWidget(self.tagline_label)
+
+        separator = QFrame()
+        separator.setObjectName("navSeparator")
+        separator.setFrameShape(QFrame.HLine)
+        separator.setFrameShadow(QFrame.Sunken)
+        layout.addWidget(separator)
+
         self.tree = QTreeWidget()
         self.tree.setObjectName("navTree")
         self.tree.setHeaderHidden(True)
@@ -942,6 +979,24 @@ class NavigationPanel(QFrame):
         self.tree.setItemsExpandable(False)
         self.tree.setFocusPolicy(Qt.NoFocus)
         layout.addWidget(self.tree, 1)
+
+        layout.addStretch(1)
+
+        footer = QFrame()
+        footer.setObjectName("navFooter")
+        footer_layout = QVBoxLayout(footer)
+        footer_layout.setContentsMargins(0, 0, 0, 0)
+        footer_layout.setSpacing(4)
+
+        self.footer_title = QLabel("Nordlys Suite")
+        self.footer_title.setObjectName("navFooterTitle")
+        footer_layout.addWidget(self.footer_title)
+
+        self.footer_caption = QLabel("Profesjonelle revisjonsinnsikter")
+        self.footer_caption.setObjectName("navFooterCaption")
+        footer_layout.addWidget(self.footer_caption)
+
+        layout.addWidget(footer)
 
     def add_root(self, title: str, key: str | None = None) -> NavigationItem:
         item = QTreeWidgetItem([title])
@@ -1047,12 +1102,34 @@ class NordlysWindow(QMainWindow):
         content_layout.setSpacing(24)
         root_layout.addWidget(content_wrapper, 1)
 
-        header_layout = QHBoxLayout()
+        header_bar = QFrame()
+        header_bar.setObjectName("headerBar")
+        header_bar.setFrameShape(QFrame.NoFrame)
+        header_bar.setAttribute(Qt.WA_StyledBackground, True)
+        header_shadow = QGraphicsDropShadowEffect(header_bar)
+        header_shadow.setBlurRadius(28)
+        header_shadow.setOffset(0, 10)
+        header_shadow.setColor(QColor(15, 23, 42, 25))
+        header_bar.setGraphicsEffect(header_shadow)
+        header_layout = QHBoxLayout(header_bar)
+        header_layout.setContentsMargins(24, 16, 24, 16)
         header_layout.setSpacing(16)
+
+        title_layout = QVBoxLayout()
+        title_layout.setContentsMargins(0, 0, 0, 0)
+        title_layout.setSpacing(6)
 
         self.title_label = QLabel("Dashboard")
         self.title_label.setObjectName("pageTitle")
-        header_layout.addWidget(self.title_label, 1)
+        title_layout.addWidget(self.title_label)
+
+        self.file_badge = QLabel()
+        self.file_badge.setObjectName("fileBadge")
+        self.file_badge.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
+        self.file_badge.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        title_layout.addWidget(self.file_badge)
+
+        header_layout.addLayout(title_layout, 1)
 
         self.btn_open = QPushButton("Åpne SAF-T XML …")
         self.btn_open.clicked.connect(self.on_open)
@@ -1068,19 +1145,23 @@ class NordlysWindow(QMainWindow):
         self.btn_export.setEnabled(False)
         header_layout.addWidget(self.btn_export)
 
-        content_layout.addLayout(header_layout)
+        content_layout.addWidget(header_bar)
 
         self.info_card = CardFrame("Selskapsinformasjon")
         info_grid = QGridLayout()
         info_grid.setHorizontalSpacing(24)
         info_grid.setVerticalSpacing(8)
 
-        self.lbl_company = QLabel("Selskap: –")
-        self.lbl_orgnr = QLabel("Org.nr: –")
-        self.lbl_period = QLabel("Periode: –")
-        info_grid.addWidget(self.lbl_company, 0, 0)
-        info_grid.addWidget(self.lbl_orgnr, 0, 1)
-        info_grid.addWidget(self.lbl_period, 0, 2)
+        self.company_field = InfoField("Selskap")
+        self.orgnr_field = InfoField("Organisasjonsnummer")
+        self.period_field = InfoField("Rapporteringsperiode")
+
+        info_grid.addWidget(self.company_field, 0, 0)
+        info_grid.addWidget(self.orgnr_field, 0, 1)
+        info_grid.addWidget(self.period_field, 0, 2)
+        info_grid.setColumnStretch(0, 1)
+        info_grid.setColumnStretch(1, 1)
+        info_grid.setColumnStretch(2, 1)
         self.info_card.add_layout(info_grid)
         content_layout.addWidget(self.info_card)
 
@@ -1088,6 +1169,9 @@ class NordlysWindow(QMainWindow):
         content_layout.addWidget(self.stack, 1)
 
         self._create_pages()
+
+        self._update_header_fields()
+        self._update_file_badge()
 
         status = QStatusBar()
         status.showMessage("Klar.")
@@ -1203,12 +1287,22 @@ class NordlysWindow(QMainWindow):
             QMainWindow { background-color: #edf1f7; }
             #navPanel { background-color: #0b1120; color: #e2e8f0; border-right: 1px solid rgba(148, 163, 184, 0.18); }
             #logoLabel { font-size: 26px; font-weight: 700; letter-spacing: 0.6px; color: #f8fafc; }
+            #logoTagline { color: #94a3b8; font-size: 12px; letter-spacing: 0.4px; }
+            #navSeparator { background-color: rgba(148, 163, 184, 0.2); min-height: 1px; max-height: 1px; border: none; }
+            #navFooter { border-top: 1px solid rgba(148, 163, 184, 0.18); padding-top: 12px; }
+            #navFooterTitle { font-size: 12px; font-weight: 600; color: #e2e8f0; letter-spacing: 0.6px; }
+            #navFooterCaption { color: #94a3b8; font-size: 11px; }
             #navTree { background: transparent; border: none; color: #dbeafe; font-size: 14px; }
             #navTree:focus { outline: none; border: none; }
             QTreeWidget::item:focus { outline: none; }
             #navTree::item { height: 34px; padding: 6px 10px; border-radius: 10px; margin: 2px 0; }
             #navTree::item:selected { background-color: rgba(59, 130, 246, 0.35); color: #f8fafc; font-weight: 600; }
             #navTree::item:hover { background-color: rgba(59, 130, 246, 0.18); }
+            #headerBar { background-color: #ffffff; border-radius: 20px; border: 1px solid rgba(148, 163, 184, 0.22); }
+            #fileBadge { font-size: 12px; font-weight: 600; padding: 6px 12px; border-radius: 999px; min-width: 0; }
+            #fileBadge[state="inactive"] { background-color: rgba(148, 163, 184, 0.18); color: #475569; border: 1px dashed rgba(148, 163, 184, 0.6); }
+            #fileBadge[state="loading"] { background-color: rgba(253, 230, 138, 0.3); color: #92400e; border: 1px solid rgba(245, 158, 11, 0.6); }
+            #fileBadge[state="active"] { background-color: rgba(37, 99, 235, 0.16); color: #1d4ed8; border: 1px solid rgba(37, 99, 235, 0.4); }
             QPushButton { background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 #2563eb, stop:1 #1d4ed8); color: white; border-radius: 10px; padding: 10px 20px; font-weight: 600; letter-spacing: 0.2px; }
             QPushButton:focus { outline: none; }
             QPushButton:disabled { background-color: #94a3b8; color: #e5e7eb; }
@@ -1218,6 +1312,9 @@ class NordlysWindow(QMainWindow):
             #cardTitle { font-size: 20px; font-weight: 600; color: #0f172a; letter-spacing: 0.2px; }
             #cardSubtitle { color: #64748b; font-size: 13px; line-height: 1.4; }
             #pageTitle { font-size: 28px; font-weight: 700; color: #020617; letter-spacing: 0.4px; }
+            #infoField { background-color: rgba(148, 163, 184, 0.12); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 14px; }
+            #infoCaption { font-size: 11px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: #64748b; }
+            #infoValue { font-size: 16px; font-weight: 600; color: #0f172a; }
             #statusLabel { color: #1f2937; font-size: 14px; line-height: 1.5; }
             #infoLabel { color: #475569; font-size: 14px; }
             #jsonView { background-color: #0f172a; color: #f9fafb; font-family: "Fira Code", monospace; border-radius: 12px; padding: 14px; border: 1px solid #1e293b; }
@@ -1265,6 +1362,7 @@ class NordlysWindow(QMainWindow):
         if not file_name:
             return
         self._loading_file = file_name
+        self._update_file_badge()
         worker = SaftLoadWorker(file_name)
         thread = QThread(self)
         worker.moveToThread(thread)
@@ -1339,6 +1437,7 @@ class NordlysWindow(QMainWindow):
                 self.purchases_ap_page.set_controls_enabled(has_supplier_data)
         if status_message:
             self.statusBar().showMessage(status_message)
+        self._update_file_badge()
 
     def _finalize_loading(self, status_message: Optional[str] = None) -> None:
         self._close_progress_dialog()
@@ -1346,6 +1445,7 @@ class NordlysWindow(QMainWindow):
         if status_message:
             self.statusBar().showMessage(status_message)
         self._loading_file = None
+        self._update_file_badge()
 
     @Slot(object)
     def _on_load_finished(self, result_obj: object) -> None:
@@ -1359,6 +1459,7 @@ class NordlysWindow(QMainWindow):
         self._saft_summary = result.summary
         self._validation_result = result.validation
         self._current_file = result.file_path
+        self._update_file_badge()
 
         self._ingest_customers(result.customers)
         self._ingest_suppliers(result.suppliers)
@@ -1417,11 +1518,7 @@ class NordlysWindow(QMainWindow):
 
         company = self._header.company_name if self._header else None
         orgnr = self._header.orgnr if self._header else None
-        period = None
-        if self._header:
-            period = (
-                f"{self._header.fiscal_year or '—'} P{self._header.period_start or '?'}–P{self._header.period_end or '?'}"
-            )
+        period = self._compose_period_display()
         revenue_txt = (
             format_currency(self._saft_summary.get("driftsinntekter"))
             if self._saft_summary and self._saft_summary.get("driftsinntekter") is not None
@@ -1431,7 +1528,7 @@ class NordlysWindow(QMainWindow):
         status_bits = [
             company or "Ukjent selskap",
             f"Org.nr: {orgnr}" if orgnr else "Org.nr: –",
-            f"Periode: {period}" if period else None,
+            f"Periode: {period}" if period and period != "–" else "Periode: –",
             f"{account_count} konti analysert",
             f"Driftsinntekter: {revenue_txt}",
         ]
@@ -1838,12 +1935,78 @@ class NordlysWindow(QMainWindow):
 
     # region Hjelpere
     def _update_header_fields(self) -> None:
-        if not self._header:
+        if not hasattr(self, "company_field"):
             return
-        self.lbl_company.setText(f"Selskap: {self._header.company_name or '–'}")
-        self.lbl_orgnr.setText(f"Org.nr: {self._header.orgnr or '–'}")
-        per = f"{self._header.fiscal_year or '–'} P{self._header.period_start or '?'}–P{self._header.period_end or '?'}"
-        self.lbl_period.setText(f"Periode: {per}")
+
+        if not self._header:
+            self.company_field.set_value("–")
+            self.orgnr_field.set_value("–")
+            self.period_field.set_value("–")
+            return
+
+        self.company_field.set_value(self._header.company_name or "–")
+        self.orgnr_field.set_value(self._header.orgnr or "–")
+        self.period_field.set_value(self._compose_period_display())
+
+    def _compose_period_display(self) -> str:
+        if not self._header:
+            return "–"
+
+        parts: List[str] = []
+        if self._header.fiscal_year:
+            parts.append(str(self._header.fiscal_year))
+
+        start = self._format_period_value(self._header.period_start)
+        end = self._format_period_value(self._header.period_end)
+
+        if start or end:
+            range_txt = f"{start or '–'} – {end or '–'}"
+            parts.append(range_txt)
+
+        if not parts:
+            return "–"
+        return " · ".join(parts)
+
+    def _format_period_value(self, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        text = value.strip()
+        if not text:
+            return None
+        for fmt in ("%Y-%m-%d", "%Y%m%d"):
+            try:
+                parsed = datetime.strptime(text, fmt).date()
+                return parsed.strftime("%d.%m.%Y")
+            except ValueError:
+                continue
+        try:
+            parsed_month = datetime.strptime(f"{text}-01", "%Y-%m-%d").date()
+            return parsed_month.strftime("%m.%Y")
+        except ValueError:
+            return text
+
+    def _update_file_badge(self) -> None:
+        if not hasattr(self, "file_badge"):
+            return
+
+        if self._loading_file:
+            self.file_badge.setText("Laster fil …")
+            self.file_badge.setToolTip(self._loading_file)
+            self.file_badge.setProperty("state", "loading")
+        elif self._current_file:
+            file_name = Path(self._current_file).name
+            self.file_badge.setText(f"Aktiv fil: {file_name}")
+            self.file_badge.setToolTip(self._current_file)
+            self.file_badge.setProperty("state", "active")
+        else:
+            self.file_badge.setText("Ingen fil lastet inn")
+            self.file_badge.setToolTip("")
+            self.file_badge.setProperty("state", "inactive")
+
+        style = self.file_badge.style()
+        style.unpolish(self.file_badge)
+        style.polish(self.file_badge)
+        self.file_badge.update()
 
     # endregion
 
