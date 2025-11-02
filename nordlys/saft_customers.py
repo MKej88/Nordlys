@@ -168,30 +168,43 @@ def get_tx_customer_id(transaction: ET.Element, ns: Dict[str, str]) -> Optional[
     if not lines:
         return None
 
-    # 1) Linje på AR-konto 15xx med CustomerID
+    first_customer_id: Optional[str] = None
+    first_dimensions_id: Optional[str] = None
+    first_analysis_id: Optional[str] = None
+
     for line in lines:
+        line_customer_id: Optional[str] = None
+
         if _account_startswith(line, "15", ns):
-            customer_id = _line_customer_id(line, ns)
+            line_customer_id = _line_customer_id(line, ns)
+            if line_customer_id:
+                return line_customer_id
+
+        if first_customer_id is None:
+            if line_customer_id is None:
+                line_customer_id = _line_customer_id(line, ns)
+            if line_customer_id:
+                first_customer_id = line_customer_id
+
+        if first_dimensions_id is None:
+            customer_id = _dimensions_customer_id(line, ns)
             if customer_id:
-                return customer_id
+                first_dimensions_id = customer_id
 
-    # 2) Første CustomerID hvor som helst
-    for line in lines:
-        customer_id = _line_customer_id(line, ns)
-        if customer_id:
-            return customer_id
+        if first_analysis_id is None:
+            customer_id = _analysis_customer_id(line, ns)
+            if customer_id:
+                first_analysis_id = customer_id
 
-    # 3) Dimensions/CustomerID
-    for line in lines:
-        customer_id = _dimensions_customer_id(line, ns)
-        if customer_id:
-            return customer_id
+        if first_customer_id and first_dimensions_id and first_analysis_id:
+            break
 
-    # 4) Dimensions/Analysis med type ~ kunde
-    for line in lines:
-        customer_id = _analysis_customer_id(line, ns)
-        if customer_id:
-            return customer_id
+    if first_customer_id:
+        return first_customer_id
+    if first_dimensions_id:
+        return first_dimensions_id
+    if first_analysis_id:
+        return first_analysis_id
 
     return None
 
@@ -203,26 +216,43 @@ def get_tx_supplier_id(transaction: ET.Element, ns: Dict[str, str]) -> Optional[
     if not lines:
         return None
 
+    first_supplier_id: Optional[str] = None
+    first_dimensions_id: Optional[str] = None
+    first_analysis_id: Optional[str] = None
+
     for line in lines:
+        line_supplier_id: Optional[str] = None
+
         if _account_startswith(line, "24", ns):
-            supplier_id = _line_supplier_id(line, ns)
+            line_supplier_id = _line_supplier_id(line, ns)
+            if line_supplier_id:
+                return line_supplier_id
+
+        if first_supplier_id is None:
+            if line_supplier_id is None:
+                line_supplier_id = _line_supplier_id(line, ns)
+            if line_supplier_id:
+                first_supplier_id = line_supplier_id
+
+        if first_dimensions_id is None:
+            supplier_id = _dimensions_supplier_id(line, ns)
             if supplier_id:
-                return supplier_id
+                first_dimensions_id = supplier_id
 
-    for line in lines:
-        supplier_id = _line_supplier_id(line, ns)
-        if supplier_id:
-            return supplier_id
+        if first_analysis_id is None:
+            supplier_id = _analysis_supplier_id(line, ns)
+            if supplier_id:
+                first_analysis_id = supplier_id
 
-    for line in lines:
-        supplier_id = _dimensions_supplier_id(line, ns)
-        if supplier_id:
-            return supplier_id
+        if first_supplier_id and first_dimensions_id and first_analysis_id:
+            break
 
-    for line in lines:
-        supplier_id = _analysis_supplier_id(line, ns)
-        if supplier_id:
-            return supplier_id
+    if first_supplier_id:
+        return first_supplier_id
+    if first_dimensions_id:
+        return first_dimensions_id
+    if first_analysis_id:
+        return first_analysis_id
 
     supplier_info = _find(transaction, "n1:SupplierInfo/n1:SupplierID", ns)
     if supplier_info is not None:
