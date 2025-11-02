@@ -380,6 +380,11 @@ class DashboardPage(QWidget):
         self.validation_label.setObjectName("statusLabel")
         self.validation_label.setWordWrap(True)
         self.status_card.add_widget(self.validation_label)
+
+        self.brreg_label = QLabel("Regnskapsregister: ingen data importert ennå.")
+        self.brreg_label.setObjectName("statusLabel")
+        self.brreg_label.setWordWrap(True)
+        self.status_card.add_widget(self.brreg_label)
         layout.addWidget(self.status_card)
 
         self.kpi_card = CardFrame(
@@ -446,6 +451,9 @@ class DashboardPage(QWidget):
             first_line = result.details.strip().splitlines()[0]
             message = f"{message}\nDetaljer: {first_line}"
         self.validation_label.setText(message)
+
+    def update_brreg_status(self, message: str) -> None:
+        self.brreg_label.setText(message)
 
     def update_summary(self, summary: Optional[Dict[str, float]]) -> None:
         if not summary:
@@ -1620,18 +1628,25 @@ class NordlysWindow(QMainWindow):
                 error_text = str(result.brreg_error).strip()
                 if "\n" in error_text:
                     error_text = error_text.splitlines()[0]
-                return f"Regnskapsregister: import feilet ({error_text})."
-            if result.header and result.header.orgnr:
-                return "Regnskapsregister: import feilet."
-            return "Regnskapsregister: ikke tilgjengelig (mangler org.nr.)."
+                message = f"Regnskapsregister: import feilet ({error_text})."
+            elif result.header and result.header.orgnr:
+                message = "Regnskapsregister: import feilet."
+            else:
+                message = "Regnskapsregister: ikke tilgjengelig (mangler org.nr.)."
+            self.dashboard_page.update_brreg_status(message)
+            return message
 
         if not self._saft_summary:
             self._update_comparison_tables(None)
-            return "Regnskapsregister: import vellykket, men ingen SAF-T-oppsummering å sammenligne."
+            message = "Regnskapsregister: import vellykket, men ingen SAF-T-oppsummering å sammenligne."
+            self.dashboard_page.update_brreg_status(message)
+            return message
 
         comparison_rows = self._build_brreg_comparison_rows()
         self._update_comparison_tables(comparison_rows)
-        return "Regnskapsregister: import vellykket."
+        message = "Regnskapsregister: import vellykket."
+        self.dashboard_page.update_brreg_status(message)
+        return message
 
     def _update_comparison_tables(
         self,
