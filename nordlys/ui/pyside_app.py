@@ -113,7 +113,6 @@ NAV_ICON_FILENAMES: Dict[str, str] = {
     "plan.saldobalanse": "balance-scale.svg",
     "plan.kontroll": "shield-check.svg",
     "plan.vesentlighet": "target.svg",
-    "plan.regnskapsanalyse": "analytics.svg",
     "plan.sammenstilling": "layers.svg",
     "rev.innkjop": "shopping-bag.svg",
     "rev.lonn": "people.svg",
@@ -634,16 +633,17 @@ class SummaryPage(QWidget):
 class ComparisonPage(QWidget):
     """Sammenstilling mellom SAF-T og Regnskapsregisteret."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        title: str = "Regnskapsanalyse",
+        subtitle: str = "Sammenligner SAF-T data med nøkkeltall hentet fra Regnskapsregisteret.",
+    ) -> None:
         super().__init__()
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(24)
 
-        self.card = CardFrame(
-            "Regnskapsanalyse",
-            "Sammenligner SAF-T data med nøkkeltall hentet fra Regnskapsregisteret.",
-        )
+        self.card = CardFrame(title, subtitle)
         self.table = _create_table_widget()
         self.table.setColumnCount(4)
         self.table.setHorizontalHeaderLabels([
@@ -1099,9 +1099,9 @@ class NordlysWindow(QMainWindow):
         self.stack.addWidget(saldobalanse_page)
         self.saldobalanse_page = saldobalanse_page
 
-        kontroll_page = DataFramePage(
+        kontroll_page = ComparisonPage(
             "Kontroll av inngående balanse",
-            "Detaljert saldobalanse fra SAF-T for kvalitetssikring.",
+            "Sammenligner SAF-T mot Regnskapsregisteret for å avdekke avvik i inngående balanse.",
         )
         self._register_page("plan.kontroll", kontroll_page)
         self.stack.addWidget(kontroll_page)
@@ -1114,11 +1114,6 @@ class NordlysWindow(QMainWindow):
         self._register_page("plan.vesentlighet", vesentlig_page)
         self.stack.addWidget(vesentlig_page)
         self.vesentlig_page = vesentlig_page
-
-        regnskap_page = ComparisonPage()
-        self._register_page("plan.regnskapsanalyse", regnskap_page)
-        self.stack.addWidget(regnskap_page)
-        self.regnskap_page = regnskap_page
 
         brreg_page = BrregPage()
         self._register_page("plan.sammenstilling", brreg_page)
@@ -1158,7 +1153,6 @@ class NordlysWindow(QMainWindow):
         nav.add_child(planning_root, "Saldobalanse", "plan.saldobalanse")
         nav.add_child(planning_root, "Kontroll IB", "plan.kontroll")
         nav.add_child(planning_root, "Vesentlighetsvurdering", "plan.vesentlighet")
-        nav.add_child(planning_root, "Regnskapsanalyse", "plan.regnskapsanalyse")
         nav.add_child(planning_root, "Sammenstillingsanalyse", "plan.sammenstilling")
 
         revision_root = nav.add_root("Revisjon")
@@ -1400,7 +1394,7 @@ class NordlysWindow(QMainWindow):
         df = result.dataframe
         self._update_header_fields()
         self.saldobalanse_page.set_dataframe(df)
-        self.kontroll_page.set_dataframe(df)
+        self.kontroll_page.update_comparison(None)
         self.dashboard_page.update_summary(self._saft_summary)
 
         company = self._header.company_name if self._header else None
@@ -1450,7 +1444,6 @@ class NordlysWindow(QMainWindow):
             self.purchases_ap_page.clear_top_suppliers()
 
         self.vesentlig_page.update_summary(self._saft_summary)
-        self.regnskap_page.update_comparison(None)
         self.brreg_page.update_mapping(None)
         self.brreg_page.update_json(None)
 
@@ -1769,7 +1762,7 @@ class NordlysWindow(QMainWindow):
                 None,
             ),
         ]
-        self.regnskap_page.update_comparison(cmp_rows)
+        self.kontroll_page.update_comparison(cmp_rows)
         self.statusBar().showMessage("Data hentet fra Regnskapsregisteret.")
 
     def on_export(self) -> None:
