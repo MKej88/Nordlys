@@ -1,8 +1,11 @@
 # Kjerneavhengigheter for Nordlys
 pandas>=1.5
-xlsxwriter>=3.0
 PySide6>=6.5
 requests>=2.31
+
+# Rapportering og eksport
+openpyxl>=3.1
+xlsxwriter>=3.0
 
 # Kvalitetssikring og validering
 pytest>=7.4

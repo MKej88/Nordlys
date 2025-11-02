@@ -7,9 +7,12 @@ Nordlys er et Python-basert analyseverktøy som hjelper revisorer og controllere
 - 📂 Import av SAF-T-filer med automatisk uthenting av selskapsinformasjon og regnskapsperiode.
 - 📊 Analyse av saldobalanse for å beregne nøkkeltall som driftsinntekter, EBITDA, resultat og balanseavvik.
 - 🧾 Kundeanalyse med aggregert omsetning per kunde fra fakturajournalen.
+- 📈 Topplister for omsetning per kunde med filtrering på regnskapsår eller valgte datoer.
+- 🛒 Innkjøpsanalyse per leverandør basert på kostnadskonti (4xxx–8xxx) og reskontro.
 - 🏢 Integrasjon mot Brønnøysundregistrenes regnskapsregister for sammenligning av offentlig rapporterte tall.
 - 🗂️ Forhåndsdefinerte revisjonsoppgaver og temakort som gir rask tilgang til relevante kontroller.
 - 🧮 Funksjoner for formatering av valuta og differanser som gjør tallene enklere å tolke.
+- 💾 Ett-klikks eksport av analyser til CSV- og XLSX-filer, inkludert innebygd fallback når `openpyxl` ikke er tilgjengelig.
 
 ## Forutsetninger
 
@@ -25,6 +28,8 @@ Nordlys bygger på følgende Python-bibliotek. Alle er oppført i `requirements.
 - `pandas>=1.5` – tabell- og dataserieoperasjoner for saldobalanse og fakturadata.
 - `PySide6>=6.5` – grafisk grensesnitt der Nordlys presenterer analyser og arbeidskort.
 - `requests>=2.31` – innhenting av regnskapsdata fra Brønnøysundregistrene.
+- `openpyxl>=3.1` – standardmotor for å skrive SAF-T analyser til XLSX direkte fra Pandas.
+- `xlsxwriter>=3.0` – alternativ motor som brukes automatisk dersom `openpyxl` ikke er installert.
 - `pytest>=7.4` – kjøring av enhetstester som sikrer at Nordlys-parsingen fungerer som forventet.
 - `xmlschema>=2.2` – valgfri validering av SAF-T-filer mot XSD-skjema for mer presise feilmeldinger.
 
@@ -68,6 +73,7 @@ Nordlys/
 ├── main.py                # Inngangspunkt som starter PySide6-applikasjonen
 ├── nordlys/
 │   ├── saft.py            # Parsing og analyse av SAF-T XML
+│   ├── saft_customers.py  # Avansert kunde- og leverandøranalyse + eksport
 │   ├── brreg.py           # Integrasjon mot Brønnøysundregistrenes API
 │   ├── utils.py           # Hjelpefunksjoner for XML og formatering
 │   ├── constants.py       # Konstanter som brukes på tvers av modulene
