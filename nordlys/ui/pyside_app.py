@@ -112,6 +112,7 @@ NAV_ICON_FILENAMES: Dict[str, str] = {
     "dashboard": "dashboard.svg",
     "plan.saldobalanse": "balance-scale.svg",
     "plan.kontroll": "shield-check.svg",
+    "plan.regnskapsanalyse": "analytics.svg",
     "plan.vesentlighet": "target.svg",
     "plan.sammenstilling": "layers.svg",
     "rev.innkjop": "shopping-bag.svg",
