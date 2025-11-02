@@ -710,7 +710,7 @@ class ComparisonPage(QWidget):
         )
 
 
-class EmptyRegnskapPage(QWidget):
+class RegnskapsanalysePage(QWidget):
     """Tom plassholder for sammenstillingsanalysen."""
 
     def __init__(self) -> None:
@@ -1021,7 +1021,7 @@ class NordlysWindow(QMainWindow):
         self._page_map: Dict[str, QWidget] = {}
         self.sales_ar_page: Optional[SalesArPage] = None
         self.purchases_ap_page: Optional['PurchasesApPage'] = None
-        self.regnskap_page: Optional['EmptyRegnskapPage'] = None
+        self.regnskap_page: Optional['RegnskapsanalysePage'] = None
 
         self._setup_ui()
         self._apply_styles()
@@ -1111,7 +1111,7 @@ class NordlysWindow(QMainWindow):
         self.stack.addWidget(kontroll_page)
         self.kontroll_page = kontroll_page
 
-        regnskap_page = EmptyRegnskapPage()
+        regnskap_page = RegnskapsanalysePage()
         self._register_page("plan.sammenstillingsanalyse", regnskap_page)
         self.stack.addWidget(regnskap_page)
         self.regnskap_page = regnskap_page
