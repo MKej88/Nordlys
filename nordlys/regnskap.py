@@ -65,6 +65,14 @@ def prepare_regnskap_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     return prepared
 
 
+@dataclass
+class _CachedColumn:
+    """Representerer en lagret kolonne sammen med dens numeriske verdier."""
+
+    source: pd.Series
+    numeric: pd.Series
+
+
 class _PrefixSumHelper:
     """Håndterer caching av summeringer for kontoprefikser."""
 
@@ -72,7 +80,7 @@ class _PrefixSumHelper:
 
     def __init__(self, konto_text: pd.Series):
         self._konto_text = konto_text
-        self._column_cache: dict[str, pd.Series] = {}
+        self._column_cache: dict[str, _CachedColumn] = {}
         self._index = konto_text.index
 
     def is_compatible(self, prepared: pd.DataFrame) -> bool:
@@ -92,12 +100,15 @@ class _PrefixSumHelper:
         if not prefix_tuple:
             return 0.0
 
-        if column not in self._column_cache:
-            series = value_provider(column)
-            numeric = pd.to_numeric(series, errors="coerce").fillna(0.0)
-            self._column_cache[column] = numeric
+        series = value_provider(column)
 
-        values = self._column_cache[column]
+        cached = self._column_cache.get(column)
+        if cached is None or cached.source is not series:
+            numeric = pd.to_numeric(series, errors="coerce").fillna(0.0)
+            cached = _CachedColumn(source=series, numeric=numeric)
+            self._column_cache[column] = cached
+
+        values = cached.numeric
         mask = self._konto_text.str.startswith(prefix_tuple)
         if not mask.any():
             return 0.0
@@ -111,10 +122,12 @@ def _sum_column(prepared: pd.DataFrame, column: str, prefixes: Iterable[str]) ->
         helper = _PrefixSumHelper(konto_series.astype(str).str.strip())
         prepared.attrs["_prefix_sum_helper"] = helper
 
+    zero_series = pd.Series(0.0, index=prepared.index, dtype=float)
+
     def _provider(col: str) -> pd.Series:
         if col in prepared.columns:
             return prepared[col]
-        return pd.Series(0.0, index=prepared.index, dtype=float)
+        return zero_series
 
     return helper.sum(column, prefixes, _provider)
 
