@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable, List, Optional
+from typing import Callable, Iterable, List, Optional
 
 import pandas as pd
 
@@ -65,15 +65,58 @@ def prepare_regnskap_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     return prepared
 
 
+class _PrefixSumHelper:
+    """Håndterer caching av summeringer for kontoprefikser."""
+
+    __slots__ = ("_konto_text", "_column_cache", "_index")
+
+    def __init__(self, konto_text: pd.Series):
+        self._konto_text = konto_text
+        self._column_cache: dict[str, pd.Series] = {}
+        self._index = konto_text.index
+
+    def is_compatible(self, prepared: pd.DataFrame) -> bool:
+        return prepared.index.equals(self._index)
+
+    def sum(
+        self,
+        column: str,
+        prefixes: Iterable[str],
+        value_provider: Callable[[str], pd.Series],
+    ) -> float:
+        prefix_tuple = tuple(
+            str(prefix).strip()
+            for prefix in prefixes
+            if prefix is not None and str(prefix).strip() != ""
+        )
+        if not prefix_tuple:
+            return 0.0
+
+        if column not in self._column_cache:
+            series = value_provider(column)
+            numeric = pd.to_numeric(series, errors="coerce").fillna(0.0)
+            self._column_cache[column] = numeric
+
+        values = self._column_cache[column]
+        mask = self._konto_text.str.startswith(prefix_tuple)
+        if not mask.any():
+            return 0.0
+        return float(values.loc[mask].sum())
+
+
 def _sum_column(prepared: pd.DataFrame, column: str, prefixes: Iterable[str]) -> float:
-    konto_text = prepared["konto"].astype(str).str.strip()
-    values = prepared[column].astype(float)
-    mask = pd.Series(False, index=prepared.index)
-    for prefix in prefixes:
-        mask |= konto_text.str.startswith(prefix)
-    if not mask.any():
-        return 0.0
-    return float(values.loc[mask].sum())
+    helper = prepared.attrs.get("_prefix_sum_helper")
+    if not isinstance(helper, _PrefixSumHelper) or not helper.is_compatible(prepared):
+        konto_series = prepared.get("konto", pd.Series("", index=prepared.index))
+        helper = _PrefixSumHelper(konto_series.astype(str).str.strip())
+        prepared.attrs["_prefix_sum_helper"] = helper
+
+    def _provider(col: str) -> pd.Series:
+        if col in prepared.columns:
+            return prepared[col]
+        return pd.Series(0.0, index=prepared.index, dtype=float)
+
+    return helper.sum(column, prefixes, _provider)
 
 
 def _clean_value(value: float) -> float:
