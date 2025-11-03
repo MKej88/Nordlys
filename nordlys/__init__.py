@@ -1,6 +1,6 @@
 """Nordlys-bibliotekets grensesnitt."""
 
-from . import brreg, saft, utils
+from . import brreg, industry_groups, saft, utils
 from .constants import APP_TITLE, BRREG_URL_TMPL, NS
 
 __all__ = [
@@ -8,6 +8,7 @@ __all__ = [
     'BRREG_URL_TMPL',
     'NS',
     'brreg',
+    'industry_groups',
     'saft',
     'utils',
 ]

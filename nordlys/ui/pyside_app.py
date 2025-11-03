@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import math
 import sys
+import textwrap
 from datetime import date, datetime
 from dataclasses import dataclass
 from pathlib import Path
@@ -42,6 +43,11 @@ from PySide6.QtWidgets import (
 
 from ..brreg import fetch_brreg, map_brreg_metrics
 from ..constants import APP_TITLE
+from ..industry_groups import (
+    IndustryClassification,
+    classify_from_brreg_json,
+    load_cached_brreg,
+)
 from ..regnskap import compute_balance_analysis, compute_result_analysis, prepare_regnskap_dataframe
 from ..saft import (
     CustomerInfo,
@@ -165,6 +171,8 @@ class SaftLoadResult:
     brreg_json: Optional[Dict[str, object]]
     brreg_map: Optional[Dict[str, Optional[float]]]
     brreg_error: Optional[str]
+    industry: Optional[IndustryClassification]
+    industry_error: Optional[str]
 
 
 class SaftLoadWorker(QObject):
@@ -254,12 +262,36 @@ class SaftLoadWorker(QObject):
             brreg_json: Optional[Dict[str, object]] = None
             brreg_map: Optional[Dict[str, Optional[float]]] = None
             brreg_error: Optional[str] = None
+            industry: Optional[IndustryClassification] = None
+            industry_error: Optional[str] = None
             if header and header.orgnr:
                 try:
                     brreg_json = fetch_brreg(header.orgnr)
                     brreg_map = map_brreg_metrics(brreg_json)
+                    industry = classify_from_brreg_json(
+                        header.orgnr,
+                        header.company_name,
+                        brreg_json,
+                    )
                 except Exception as exc:  # pragma: no cover - nettverksfeil vises i GUI
                     brreg_error = str(exc)
+                    try:
+                        cached = load_cached_brreg(header.orgnr)
+                    except Exception:
+                        cached = None
+                    if cached:
+                        try:
+                            industry = classify_from_brreg_json(
+                                header.orgnr,
+                                header.company_name,
+                                cached,
+                            )
+                        except Exception as cache_exc:  # pragma: no cover - sjelden
+                            industry_error = str(cache_exc)
+                    else:
+                        industry_error = brreg_error
+            elif header:
+                industry_error = "SAF-T mangler organisasjonsnummer."
 
             result = SaftLoadResult(
                 file_path=self._file_path,
@@ -274,6 +306,8 @@ class SaftLoadWorker(QObject):
                 brreg_json=brreg_json,
                 brreg_map=brreg_map,
                 brreg_error=brreg_error,
+                industry=industry,
+                industry_error=industry_error,
             )
             self.finished.emit(result)
         except Exception as exc:  # pragma: no cover - presenteres i GUI
@@ -421,6 +455,19 @@ class DashboardPage(QWidget):
         self.summary_card.add_widget(self.summary_table)
         layout.addWidget(self.summary_card)
 
+        self.industry_card = CardFrame(
+            "Bransjeinnsikt",
+            "Vi finner næringskode og bransje automatisk etter import.",
+        )
+        self.industry_label = QLabel(
+            "Importer en SAF-T-fil for å se hvilken bransje kunden havner i."
+        )
+        self.industry_label.setObjectName("statusLabel")
+        self.industry_label.setWordWrap(True)
+        self.industry_label.setTextFormat(Qt.RichText)
+        self.industry_card.add_widget(self.industry_label)
+        layout.addWidget(self.industry_card)
+
         layout.addStretch(1)
 
     def update_status(self, message: str) -> None:
@@ -454,6 +501,47 @@ class DashboardPage(QWidget):
 
     def update_brreg_status(self, message: str) -> None:
         self.brreg_label.setText(message)
+
+    def update_industry(
+        self,
+        classification: Optional[IndustryClassification],
+        error: Optional[str] = None,
+    ) -> None:
+        if error:
+            self.industry_label.setText(
+                textwrap.dedent(
+                    f"""
+                    <p><strong>Bransje ikke tilgjengelig:</strong> {error}</p>
+                    <p>Prøv igjen når du har nettilgang, eller sjekk at SAF-T-filen inneholder
+                    organisasjonsnummer.</p>
+                    """
+                ).strip()
+            )
+            return
+
+        if classification is None:
+            self.industry_label.setText(
+                "Importer en SAF-T-fil for å se hvilken bransje kunden havner i."
+            )
+            return
+
+        name = classification.name or "Ukjent navn"
+        naringskode = classification.naringskode or "–"
+        description = classification.description or "Ingen beskrivelse fra Brreg."
+        sn2 = classification.sn2 or "–"
+        text = textwrap.dedent(
+            f"""
+            <p><strong>{classification.group}</strong></p>
+            <ul>
+                <li><strong>Selskap:</strong> {name}</li>
+                <li><strong>Org.nr:</strong> {classification.orgnr}</li>
+                <li><strong>Næringskode:</strong> {naringskode} ({description})</li>
+                <li><strong>SN2:</strong> {sn2}</li>
+                <li><strong>Kilde:</strong> {classification.source}</li>
+            </ul>
+            """
+        ).strip()
+        self.industry_label.setText(text)
 
     def update_summary(self, summary: Optional[Dict[str, float]]) -> None:
         if not summary:
@@ -1160,6 +1248,8 @@ class NordlysWindow(QMainWindow):
         self._sup_id_to_nr: Dict[str, str] = {}
         self._supplier_purchases: Optional[pd.DataFrame] = None
         self._validation_result: Optional[SaftValidationResult] = None
+        self._industry: Optional[IndustryClassification] = None
+        self._industry_error: Optional[str] = None
         self._current_file: Optional[str] = None
         self._loading_file: Optional[str] = None
 
@@ -1614,6 +1704,11 @@ class NordlysWindow(QMainWindow):
 
     def _process_brreg_result(self, result: SaftLoadResult) -> str:
         """Oppdaterer interne strukturer med data fra Regnskapsregisteret."""
+
+        self._industry = result.industry
+        self._industry_error = result.industry_error
+        if getattr(self, "dashboard_page", None):
+            self.dashboard_page.update_industry(result.industry, result.industry_error)
 
         self._brreg_json = result.brreg_json
         self._brreg_map = result.brreg_map
