@@ -312,10 +312,14 @@ def ns4102_summary_from_tb(df: pd.DataFrame) -> Dict[str, float]:
 
     subset = df.loc[mask]
     konto_values = subset['Konto_int'].astype(int).to_numpy()
-    end_values = (
-        subset['Endring Debet'].fillna(0.0) - subset['Endring Kredit'].fillna(0.0)
-    ).to_numpy()
-    ub_values = subset['UB_netto'].to_numpy()
+    ib_debet = subset['IB Debet'].fillna(0.0).to_numpy()
+    ib_kredit = subset['IB Kredit'].fillna(0.0).to_numpy()
+    ub_debet = subset['UB Debet'].fillna(0.0).to_numpy()
+    ub_kredit = subset['UB Kredit'].fillna(0.0).to_numpy()
+
+    ib_values = ib_debet - ib_kredit
+    ub_values = ub_debet - ub_kredit
+    end_values = ub_values - ib_values
 
     def sum_in_range(values, start: int, stop: int) -> float:
         mask = (konto_values >= start) & (konto_values <= stop)
