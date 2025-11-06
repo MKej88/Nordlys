@@ -161,11 +161,22 @@ def _analysis_supplier_id(line: ET.Element, ns: Dict[str, str]) -> Optional[str]
     return None
 
 
-def get_tx_customer_id(transaction: ET.Element, ns: Dict[str, str]) -> Optional[str]:
+def get_tx_customer_id(
+    transaction: ET.Element,
+    ns: Dict[str, str],
+    *,
+    lines: Optional[Iterable[ET.Element]] = None,
+) -> Optional[str]:
     """Bestemmer kunde-ID for en transaksjon etter prioritert logikk."""
 
-    lines = list(_findall(transaction, "n1:Line", ns))
-    if not lines:
+    if lines is None:
+        lines_seq = list(_findall(transaction, "n1:Line", ns))
+    elif isinstance(lines, list):
+        lines_seq = lines
+    else:
+        lines_seq = list(lines)
+
+    if not lines_seq:
         return None
 
     first_customer_id: Optional[str] = None
@@ -174,7 +185,7 @@ def get_tx_customer_id(transaction: ET.Element, ns: Dict[str, str]) -> Optional[
 
     have_all_non_priority_ids = False
 
-    for line in lines:
+    for line in lines_seq:
         line_customer_id: Optional[str] = None
 
         if _account_startswith(line, "15", ns):
@@ -217,11 +228,22 @@ def get_tx_customer_id(transaction: ET.Element, ns: Dict[str, str]) -> Optional[
     return None
 
 
-def get_tx_supplier_id(transaction: ET.Element, ns: Dict[str, str]) -> Optional[str]:
+def get_tx_supplier_id(
+    transaction: ET.Element,
+    ns: Dict[str, str],
+    *,
+    lines: Optional[Iterable[ET.Element]] = None,
+) -> Optional[str]:
     """Bestemmer leverandør-ID for en transaksjon etter prioritert logikk."""
 
-    lines = list(_findall(transaction, "n1:Line", ns))
-    if not lines:
+    if lines is None:
+        lines_seq = list(_findall(transaction, "n1:Line", ns))
+    elif isinstance(lines, list):
+        lines_seq = lines
+    else:
+        lines_seq = list(lines)
+
+    if not lines_seq:
         return None
 
     first_supplier_id: Optional[str] = None
@@ -230,7 +252,7 @@ def get_tx_supplier_id(transaction: ET.Element, ns: Dict[str, str]) -> Optional[
 
     have_all_non_priority_ids = False
 
-    for line in lines:
+    for line in lines_seq:
         line_supplier_id: Optional[str] = None
 
         if _account_startswith(line, "24", ns):
@@ -283,7 +305,20 @@ def _local_name(tag: str) -> str:
     return tag.split("}", 1)[-1] if "}" in tag else tag
 
 
-def build_customer_name_map(root: ET.Element, ns: Dict[str, str]) -> Dict[str, str]:
+def _build_parent_map(root: ET.Element) -> Dict[ET.Element, Optional[ET.Element]]:
+    parent_map: Dict[ET.Element, Optional[ET.Element]] = {}
+    for parent in root.iter():
+        for child in parent:
+            parent_map[child] = parent
+    return parent_map
+
+
+def build_customer_name_map(
+    root: ET.Element,
+    ns: Dict[str, str],
+    *,
+    parent_map: Optional[Dict[ET.Element, Optional[ET.Element]]] = None,
+) -> Dict[str, str]:
     """Bygger oppslag fra CustomerID til navn med fallback når masterfil mangler."""
 
     names: Dict[str, str] = {}
@@ -303,10 +338,7 @@ def build_customer_name_map(root: ET.Element, ns: Dict[str, str]) -> Dict[str, s
         if cid and name and cid not in names:
             names[cid] = name
 
-    parent_map: Dict[ET.Element, Optional[ET.Element]] = {}
-    for parent in root.iter():
-        for child in parent:
-            parent_map[child] = parent
+    lookup_map = parent_map if parent_map is not None else _build_parent_map(root)
 
     def lookup_name(node: ET.Element) -> Optional[str]:
         current: Optional[ET.Element] = node
@@ -323,7 +355,7 @@ def build_customer_name_map(root: ET.Element, ns: Dict[str, str]) -> Dict[str, s
                     text = _clean_text(child.text)
                     if text:
                         return text
-            current = parent_map.get(current)
+            current = lookup_map.get(current)
         return None
 
     for element in root.iter():
@@ -339,7 +371,12 @@ def build_customer_name_map(root: ET.Element, ns: Dict[str, str]) -> Dict[str, s
     return names
 
 
-def build_supplier_name_map(root: ET.Element, ns: Dict[str, str]) -> Dict[str, str]:
+def build_supplier_name_map(
+    root: ET.Element,
+    ns: Dict[str, str],
+    *,
+    parent_map: Optional[Dict[ET.Element, Optional[ET.Element]]] = None,
+) -> Dict[str, str]:
     """Bygger oppslag fra SupplierID til navn med fallback når masterfil mangler."""
 
     names: Dict[str, str] = {}
@@ -364,10 +401,7 @@ def build_supplier_name_map(root: ET.Element, ns: Dict[str, str]) -> Dict[str, s
         if sid and name and sid not in names:
             names[sid] = name
 
-    parent_map: Dict[ET.Element, Optional[ET.Element]] = {}
-    for parent in root.iter():
-        for child in parent:
-            parent_map[child] = parent
+    lookup_map = parent_map if parent_map is not None else _build_parent_map(root)
 
     def lookup_name(node: ET.Element) -> Optional[str]:
         current: Optional[ET.Element] = node
@@ -385,7 +419,7 @@ def build_supplier_name_map(root: ET.Element, ns: Dict[str, str]) -> Dict[str, s
                     text = _clean_text(child.text)
                     if text:
                         return text
-            current = parent_map.get(current)
+            current = lookup_map.get(current)
         return None
 
     for element in root.iter():
@@ -418,6 +452,139 @@ def _ensure_date(value: Optional[object]) -> Optional[date]:
             return datetime.strptime(text, "%Y-%m-%d").date()
         except ValueError:
             return None
+
+
+def _iter_transactions(root: ET.Element, ns: Dict[str, str]) -> Iterable[ET.Element]:
+    entries = _find(root, "n1:GeneralLedgerEntries", ns)
+    if entries is None:
+        return []
+    for journal in _findall(entries, "n1:Journal", ns):
+        for transaction in _findall(journal, "n1:Transaction", ns):
+            yield transaction
+
+
+def compute_customer_supplier_totals(
+    root: ET.Element,
+    ns: Dict[str, str],
+    *,
+    year: Optional[int] = None,
+    date_from: Optional[object] = None,
+    date_to: Optional[object] = None,
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """Beregner kundesalg og leverandørkjøp i ett pass gjennom SAF-T-transaksjonene."""
+
+    start_date = _ensure_date(date_from)
+    end_date = _ensure_date(date_to)
+    use_range = start_date is not None or end_date is not None
+    if use_range:
+        if start_date and end_date and start_date > end_date:
+            start_date, end_date = end_date, start_date
+    elif year is None:
+        raise ValueError("Angi enten year eller date_from/date_to.")
+
+    customer_totals: Dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
+    customer_counts: Dict[str, int] = defaultdict(int)
+    supplier_totals: Dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
+    supplier_counts: Dict[str, int] = defaultdict(int)
+
+    for transaction in _iter_transactions(root, ns):
+        lines_list = list(_findall(transaction, "n1:Line", ns))
+        if not lines_list:
+            continue
+
+        date_element = _find(transaction, "n1:TransactionDate", ns)
+        tx_date = _ensure_date(date_element.text if date_element is not None else None)
+        if tx_date is None:
+            continue
+        if use_range:
+            if start_date and tx_date < start_date:
+                continue
+            if end_date and tx_date > end_date:
+                continue
+        elif year is not None and tx_date.year != year:
+            continue
+
+        sale_total = Decimal("0")
+        purchase_total = Decimal("0")
+        has_income = False
+        has_purchase = False
+
+        for line in lines_list:
+            account_element = _find(line, "n1:AccountID", ns)
+            account_text = _clean_text(account_element.text if account_element is not None else None)
+            if not account_text:
+                continue
+
+            digits = "".join(ch for ch in account_text if ch.isdigit())
+            normalized = digits or account_text
+            credit = get_amount(line, "CreditAmount", ns)
+            debit = get_amount(line, "DebitAmount", ns)
+
+            if normalized.startswith("3"):
+                has_income = True
+                sale_total += credit - debit
+
+            if _is_cost_account(account_text):
+                has_purchase = True
+                purchase_total += debit - credit
+
+        if has_income:
+            customer_id = get_tx_customer_id(transaction, ns, lines=lines_list)
+            if customer_id:
+                customer_totals[customer_id] += sale_total
+                customer_counts[customer_id] += 1
+
+        if has_purchase:
+            supplier_id = get_tx_supplier_id(transaction, ns, lines=lines_list)
+            if supplier_id:
+                supplier_totals[supplier_id] += purchase_total
+                supplier_counts[supplier_id] += 1
+
+    parent_map: Optional[Dict[ET.Element, Optional[ET.Element]]] = None
+    if customer_totals or supplier_totals:
+        parent_map = _build_parent_map(root)
+
+    if not customer_totals:
+        customer_df = pd.DataFrame(columns=["Kundenr", "Kundenavn", "Omsetning eks mva"])
+    else:
+        customer_names = build_customer_name_map(root, ns, parent_map=parent_map)
+        customer_rows = []
+        for customer_id, amount in customer_totals.items():
+            rounded = amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            customer_rows.append(
+                {
+                    "Kundenr": customer_id,
+                    "Kundenavn": customer_names.get(customer_id, ""),
+                    "Omsetning eks mva": float(rounded),
+                    "Transaksjoner": customer_counts.get(customer_id, 0),
+                }
+            )
+        customer_df = pd.DataFrame(customer_rows)
+        if not customer_df.empty:
+            customer_df["Omsetning eks mva"] = customer_df["Omsetning eks mva"].astype(float).round(2)
+            customer_df = customer_df.sort_values("Omsetning eks mva", ascending=False).reset_index(drop=True)
+
+    if not supplier_totals:
+        supplier_df = pd.DataFrame(columns=["Leverandørnr", "Leverandørnavn", "Innkjøp eks mva"])
+    else:
+        supplier_names = build_supplier_name_map(root, ns, parent_map=parent_map)
+        supplier_rows = []
+        for supplier_id, amount in supplier_totals.items():
+            rounded = amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            supplier_rows.append(
+                {
+                    "Leverandørnr": supplier_id,
+                    "Leverandørnavn": supplier_names.get(supplier_id, ""),
+                    "Innkjøp eks mva": float(rounded),
+                    "Transaksjoner": supplier_counts.get(supplier_id, 0),
+                }
+            )
+        supplier_df = pd.DataFrame(supplier_rows)
+        if not supplier_df.empty:
+            supplier_df["Innkjøp eks mva"] = supplier_df["Innkjøp eks mva"].astype(float).round(2)
+            supplier_df = supplier_df.sort_values("Innkjøp eks mva", ascending=False).reset_index(drop=True)
+
+    return customer_df, supplier_df
 
 
 def compute_sales_per_customer(
@@ -761,6 +928,7 @@ __all__ = [
     "get_tx_supplier_id",
     "build_customer_name_map",
     "build_supplier_name_map",
+    "compute_customer_supplier_totals",
     "compute_sales_per_customer",
     "compute_purchases_per_supplier",
     "save_outputs",

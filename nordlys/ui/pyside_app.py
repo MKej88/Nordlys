@@ -63,11 +63,7 @@ from ..saft import (
     parse_suppliers,
     validate_saft_against_xsd,
 )
-from ..saft_customers import (
-    compute_purchases_per_supplier,
-    compute_sales_per_customer,
-    parse_saft,
-)
+from ..saft_customers import compute_customer_supplier_totals, parse_saft
 from ..utils import format_currency, format_difference
 
 
@@ -216,13 +212,7 @@ class SaftLoadWorker(QObject):
             customer_sales: Optional[pd.DataFrame] = None
             supplier_purchases: Optional[pd.DataFrame] = None
             if period_start or period_end:
-                customer_sales = compute_sales_per_customer(
-                    root,
-                    ns,
-                    date_from=period_start,
-                    date_to=period_end,
-                )
-                supplier_purchases = compute_purchases_per_supplier(
+                customer_sales, supplier_purchases = compute_customer_supplier_totals(
                     root,
                     ns,
                     date_from=period_start,
@@ -248,8 +238,7 @@ class SaftLoadWorker(QObject):
                                 analysis_year = parsed.year
                                 break
                 if analysis_year is not None:
-                    customer_sales = compute_sales_per_customer(root, ns, year=analysis_year)
-                    supplier_purchases = compute_purchases_per_supplier(
+                    customer_sales, supplier_purchases = compute_customer_supplier_totals(
                         root,
                         ns,
                         year=analysis_year,
