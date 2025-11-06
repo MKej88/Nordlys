@@ -16,7 +16,6 @@ from PySide6.QtGui import QBrush, QColor, QFont, QIcon
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
-    QComboBox,
     QFileDialog,
     QFrame,
     QGridLayout,
@@ -1019,11 +1018,6 @@ class SalesArPage(QWidget):
         self.top_card = CardFrame("Topp kunder", "Identifiser kunder med høyest omsetning.")
         controls = QHBoxLayout()
         controls.setSpacing(12)
-        controls.addWidget(QLabel("Kilde:"))
-        self.source_combo = QComboBox()
-        self.source_combo.addItems(["alle 3xxx"])
-        self.source_combo.setEnabled(False)
-        controls.addWidget(self.source_combo)
         controls.addWidget(QLabel("Antall:"))
         self.top_spin = QSpinBox()
         self.top_spin.setRange(5, 100)
@@ -1051,7 +1045,7 @@ class SalesArPage(QWidget):
         self.set_controls_enabled(False)
 
     def _handle_calc_clicked(self) -> None:
-        rows = self._on_calc_top(self.source_combo.currentText(), int(self.top_spin.value()))
+        rows = self._on_calc_top("3xxx", int(self.top_spin.value()))
         if rows:
             self.set_top_customers(rows)
 
@@ -1097,11 +1091,6 @@ class PurchasesApPage(QWidget):
         )
         controls = QHBoxLayout()
         controls.setSpacing(12)
-        controls.addWidget(QLabel("Kilde:"))
-        self.source_combo = QComboBox()
-        self.source_combo.addItems(["alle kostnadskonti (4xxx–8xxx)"])
-        self.source_combo.setEnabled(False)
-        controls.addWidget(self.source_combo)
         controls.addWidget(QLabel("Antall:"))
         self.top_spin = QSpinBox()
         self.top_spin.setRange(5, 100)
@@ -1133,7 +1122,7 @@ class PurchasesApPage(QWidget):
         self.set_controls_enabled(False)
 
     def _handle_calc_clicked(self) -> None:
-        rows = self._on_calc_top(self.source_combo.currentText(), int(self.top_spin.value()))
+        rows = self._on_calc_top("kostnadskonti", int(self.top_spin.value()))
         if rows:
             self.set_top_suppliers(rows)
 
