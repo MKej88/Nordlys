@@ -207,9 +207,32 @@ def parse_saft_header(root: ET.Element) -> SaftHeader:
     def txt(elem: Optional[ET.Element], tag: str) -> Optional[str]:
         return text_or_none(elem.find(f"n1:{tag}", NS)) if elem is not None else None
 
+    def find_company_orgnr(company_elem: Optional[ET.Element]) -> Optional[str]:
+        if company_elem is None:
+            return None
+
+        search_paths = [
+            "n1:RegistrationNumber",
+            "n1:TaxRegistrationNumber/n1:RegistrationNumber",
+            "n1:TaxRegistrationNumber",
+            "n1:CompanyID",
+            "n1:TaxRegistrationNumber/n1:CompanyID",
+        ]
+
+        for path in search_paths:
+            candidate = company_elem.find(path, NS)
+            if candidate is None:
+                plain_path = path.replace("n1:", "")
+                candidate = company_elem.find(plain_path)
+            if candidate is not None:
+                value = text_or_none(candidate)
+                if value:
+                    return value
+        return None
+
     return SaftHeader(
         company_name=txt(company, 'Name'),
-        orgnr=txt(company, 'RegistrationNumber'),
+        orgnr=find_company_orgnr(company),
         fiscal_year=txt(criteria, 'PeriodEndYear'),
         period_start=txt(criteria, 'PeriodStart'),
         period_end=txt(criteria, 'PeriodEnd'),
