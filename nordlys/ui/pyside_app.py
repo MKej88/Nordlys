@@ -46,6 +46,7 @@ from ..constants import APP_TITLE
 from ..industry_groups import (
     IndustryClassification,
     classify_from_brreg_json,
+    classify_from_orgnr,
     load_cached_brreg,
 )
 from ..regnskap import compute_balance_analysis, compute_result_analysis, prepare_regnskap_dataframe
@@ -268,13 +269,14 @@ class SaftLoadWorker(QObject):
                 try:
                     brreg_json = fetch_brreg(header.orgnr)
                     brreg_map = map_brreg_metrics(brreg_json)
-                    industry = classify_from_brreg_json(
-                        header.orgnr,
-                        header.company_name,
-                        brreg_json,
-                    )
                 except Exception as exc:  # pragma: no cover - nettverksfeil vises i GUI
                     brreg_error = str(exc)
+
+                try:
+                    industry = classify_from_orgnr(header.orgnr, header.company_name)
+                except Exception as exc:  # pragma: no cover - nettverksfeil vises i GUI
+                    industry_error = str(exc)
+                    cached: Optional[Dict[str, object]]
                     try:
                         cached = load_cached_brreg(header.orgnr)
                     except Exception:
@@ -286,10 +288,9 @@ class SaftLoadWorker(QObject):
                                 header.company_name,
                                 cached,
                             )
+                            industry_error = None
                         except Exception as cache_exc:  # pragma: no cover - sjelden
                             industry_error = str(cache_exc)
-                    else:
-                        industry_error = brreg_error
             elif header:
                 industry_error = "SAF-T mangler organisasjonsnummer."
 

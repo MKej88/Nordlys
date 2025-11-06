@@ -7,7 +7,9 @@ from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Dict, Optional
 
-from .brreg import fetch_brreg
+import requests
+
+from .constants import ENHETSREGISTER_URL_TMPL
 from .saft import parse_saft_header
 from .saft_customers import parse_saft
 
@@ -131,7 +133,7 @@ def classify_from_brreg_json(
     company_name: Optional[str],
     brreg_json: Dict[str, object],
 ) -> IndustryClassification:
-    """Klassifiserer et selskap basert på tidligere hentet Brreg-JSON."""
+    """Klassifiserer et selskap basert på JSON fra Enhetsregisteret."""
 
     normalized = _normalize_orgnr(orgnr)
     name = company_name or brreg_json.get("navn")  # type: ignore[arg-type]
@@ -174,8 +176,25 @@ def classify_from_brreg_json(
     )
 
 
+def _fetch_enhetsregister(orgnr: str) -> Dict[str, object]:
+    """Henter metadata fra Enhetsregisteret."""
+
+    url = ENHETSREGISTER_URL_TMPL.format(orgnr=orgnr)
+    response = requests.get(url, headers={"Accept": "application/json"}, timeout=20)
+    response.raise_for_status()
+    data = response.json()
+    if isinstance(data, list):
+        for element in data:
+            if isinstance(element, dict):
+                return element
+        raise ValueError("Uventet svarformat fra Enhetsregisteret.")
+    if not isinstance(data, dict):
+        raise ValueError("Uventet svarformat fra Enhetsregisteret.")
+    return data
+
+
 def classify_from_orgnr(orgnr: str, company_name: Optional[str] = None) -> IndustryClassification:
-    """Henter data fra Brreg (med cache) og klassifiserer selskapet."""
+    """Henter data fra Enhetsregisteret (med cache) og klassifiserer selskapet."""
 
     normalized = _normalize_orgnr(orgnr)
     cache = _load_cache()
@@ -184,7 +203,7 @@ def classify_from_orgnr(orgnr: str, company_name: Optional[str] = None) -> Indus
     if isinstance(cached_entry, dict):
         brreg_json = cached_entry
     if brreg_json is None:
-        brreg_json = fetch_brreg(normalized)
+        brreg_json = _fetch_enhetsregister(normalized)
         cache[normalized] = brreg_json
         _save_cache(cache)
     return classify_from_brreg_json(normalized, company_name, brreg_json)
@@ -201,7 +220,7 @@ def classify_from_saft_path(path: str | Path) -> IndustryClassification:
 
 
 def load_cached_brreg(orgnr: str) -> Optional[Dict[str, object]]:
-    """Returnerer Brreg-data fra cache dersom tilgjengelig."""
+    """Returnerer enhetsdata fra cache dersom tilgjengelig."""
 
     normalized = _normalize_orgnr(orgnr)
     cache = _load_cache()

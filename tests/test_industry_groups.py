@@ -48,7 +48,7 @@ def test_cache_prevents_double_fetch(monkeypatch: pytest.MonkeyPatch, tmp_path) 
         calls.append(orgnr)
         return _sample_json("47.910", "Butikkhandel ikke nevnt annet sted")
 
-    monkeypatch.setattr(industry_groups, "fetch_brreg", fake_fetch)
+    monkeypatch.setattr(industry_groups, "_fetch_enhetsregister", fake_fetch)
 
     first = industry_groups.classify_from_orgnr("333444555", "Cache Test AS")
     assert first.group == "Salg av varer (detaljhandel)"
