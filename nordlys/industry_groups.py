@@ -106,7 +106,8 @@ def _group_from_sn2(sn2: Optional[str], naringskode: Optional[str]) -> Optional[
 
     ranges = [
         ((1, 3), "Salg av varer (produksjon)"),
-        ((5, 33), "Salg av varer (produksjon)"),
+        ((5, 32), "Salg av varer (produksjon)"),
+        ((33, 33), "Salg av varer og tjenester"),
         ((35, 39), "Salg av varer (produksjon)"),
         ((41, 43), "Salg av varer og tjenester"),
         ((45, 46), "Salg av varer og tjenester"),
@@ -120,7 +121,9 @@ def _group_from_sn2(sn2: Optional[str], naringskode: Optional[str]) -> Optional[
         ((69, 75), "Salg av tjenester"),
         ((77, 82), "Salg av tjenester"),
         ((85, 88), "Salg av tjenester"),
-        ((90, 96), "Salg av tjenester"),
+        ((90, 94), "Salg av tjenester"),
+        ((95, 95), "Salg av varer og tjenester"),
+        ((96, 96), "Salg av tjenester"),
     ]
     for (start, end), group in ranges:
         if start <= value <= end:
