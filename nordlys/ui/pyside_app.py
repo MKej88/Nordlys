@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QGraphicsDropShadowEffect,
     QHeaderView,
     QHBoxLayout,
+    QLayout,
     QLabel,
     QListWidget,
     QListWidgetItem,
@@ -352,6 +353,7 @@ class CardFrame(QFrame):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
         layout.setSpacing(16)
+        layout.setSizeConstraint(QLayout.SetMinimumSize)
 
         self.title_label = QLabel(title)
         self.title_label.setObjectName("cardTitle")
@@ -365,6 +367,7 @@ class CardFrame(QFrame):
 
         self.body_layout = QVBoxLayout()
         self.body_layout.setSpacing(12)
+        self.body_layout.setSizeConstraint(QLayout.SetMinimumSize)
         layout.addLayout(self.body_layout)
 
     def add_widget(self, widget: QWidget) -> None:
@@ -414,19 +417,26 @@ class DashboardPage(QWidget):
         layout.setSpacing(24)
 
         self.status_card = CardFrame("Status", "Hurtigoversikt over siste import og anbefalinger.")
+        self.status_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.MinimumExpanding)
         self.status_label = QLabel("Ingen SAF-T fil er lastet inn ennå.")
         self.status_label.setObjectName("statusLabel")
         self.status_label.setWordWrap(True)
+        self.status_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        self.status_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.MinimumExpanding)
         self.status_card.add_widget(self.status_label)
 
         self.validation_label = QLabel("Ingen XSD-validering er gjennomført.")
         self.validation_label.setObjectName("statusLabel")
         self.validation_label.setWordWrap(True)
+        self.validation_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        self.validation_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.MinimumExpanding)
         self.status_card.add_widget(self.validation_label)
 
         self.brreg_label = QLabel("Regnskapsregister: ingen data importert ennå.")
         self.brreg_label.setObjectName("statusLabel")
         self.brreg_label.setWordWrap(True)
+        self.brreg_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        self.brreg_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.MinimumExpanding)
         self.status_card.add_widget(self.brreg_label)
         layout.addWidget(self.status_card)
 
@@ -481,10 +491,14 @@ class DashboardPage(QWidget):
 
     def update_status(self, message: str) -> None:
         self.status_label.setText(message)
+        self.status_label.updateGeometry()
+        self.status_card.updateGeometry()
 
     def update_validation_status(self, result: Optional[SaftValidationResult]) -> None:
         if result is None:
             self.validation_label.setText("Ingen XSD-validering er gjennomført.")
+            self.validation_label.updateGeometry()
+            self.status_card.updateGeometry()
             return
 
         if result.version_family:
@@ -507,9 +521,13 @@ class DashboardPage(QWidget):
             first_line = result.details.strip().splitlines()[0]
             message = f"{message}\nDetaljer: {first_line}"
         self.validation_label.setText(message)
+        self.validation_label.updateGeometry()
+        self.status_card.updateGeometry()
 
     def update_brreg_status(self, message: str) -> None:
         self.brreg_label.setText(message)
+        self.brreg_label.updateGeometry()
+        self.status_card.updateGeometry()
 
     def update_industry(
         self,
