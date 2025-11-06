@@ -12,7 +12,7 @@ from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple, ca
 
 import pandas as pd
 from PySide6.QtCore import QObject, Qt, QThread, Signal, Slot
-from PySide6.QtGui import QBrush, QColor, QFont, QIcon
+from PySide6.QtGui import QBrush, QColor, QFont, QIcon, QTextCursor
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMainWindow,
     QMessageBox,
+    QPlainTextEdit,
     QProgressDialog,
     QPushButton,
     QSizePolicy,
@@ -112,6 +113,7 @@ REVISION_TASKS: Dict[str, List[str]] = {
 
 
 NAV_ICON_FILENAMES: Dict[str, str] = {
+    "import": "import.svg",
     "dashboard": "dashboard.svg",
     "plan.saldobalanse": "balance-scale.svg",
     "plan.kontroll": "shield-check.svg",
@@ -395,8 +397,8 @@ class StatBadge(QFrame):
         self.value_label.setText(value)
 
 
-class DashboardPage(QWidget):
-    """Viser nøkkeltall for selskapet."""
+class ImportPage(QWidget):
+    """Viser importstatus og bransjeinnsikt."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -429,40 +431,6 @@ class DashboardPage(QWidget):
         self.status_card.add_widget(self.brreg_label)
         layout.addWidget(self.status_card)
 
-        self.kpi_card = CardFrame(
-            "Nøkkeltallsanalyse",
-            "Marginer og balanseindikatorer basert på innlastet SAF-T.",
-        )
-        self.kpi_grid = QGridLayout()
-        self.kpi_grid.setHorizontalSpacing(16)
-        self.kpi_grid.setVerticalSpacing(16)
-        self.kpi_card.add_layout(self.kpi_grid)
-
-        self.kpi_badges: Dict[str, StatBadge] = {}
-        for idx, (key, title, desc) in enumerate(
-            [
-                ("revenue", "Driftsinntekter", "Sum av kontogruppe 3xxx."),
-                ("ebitda_margin", "EBITDA-margin", "EBITDA i prosent av driftsinntekter."),
-                ("ebit_margin", "EBIT-margin", "Driftsresultat i prosent av driftsinntekter."),
-                ("result_margin", "Resultatmargin", "Årsresultat i prosent av driftsinntekter."),
-                ("balance_gap", "Balanseavvik", "Differanse mellom eiendeler og gjeld."),
-            ]
-        ):
-            badge = StatBadge(title, desc)
-            row = idx // 3
-            col = idx % 3
-            self.kpi_grid.addWidget(badge, row, col)
-            self.kpi_badges[key] = badge
-
-        layout.addWidget(self.kpi_card)
-
-        self.summary_card = CardFrame("Finansiell oversikt", "Oppsummerte nøkkeltall fra SAF-T.")
-        self.summary_table = _create_table_widget()
-        self.summary_table.setColumnCount(2)
-        self.summary_table.setHorizontalHeaderLabels(["Nøkkel", "Beløp"])
-        self.summary_card.add_widget(self.summary_table)
-        layout.addWidget(self.summary_card)
-
         self.industry_card = CardFrame(
             "Bransjeinnsikt",
             "Vi finner næringskode og bransje automatisk etter import.",
@@ -475,6 +443,18 @@ class DashboardPage(QWidget):
         self.industry_label.setTextFormat(Qt.RichText)
         self.industry_card.add_widget(self.industry_label)
         layout.addWidget(self.industry_card)
+
+        self.log_card = CardFrame(
+            "Importlogg",
+            "Siste hendelser under import og validering.",
+        )
+        self.log_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.log_output = QPlainTextEdit()
+        self.log_output.setReadOnly(True)
+        self.log_output.setObjectName("logField")
+        self.log_output.setMinimumHeight(260)
+        self.log_card.add_widget(self.log_output)
+        layout.addWidget(self.log_card, 1)
 
         layout.addStretch(1)
 
@@ -559,6 +539,64 @@ class DashboardPage(QWidget):
         ).strip()
         self.industry_label.setText(text)
 
+    def reset_log(self) -> None:
+        self.log_output.clear()
+
+    def append_log(self, message: str) -> None:
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        entry = f"[{timestamp}] {message}"
+        self.log_output.appendPlainText(entry)
+        cursor = self.log_output.textCursor()
+        cursor.movePosition(QTextCursor.End)
+        self.log_output.setTextCursor(cursor)
+
+
+class DashboardPage(QWidget):
+    """Viser nøkkeltall for selskapet."""
+
+    def __init__(self) -> None:
+        super().__init__()
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(24)
+
+        self.kpi_card = CardFrame(
+            "Nøkkeltallsanalyse",
+            "Marginer og balanseindikatorer basert på innlastet SAF-T.",
+        )
+        self.kpi_grid = QGridLayout()
+        self.kpi_grid.setHorizontalSpacing(16)
+        self.kpi_grid.setVerticalSpacing(16)
+        self.kpi_card.add_layout(self.kpi_grid)
+
+        self.kpi_badges: Dict[str, StatBadge] = {}
+        for idx, (key, title, desc) in enumerate(
+            [
+                ("revenue", "Driftsinntekter", "Sum av kontogruppe 3xxx."),
+                ("ebitda_margin", "EBITDA-margin", "EBITDA i prosent av driftsinntekter."),
+                ("ebit_margin", "EBIT-margin", "Driftsresultat i prosent av driftsinntekter."),
+                ("result_margin", "Resultatmargin", "Årsresultat i prosent av driftsinntekter."),
+                ("balance_gap", "Balanseavvik", "Differanse mellom eiendeler og gjeld."),
+            ]
+        ):
+            badge = StatBadge(title, desc)
+            row = idx // 3
+            col = idx % 3
+            self.kpi_grid.addWidget(badge, row, col)
+            self.kpi_badges[key] = badge
+
+        layout.addWidget(self.kpi_card)
+
+        self.summary_card = CardFrame("Finansiell oversikt", "Oppsummerte nøkkeltall fra SAF-T.")
+        self.summary_table = _create_table_widget()
+        self.summary_table.setColumnCount(2)
+        self.summary_table.setHorizontalHeaderLabels(["Nøkkel", "Beløp"])
+        self.summary_card.add_widget(self.summary_table)
+        layout.addWidget(self.summary_card)
+
+        layout.addStretch(1)
+
     def update_summary(self, summary: Optional[Dict[str, float]]) -> None:
         if not summary:
             self.summary_table.setRowCount(0)
@@ -581,7 +619,6 @@ class DashboardPage(QWidget):
         ]
         _populate_table(self.summary_table, ["Nøkkel", "Beløp"], rows, money_cols={1})
         self._update_kpis(summary)
-
 
     def _update_kpis(self, summary: Optional[Dict[str, float]]) -> None:
         def set_badge(key: str, value: Optional[str]) -> None:
@@ -617,7 +654,6 @@ class DashboardPage(QWidget):
             "balance_gap",
             format_difference(summary.get("eiendeler_UB"), summary.get("gjeld_UB")),
         )
-
 
 class DataFramePage(QWidget):
     """Generisk side som viser en pandas DataFrame."""
@@ -1264,6 +1300,7 @@ class NordlysWindow(QMainWindow):
         self._progress_dialog: Optional[QProgressDialog] = None
 
         self._page_map: Dict[str, QWidget] = {}
+        self.import_page: Optional['ImportPage'] = None
         self.sales_ar_page: Optional[SalesArPage] = None
         self.purchases_ap_page: Optional['PurchasesApPage'] = None
         self.regnskap_page: Optional['RegnskapsanalysePage'] = None
@@ -1292,7 +1329,7 @@ class NordlysWindow(QMainWindow):
         header_layout = QHBoxLayout()
         header_layout.setSpacing(16)
 
-        self.title_label = QLabel("Dashboard")
+        self.title_label = QLabel("Import")
         self.title_label.setObjectName("pageTitle")
         header_layout.addWidget(self.title_label, 1)
 
@@ -1331,6 +1368,11 @@ class NordlysWindow(QMainWindow):
         self.setStatusBar(status)
 
     def _create_pages(self) -> None:
+        import_page = ImportPage()
+        self._register_page("import", import_page)
+        self.stack.addWidget(import_page)
+        self.import_page = import_page
+
         dashboard = DashboardPage()
         self._register_page("dashboard", dashboard)
         self.stack.addWidget(dashboard)
@@ -1401,6 +1443,7 @@ class NordlysWindow(QMainWindow):
 
     def _populate_navigation(self) -> None:
         nav = self.nav_panel
+        import_item = nav.add_root("Import", "import")
         dashboard_item = nav.add_root("Dashboard", "dashboard")
 
         planning_root = nav.add_root("Planlegging")
@@ -1421,7 +1464,7 @@ class NordlysWindow(QMainWindow):
         nav.add_child(revision_root, "MVA", "rev.mva")
 
         nav.tree.currentItemChanged.connect(self._on_navigation_changed)
-        nav.tree.setCurrentItem(dashboard_item.item)
+        nav.tree.setCurrentItem(import_item.item)
 
         for key, items in REVISION_TASKS.items():
             page = self.revision_pages.get(key)
@@ -1501,6 +1544,7 @@ class NordlysWindow(QMainWindow):
         if not file_name:
             return
         self._loading_file = file_name
+        self._log_import_event(f"Starter import av {Path(file_name).name}", reset=True)
         worker = SaftLoadWorker(file_name)
         thread = QThread(self)
         worker.moveToThread(thread)
@@ -1575,6 +1619,13 @@ class NordlysWindow(QMainWindow):
         if status_message:
             self.statusBar().showMessage(status_message)
 
+    def _log_import_event(self, message: str, *, reset: bool = False) -> None:
+        if not getattr(self, "import_page", None):
+            return
+        if reset:
+            self.import_page.reset_log()
+        self.import_page.append_log(message)
+
     def _finalize_loading(self, status_message: Optional[str] = None) -> None:
         self._close_progress_dialog()
         self._set_loading_state(False)
@@ -1648,7 +1699,8 @@ class NordlysWindow(QMainWindow):
         self._update_header_fields()
         self.saldobalanse_page.set_dataframe(df)
         self.kontroll_page.update_comparison(None)
-        self.dashboard_page.update_summary(self._saft_summary)
+        if getattr(self, "dashboard_page", None):
+            self.dashboard_page.update_summary(self._saft_summary)
 
         company = self._header.company_name if self._header else None
         orgnr = self._header.orgnr if self._header else None
@@ -1670,15 +1722,27 @@ class NordlysWindow(QMainWindow):
             f"{account_count} konti analysert",
             f"Driftsinntekter: {revenue_txt}",
         ]
-        self.dashboard_page.update_status(" · ".join(bit for bit in status_bits if bit))
+        status_message = " · ".join(bit for bit in status_bits if bit)
+        if getattr(self, "import_page", None):
+            self.import_page.update_status(status_message)
+        self._log_import_event(
+            f"SAF-T lesing fullført. {account_count} konti analysert."
+        )
 
         validation = result.validation
-        self.dashboard_page.update_validation_status(validation)
+        if getattr(self, "import_page", None):
+            self.import_page.update_validation_status(validation)
+        if validation.is_valid is True:
+            self._log_import_event("XSD-validering fullført: OK.")
+        elif validation.is_valid is False:
+            self._log_import_event("XSD-validering feilet.")
+        elif validation.is_valid is None and validation.details:
+            self._log_import_event("XSD-validering: detaljer tilgjengelig, se importstatus.")
         if validation.is_valid is False:
             QMessageBox.warning(
                 self,
                 "XSD-validering feilet",
-                validation.details or "Valideringen mot XSD feilet. Se dashboard for detaljer.",
+                validation.details or "Valideringen mot XSD feilet. Se Import-siden for detaljer.",
             )
         elif validation.is_valid is None and validation.details:
             QMessageBox.information(self, "XSD-validering", validation.details)
@@ -1713,8 +1777,8 @@ class NordlysWindow(QMainWindow):
 
         self._industry = result.industry
         self._industry_error = result.industry_error
-        if getattr(self, "dashboard_page", None):
-            self.dashboard_page.update_industry(result.industry, result.industry_error)
+        if getattr(self, "import_page", None):
+            self.import_page.update_industry(result.industry, result.industry_error)
 
         self._brreg_json = result.brreg_json
         self._brreg_map = result.brreg_map
@@ -1734,19 +1798,25 @@ class NordlysWindow(QMainWindow):
                 message = "Regnskapsregister: import feilet."
             else:
                 message = "Regnskapsregister: ikke tilgjengelig (mangler org.nr.)."
-            self.dashboard_page.update_brreg_status(message)
+            if getattr(self, "import_page", None):
+                self.import_page.update_brreg_status(message)
+            self._log_import_event(message)
             return message
 
         if not self._saft_summary:
             self._update_comparison_tables(None)
             message = "Regnskapsregister: import vellykket, men ingen SAF-T-oppsummering å sammenligne."
-            self.dashboard_page.update_brreg_status(message)
+            if getattr(self, "import_page", None):
+                self.import_page.update_brreg_status(message)
+            self._log_import_event(message)
             return message
 
         comparison_rows = self._build_brreg_comparison_rows()
         self._update_comparison_tables(comparison_rows)
         message = "Regnskapsregister: import vellykket."
-        self.dashboard_page.update_brreg_status(message)
+        if getattr(self, "import_page", None):
+            self.import_page.update_brreg_status(message)
+        self._log_import_event(message)
         return message
 
     def _update_comparison_tables(
@@ -1810,6 +1880,7 @@ class NordlysWindow(QMainWindow):
     @Slot(str)
     def _on_load_error(self, message: str) -> None:
         self._finalize_loading("Feil ved lesing av SAF-T.")
+        self._log_import_event(f"Feil ved lesing av SAF-T: {message}")
         QMessageBox.critical(self, "Feil ved lesing av SAF-T", message)
 
     @Slot()
@@ -2072,7 +2143,9 @@ class NordlysWindow(QMainWindow):
                     map_df = pd.DataFrame(list(self._brreg_map.items()), columns=["Felt", "Verdi"])
                     map_df.to_excel(writer, sheet_name="Brreg_Mapping", index=False)
             self.statusBar().showMessage(f"Eksportert: {file_name}")
+            self._log_import_event(f"Rapport eksportert: {Path(file_name).name}")
         except Exception as exc:  # pragma: no cover - vises i GUI
+            self._log_import_event(f"Feil ved eksport: {exc}")
             QMessageBox.critical(self, "Feil ved eksport", str(exc))
 
     # endregion
@@ -2087,7 +2160,7 @@ class NordlysWindow(QMainWindow):
             self.stack.setCurrentWidget(widget)
             self.title_label.setText(current.text(0))
             if hasattr(self, "info_card"):
-                self.info_card.setVisible(key == "dashboard")
+                self.info_card.setVisible(key in {"dashboard", "import"})
 
     # endregion
 
