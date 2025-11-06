@@ -1427,6 +1427,12 @@ class NordlysWindow(QMainWindow):
         self._progress_dialog: Optional[QProgressDialog] = None
 
         self._page_map: Dict[str, QWidget] = {}
+        self._page_factories: Dict[str, Callable[[], QWidget]] = {}
+        self._page_attributes: Dict[str, str] = {}
+        self._latest_comparison_rows: Optional[
+            Sequence[Tuple[str, Optional[float], Optional[float], Optional[float]]]
+        ] = None
+        self.revision_pages: Dict[str, QWidget] = {}
         self.import_page: Optional['ImportPage'] = None
         self.sales_ar_page: Optional[SalesArPage] = None
         self.purchases_ap_page: Optional['PurchasesApPage'] = None
@@ -1496,75 +1502,77 @@ class NordlysWindow(QMainWindow):
 
     def _create_pages(self) -> None:
         import_page = ImportPage()
-        self._register_page("import", import_page)
-        self.stack.addWidget(import_page)
-        self.import_page = import_page
+        self._register_page("import", import_page, attr="import_page")
 
-        dashboard = DashboardPage()
-        self._register_page("dashboard", dashboard)
-        self.stack.addWidget(dashboard)
-        self.dashboard_page = dashboard
-
-        saldobalanse_page = DataFramePage(
-            "Saldobalanse",
-            "Viser saldobalansen slik den er rapportert i SAF-T.",
-            frame_builder=_standard_tb_frame,
-            money_columns=("IB", "Endringer", "UB"),
-            header_mode=QHeaderView.ResizeToContents,
-            full_window=True,
+        self._register_lazy_page("dashboard", self._build_dashboard_page, attr="dashboard_page")
+        self._register_lazy_page(
+            "plan.saldobalanse",
+            self._build_saldobalanse_page,
+            attr="saldobalanse_page",
         )
-        self._register_page("plan.saldobalanse", saldobalanse_page)
-        self.stack.addWidget(saldobalanse_page)
-        self.saldobalanse_page = saldobalanse_page
-
-        kontroll_page = ComparisonPage(
-            "Kontroll av inngående balanse",
-            "Sammenligner SAF-T mot Regnskapsregisteret for å avdekke avvik i inngående balanse.",
+        self._register_lazy_page(
+            "plan.kontroll",
+            self._build_kontroll_page,
+            attr="kontroll_page",
         )
-        self._register_page("plan.kontroll", kontroll_page)
-        self.stack.addWidget(kontroll_page)
-        self.kontroll_page = kontroll_page
-
-        regnskap_page = RegnskapsanalysePage()
-        self._register_page("plan.regnskapsanalyse", regnskap_page)
-        self.stack.addWidget(regnskap_page)
-        self.regnskap_page = regnskap_page
-
-        vesentlig_page = SummaryPage(
-            "Vesentlighetsvurdering",
-            "Nøkkeltall som understøtter fastsettelse av vesentlighetsgrenser.",
+        self._register_lazy_page(
+            "plan.regnskapsanalyse",
+            self._build_regnskap_page,
+            attr="regnskap_page",
         )
-        self._register_page("plan.vesentlighet", vesentlig_page)
-        self.stack.addWidget(vesentlig_page)
-        self.vesentlig_page = vesentlig_page
+        self._register_lazy_page(
+            "plan.vesentlighet",
+            self._build_vesentlig_page,
+            attr="vesentlig_page",
+        )
+        self._register_lazy_page(
+            "plan.sammenstilling",
+            self._build_brreg_page,
+            attr="brreg_page",
+        )
 
-        brreg_page = BrregPage()
-        self._register_page("plan.sammenstilling", brreg_page)
-        self.stack.addWidget(brreg_page)
-        self.brreg_page = brreg_page
-
-        self.revision_pages: Dict[str, QWidget] = {}
-        for key, (title, subtitle) in {
-            "rev.innkjop": ("Innkjøp og leverandørgjeld", "Fokuser på varekjøp, kredittider og periodisering."),
+        revision_definitions = {
+            "rev.innkjop": (
+                "Innkjøp og leverandørgjeld",
+                "Fokuser på varekjøp, kredittider og periodisering.",
+            ),
             "rev.lonn": ("Lønn", "Kontroll av lønnskjøringer, skatt og arbeidsgiveravgift."),
             "rev.kostnad": ("Kostnad", "Analyse av driftskostnader og periodisering."),
-            "rev.driftsmidler": ("Driftsmidler", "Verifikasjon av investeringer og avskrivninger."),
+            "rev.driftsmidler": (
+                "Driftsmidler",
+                "Verifikasjon av investeringer og avskrivninger.",
+            ),
             "rev.finans": ("Finans og likvid", "Bank, finansielle instrumenter og kontantstrøm."),
-            "rev.varelager": ("Varelager og varekjøp", "Telling, nedskrivninger og bruttomargin."),
-            "rev.salg": ("Salg og kundefordringer", "Omsetning, cut-off og reskontro."),
+            "rev.varelager": (
+                "Varelager og varekjøp",
+                "Telling, nedskrivninger og bruttomargin.",
+            ),
+            "rev.salg": (
+                "Salg og kundefordringer",
+                "Omsetning, cut-off og reskontro.",
+            ),
             "rev.mva": ("MVA", "Kontroll av avgiftsbehandling og rapportering."),
-        }.items():
+        }
+        for key, (title, subtitle) in revision_definitions.items():
             if key == "rev.salg":
-                page = SalesArPage(title, subtitle, self._on_calc_top_customers)
-                self.sales_ar_page = page
+                self._register_lazy_page(
+                    key,
+                    lambda title=title, subtitle=subtitle: self._build_sales_page(title, subtitle),
+                    attr="sales_ar_page",
+                )
             elif key == "rev.innkjop":
-                page = PurchasesApPage(title, subtitle, self._on_calc_top_suppliers)
-                self.purchases_ap_page = page
+                self._register_lazy_page(
+                    key,
+                    lambda title=title, subtitle=subtitle: self._build_purchases_page(title, subtitle),
+                    attr="purchases_ap_page",
+                )
             else:
-                page = ChecklistPage(title, subtitle)
-            self.revision_pages[key] = page
-            self._register_page(key, page)
-            self.stack.addWidget(page)
+                self._register_lazy_page(
+                    key,
+                    lambda key=key, title=title, subtitle=subtitle: self._build_checklist_page(
+                        key, title, subtitle
+                    ),
+                )
 
         self._populate_navigation()
 
@@ -1593,15 +1601,120 @@ class NordlysWindow(QMainWindow):
         nav.tree.currentItemChanged.connect(self._on_navigation_changed)
         nav.tree.setCurrentItem(import_item.item)
 
-        for key, items in REVISION_TASKS.items():
-            page = self.revision_pages.get(key)
-            if isinstance(page, SalesArPage):
-                page.set_checklist_items(items)
-            elif isinstance(page, ChecklistPage):
-                page.set_items(items)
-
-    def _register_page(self, key: str, widget: QWidget) -> None:
+    def _register_page(self, key: str, widget: QWidget, *, attr: Optional[str] = None) -> None:
         self._page_map[key] = widget
+        if attr:
+            self._page_attributes[key] = attr
+            setattr(self, attr, widget)
+        self.stack.addWidget(widget)
+        self._apply_page_state(key, widget)
+
+    def _register_lazy_page(
+        self, key: str, factory: Callable[[], QWidget], *, attr: Optional[str] = None
+    ) -> None:
+        self._page_factories[key] = factory
+        if attr:
+            self._page_attributes[key] = attr
+
+    def _ensure_page(self, key: str) -> Optional[QWidget]:
+        widget = self._page_map.get(key)
+        if widget is not None:
+            return widget
+        return self._materialize_page(key)
+
+    def _materialize_page(self, key: str) -> Optional[QWidget]:
+        factory = self._page_factories.get(key)
+        if factory is None:
+            return None
+        widget = factory()
+        attr = self._page_attributes.get(key)
+        self._register_page(key, widget, attr=attr)
+        return widget
+
+    def _apply_page_state(self, key: str, widget: QWidget) -> None:
+        if key in REVISION_TASKS:
+            self.revision_pages[key] = widget
+        if key == "dashboard" and isinstance(widget, DashboardPage):
+            widget.update_summary(self._saft_summary)
+        elif key == "plan.saldobalanse" and isinstance(widget, DataFramePage):
+            widget.set_dataframe(self._saft_df)
+        elif key == "plan.kontroll" and isinstance(widget, ComparisonPage):
+            widget.update_comparison(self._latest_comparison_rows)
+        elif key == "plan.regnskapsanalyse" and isinstance(widget, RegnskapsanalysePage):
+            fiscal_year = self._header.fiscal_year if self._header else None
+            widget.set_dataframe(self._saft_df, fiscal_year)
+            widget.update_comparison(self._latest_comparison_rows)
+        elif key == "plan.vesentlighet" and isinstance(widget, SummaryPage):
+            widget.update_summary(self._saft_summary)
+        elif key == "plan.sammenstilling" and isinstance(widget, BrregPage):
+            widget.update_mapping(None)
+            widget.update_json(None)
+        elif key == "rev.salg" and isinstance(widget, SalesArPage):
+            widget.set_checklist_items(REVISION_TASKS.get(key, []))
+            has_data = self._customer_sales is not None and not self._customer_sales.empty
+            widget.set_controls_enabled(has_data)
+            if not has_data:
+                widget.clear_top_customers()
+        elif key == "rev.innkjop" and isinstance(widget, PurchasesApPage):
+            has_data = self._supplier_purchases is not None and not self._supplier_purchases.empty
+            widget.set_controls_enabled(has_data)
+            if not has_data:
+                widget.clear_top_suppliers()
+        elif key in REVISION_TASKS and isinstance(widget, ChecklistPage):
+            widget.set_items(REVISION_TASKS.get(key, []))
+
+    def _build_dashboard_page(self) -> 'DashboardPage':
+        return DashboardPage()
+
+    def _build_saldobalanse_page(self) -> DataFramePage:
+        return DataFramePage(
+            "Saldobalanse",
+            "Viser saldobalansen slik den er rapportert i SAF-T.",
+            frame_builder=_standard_tb_frame,
+            money_columns=("IB", "Endringer", "UB"),
+            header_mode=QHeaderView.ResizeToContents,
+            full_window=True,
+        )
+
+    def _build_kontroll_page(self) -> ComparisonPage:
+        return ComparisonPage(
+            "Kontroll av inngående balanse",
+            "Sammenligner SAF-T mot Regnskapsregisteret for å avdekke avvik i inngående balanse.",
+        )
+
+    def _build_regnskap_page(self) -> 'RegnskapsanalysePage':
+        return RegnskapsanalysePage()
+
+    def _build_vesentlig_page(self) -> SummaryPage:
+        return SummaryPage(
+            "Vesentlighetsvurdering",
+            "Nøkkeltall som understøtter fastsettelse av vesentlighetsgrenser.",
+        )
+
+    def _build_brreg_page(self) -> BrregPage:
+        return BrregPage()
+
+    def _build_sales_page(self, title: str, subtitle: str) -> SalesArPage:
+        page = SalesArPage(title, subtitle, self._on_calc_top_customers)
+        page.set_checklist_items(REVISION_TASKS.get("rev.salg", []))
+        has_data = self._customer_sales is not None and not self._customer_sales.empty
+        page.set_controls_enabled(has_data)
+        if not has_data:
+            page.clear_top_customers()
+        return page
+
+    def _build_purchases_page(self, title: str, subtitle: str) -> 'PurchasesApPage':
+        page = PurchasesApPage(title, subtitle, self._on_calc_top_suppliers)
+        has_data = self._supplier_purchases is not None and not self._supplier_purchases.empty
+        page.set_controls_enabled(has_data)
+        if not has_data:
+            page.clear_top_suppliers()
+        return page
+
+    def _build_checklist_page(self, key: str, title: str, subtitle: str) -> ChecklistPage:
+        page = ChecklistPage(title, subtitle)
+        page.set_items(REVISION_TASKS.get(key, []))
+        return page
 
     def _apply_styles(self) -> None:
         self.setStyleSheet(
@@ -1825,10 +1938,16 @@ class NordlysWindow(QMainWindow):
 
         df = result.dataframe
         self._update_header_fields()
-        self.saldobalanse_page.set_dataframe(df)
-        self.kontroll_page.update_comparison(None)
-        if getattr(self, "dashboard_page", None):
-            self.dashboard_page.update_summary(self._saft_summary)
+        saldobalanse_page = cast(Optional[DataFramePage], getattr(self, "saldobalanse_page", None))
+        if saldobalanse_page:
+            saldobalanse_page.set_dataframe(df)
+        self._latest_comparison_rows = None
+        kontroll_page = cast(Optional[ComparisonPage], getattr(self, "kontroll_page", None))
+        if kontroll_page:
+            kontroll_page.update_comparison(None)
+        dashboard_page = cast(Optional[DashboardPage], getattr(self, "dashboard_page", None))
+        if dashboard_page:
+            dashboard_page.update_summary(self._saft_summary)
 
         company = self._header.company_name if self._header else None
         orgnr = self._header.orgnr if self._header else None
@@ -1888,10 +2007,13 @@ class NordlysWindow(QMainWindow):
             self.purchases_ap_page.set_controls_enabled(has_supplier_data)
             self.purchases_ap_page.clear_top_suppliers()
 
-        self.vesentlig_page.update_summary(self._saft_summary)
-        if self.regnskap_page:
+        vesentlig_page = cast(Optional[SummaryPage], getattr(self, "vesentlig_page", None))
+        if vesentlig_page:
+            vesentlig_page.update_summary(self._saft_summary)
+        regnskap_page = cast(Optional[RegnskapsanalysePage], getattr(self, "regnskap_page", None))
+        if regnskap_page:
             fiscal_year = self._header.fiscal_year if self._header else None
-            self.regnskap_page.set_dataframe(df, fiscal_year)
+            regnskap_page.set_dataframe(df, fiscal_year)
         brreg_status = self._process_brreg_result(result)
 
         self.btn_export.setEnabled(True)
@@ -1953,10 +2075,13 @@ class NordlysWindow(QMainWindow):
     ) -> None:
         """Oppdaterer tabellene som sammenligner SAF-T med Regnskapsregisteret."""
 
-        if getattr(self, "kontroll_page", None):
-            self.kontroll_page.update_comparison(rows)
-        if getattr(self, "regnskap_page", None):
-            self.regnskap_page.update_comparison(rows)
+        self._latest_comparison_rows = list(rows) if rows is not None else None
+        kontroll_page = cast(Optional[ComparisonPage], getattr(self, "kontroll_page", None))
+        if kontroll_page:
+            kontroll_page.update_comparison(rows)
+        regnskap_page = cast(Optional[RegnskapsanalysePage], getattr(self, "regnskap_page", None))
+        if regnskap_page:
+            regnskap_page.update_comparison(rows)
 
     def _build_brreg_comparison_rows(
         self,
@@ -2283,12 +2408,15 @@ class NordlysWindow(QMainWindow):
         if current is None:
             return
         key = current.data(0, Qt.UserRole)
-        if key and key in self._page_map:
-            widget = self._page_map[key]
-            self.stack.setCurrentWidget(widget)
-            self.title_label.setText(current.text(0))
-            if hasattr(self, "info_card"):
-                self.info_card.setVisible(key in {"dashboard", "import"})
+        if not key:
+            return
+        widget = self._ensure_page(key)
+        if widget is None:
+            return
+        self.stack.setCurrentWidget(widget)
+        self.title_label.setText(current.text(0))
+        if hasattr(self, "info_card"):
+            self.info_card.setVisible(key in {"dashboard", "import"})
 
     # endregion
 
