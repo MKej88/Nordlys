@@ -18,6 +18,7 @@ from nordlys.saft import (
 from nordlys.saft_customers import (
     build_customer_name_map,
     build_supplier_name_map,
+    compute_customer_supplier_totals,
     compute_purchases_per_supplier,
     compute_sales_per_customer,
     get_amount,
@@ -314,6 +315,18 @@ def test_compute_purchases_per_supplier_date_filter():
     ns = {'n1': root.tag.split('}')[0][1:]}
     df = compute_purchases_per_supplier(root, ns, date_from='2023-07-01', date_to='2023-12-31')
     assert df.empty
+
+
+def test_compute_customer_supplier_totals_matches_individual():
+    root = build_sample_root()
+    ns = {'n1': root.tag.split('}')[0][1:]}
+    expected_sales = compute_sales_per_customer(root, ns, year=2023)
+    expected_purchases = compute_purchases_per_supplier(root, ns, year=2023)
+
+    sales, purchases = compute_customer_supplier_totals(root, ns, year=2023)
+
+    pd.testing.assert_frame_equal(sales, expected_sales)
+    pd.testing.assert_frame_equal(purchases, expected_purchases)
 
 
 def test_compute_purchases_includes_all_cost_accounts():
