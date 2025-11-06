@@ -4,6 +4,7 @@ from __future__ import annotations
 import math
 import sys
 import textwrap
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime
 from dataclasses import dataclass
 from pathlib import Path
@@ -266,31 +267,39 @@ class SaftLoadWorker(QObject):
             industry: Optional[IndustryClassification] = None
             industry_error: Optional[str] = None
             if header and header.orgnr:
-                try:
-                    brreg_json = fetch_brreg(header.orgnr)
-                    brreg_map = map_brreg_metrics(brreg_json)
-                except Exception as exc:  # pragma: no cover - nettverksfeil vises i GUI
-                    brreg_error = str(exc)
+                with ThreadPoolExecutor(max_workers=2) as executor:
+                    brreg_future = executor.submit(fetch_brreg, header.orgnr)
+                    industry_future = executor.submit(
+                        classify_from_orgnr,
+                        header.orgnr,
+                        header.company_name,
+                    )
 
-                try:
-                    industry = classify_from_orgnr(header.orgnr, header.company_name)
-                except Exception as exc:  # pragma: no cover - nettverksfeil vises i GUI
-                    industry_error = str(exc)
-                    cached: Optional[Dict[str, object]]
                     try:
-                        cached = load_cached_brreg(header.orgnr)
-                    except Exception:
-                        cached = None
-                    if cached:
+                        brreg_json = brreg_future.result()
+                        brreg_map = map_brreg_metrics(brreg_json)
+                    except Exception as exc:  # pragma: no cover - nettverksfeil vises i GUI
+                        brreg_error = str(exc)
+
+                    try:
+                        industry = industry_future.result()
+                    except Exception as exc:  # pragma: no cover - nettverksfeil vises i GUI
+                        industry_error = str(exc)
+                        cached: Optional[Dict[str, object]]
                         try:
-                            industry = classify_from_brreg_json(
-                                header.orgnr,
-                                header.company_name,
-                                cached,
-                            )
-                            industry_error = None
-                        except Exception as cache_exc:  # pragma: no cover - sjelden
-                            industry_error = str(cache_exc)
+                            cached = load_cached_brreg(header.orgnr)
+                        except Exception:
+                            cached = None
+                        if cached:
+                            try:
+                                industry = classify_from_brreg_json(
+                                    header.orgnr,
+                                    header.company_name,
+                                    cached,
+                                )
+                                industry_error = None
+                            except Exception as cache_exc:  # pragma: no cover - sjelden
+                                industry_error = str(cache_exc)
             elif header:
                 industry_error = "SAF-T mangler organisasjonsnummer."
 
