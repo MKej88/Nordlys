@@ -75,27 +75,27 @@ def test_compute_balance_analysis_matches_expected_totals():
     prepared = prepare_regnskap_dataframe(build_sample_tb())
     rows = compute_balance_analysis(prepared)
 
-    immaterielle = row_by_label(rows, "10 Immaterielle")
+    immaterielle = row_by_label(rows, "Immaterielle eiendeler")
     assert immaterielle.current == pytest.approx(60)
     assert immaterielle.previous == pytest.approx(50)
 
-    kundefordr = row_by_label(rows, "Kundefordringer (netto)")
+    kundefordr = row_by_label(rows, "Kundefordringer")
     assert kundefordr.current == pytest.approx(210)
     assert kundefordr.previous == pytest.approx(170)
 
-    korts_fordringer = row_by_label(rows, "Kortsiktige fordringer (øvrige)")
+    korts_fordringer = row_by_label(rows, "Andre kortsiktige fordringer")
     assert korts_fordringer.current == pytest.approx(40)
     assert korts_fordringer.previous == pytest.approx(30)
 
-    kortsiktig_gjeld = row_by_label(rows, "Kortsiktig gjeld (23–29)")
+    kortsiktig_gjeld = row_by_label(rows, "Kortsiktig gjeld")
     assert kortsiktig_gjeld.current == pytest.approx(170)
     assert kortsiktig_gjeld.previous == pytest.approx(139)
 
     sum_eiendeler = row_by_label(rows, "Sum eiendeler")
-    sum_ek_gjeld = row_by_label(rows, "Sum EK og gjeld")
+    sum_ek_gjeld = row_by_label(rows, "Sum egenkapital og gjeld")
     assert sum_eiendeler.current == pytest.approx(1187)
     assert sum_ek_gjeld.current == pytest.approx(1187)
-    assert row_by_label(rows, "Differanse").current == pytest.approx(0)
+    assert row_by_label(rows, "Avvik").current == pytest.approx(0)
 
 
 def test_compute_result_analysis_calculates_income_statement_lines():
@@ -106,7 +106,7 @@ def test_compute_result_analysis_calculates_income_statement_lines():
     assert annen_inntekt.current == pytest.approx(70)
     assert annen_inntekt.previous == pytest.approx(50)
 
-    salgsinntekter = row_by_label(rows, "Salgsinntekter (3xxx ekskl. 38/39)")
+    salgsinntekter = row_by_label(rows, "Salgsinntekter")
     assert salgsinntekter.current == pytest.approx(1000)
     assert salgsinntekter.previous == pytest.approx(900)
 
