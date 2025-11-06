@@ -159,6 +159,34 @@ def test_parse_saldobalanse_and_summary():
     assert summary['ebitda'] == 400
 
 
+@pytest.mark.parametrize(
+    "company_block",
+    [
+        "<TaxRegistrationNumber>111222333</TaxRegistrationNumber>",
+        "<TaxRegistrationNumber><RegistrationNumber>444555666</RegistrationNumber></TaxRegistrationNumber>",
+        "<CompanyID>777888999</CompanyID>",
+        "<TaxRegistrationNumber><CompanyID>123123123</CompanyID></TaxRegistrationNumber>",
+    ],
+)
+def test_parse_header_registration_number_fallbacks(company_block: str):
+    xml = f"""
+    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <Header>
+        <Company>
+          <Name>Fallback AS</Name>
+          {company_block}
+        </Company>
+      </Header>
+    </AuditFile>
+    """
+    root = ET.fromstring(xml)
+    header = parse_saft_header(root)
+    expected = ''.join(
+        ch for ch in ET.fromstring(f"<root>{company_block}</root>").itertext() if ch.strip()
+    )
+    assert header.orgnr == expected
+
+
 def test_parse_saft_detects_namespace(tmp_path):
     xml_path = tmp_path / 'simple.xml'
     xml_path.write_text(
