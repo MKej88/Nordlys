@@ -12,7 +12,7 @@ from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple, ca
 
 import pandas as pd
 from PySide6.QtCore import QObject, Qt, QThread, Signal, Slot
-from PySide6.QtGui import QBrush, QColor, QFont, QIcon, QTextCursor
+from PySide6.QtGui import QBrush, QColor, QFont, QIcon, QTextCursor, QPen
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -41,6 +41,7 @@ from PySide6.QtWidgets import (
     QWidget,
     QTableWidget,
     QTableWidgetItem,
+    QStyledItemDelegate,
 )
 
 from ..brreg import fetch_brreg, map_brreg_metrics
@@ -324,6 +325,33 @@ def _create_table_widget() -> QTableWidget:
     table.verticalHeader().setVisible(False)
     table.setObjectName("cardTable")
     return table
+
+
+TOP_BORDER_ROLE = Qt.UserRole + 41
+BOTTOM_BORDER_ROLE = Qt.UserRole + 42
+
+
+class _AnalysisTableDelegate(QStyledItemDelegate):
+    """Tegner egendefinerte grenser for analysene."""
+
+    def paint(self, painter, option, index) -> None:  # type: ignore[override]
+        super().paint(painter, option, index)
+        if index.data(TOP_BORDER_ROLE):
+            painter.save()
+            pen = QPen(QColor(15, 23, 42))
+            pen.setWidth(2)
+            painter.setPen(pen)
+            rect = option.rect
+            painter.drawLine(rect.topLeft(), rect.topRight())
+            painter.restore()
+        if index.data(BOTTOM_BORDER_ROLE):
+            painter.save()
+            pen = QPen(QColor(15, 23, 42))
+            pen.setWidth(2)
+            painter.setPen(pen)
+            rect = option.rect
+            painter.drawLine(rect.bottomLeft(), rect.bottomRight())
+            painter.restore()
 
 
 class CardFrame(QFrame):
@@ -847,49 +875,65 @@ class RegnskapsanalysePage(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(24)
 
-        self.balance_card = CardFrame(
-            "Balanse",
-            "Aggregert oversikt over balansen basert på hovedkontoklasser.",
+        self.analysis_card = CardFrame(
+            "Regnskapsanalyse",
+            "Balansepostene til venstre og resultatpostene til høyre for enkel sammenligning.",
         )
+        self.analysis_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        analysis_split = QHBoxLayout()
+        analysis_split.setSpacing(24)
+        analysis_split.setContentsMargins(0, 0, 0, 0)
+
+        self.balance_section = QWidget()
+        self.balance_section.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        balance_layout = QVBoxLayout(self.balance_section)
+        balance_layout.setContentsMargins(0, 0, 0, 0)
+        balance_layout.setSpacing(4)
+        self.balance_title = QLabel("Balanse")
+        self.balance_title.setObjectName("analysisSectionTitle")
+        balance_layout.addWidget(self.balance_title)
         self.balance_info = QLabel(
             "Importer en SAF-T saldobalanse for å se fordelingen av eiendeler og gjeld."
         )
         self.balance_info.setWordWrap(True)
+        balance_layout.addWidget(self.balance_info)
         self.balance_table = _create_table_widget()
-        self.balance_card.add_widget(self.balance_info)
-        self.balance_card.add_widget(self.balance_table)
+        self.balance_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self._configure_analysis_table(self.balance_table, font_point_size=9, row_height=20)
+        balance_layout.addWidget(self.balance_table, 1)
         self.balance_table.hide()
-        layout.addWidget(self.balance_card)
 
-        self.result_card = CardFrame(
-            "Resultat",
-            "Oppsummerer resultatkonti for gjeldende periode mot fjoråret.",
-        )
+        self.result_section = QWidget()
+        self.result_section.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        result_layout = QVBoxLayout(self.result_section)
+        result_layout.setContentsMargins(0, 0, 0, 0)
+        result_layout.setSpacing(0)
+        self.result_title = QLabel("Resultat")
+        self.result_title.setObjectName("analysisSectionTitle")
+        self.result_title.setContentsMargins(0, 0, 0, 4)
+        result_layout.addWidget(self.result_title)
         self.result_info = QLabel(
             "Importer en SAF-T saldobalanse for å beregne resultatpostene."
         )
         self.result_info.setWordWrap(True)
+        self.result_info.setContentsMargins(0, 0, 0, 4)
+        result_layout.addWidget(self.result_info)
         self.result_table = _create_table_widget()
-        self.result_card.add_widget(self.result_info)
-        self.result_card.add_widget(self.result_table)
+        self.result_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self._configure_analysis_table(self.result_table, font_point_size=9, row_height=22)
+        result_layout.addWidget(self.result_table, 1)
         self.result_table.hide()
-        layout.addWidget(self.result_card)
 
-        self.compare_card = CardFrame(
-            "Sammenligning mot Regnskapsregisteret",
-            "Viser nøkkeltall fra SAF-T opp mot tall hentet fra Regnskapsregisteret.",
-        )
-        self.compare_info = QLabel(
-            "Hent data fra Regnskapsregisteret for å sammenligne nøkkeltallene."
-        )
-        self.compare_info.setWordWrap(True)
-        self.compare_table = _create_table_widget()
-        self.compare_card.add_widget(self.compare_info)
-        self.compare_card.add_widget(self.compare_table)
-        self.compare_table.hide()
-        layout.addWidget(self.compare_card)
+        self._table_delegate = _AnalysisTableDelegate(self)
+        self.balance_table.setItemDelegate(self._table_delegate)
+        self.result_table.setItemDelegate(self._table_delegate)
 
-        layout.addStretch(1)
+        analysis_split.addWidget(self.balance_section, 1)
+        analysis_split.addWidget(self.result_section, 1)
+        analysis_split.setStretch(0, 1)
+        analysis_split.setStretch(1, 1)
+        self.analysis_card.add_layout(analysis_split)
+        layout.addWidget(self.analysis_card, 1)
 
         self._prepared_df: Optional[pd.DataFrame] = None
         self._fiscal_year: Optional[str] = None
@@ -938,6 +982,8 @@ class RegnskapsanalysePage(QWidget):
                 table_rows.append((row.label, "", "", ""))
             else:
                 table_rows.append((row.label, row.current, row.previous, row.change))
+            if row.label == "Sum eiendeler" or row.label == "Sum egenkapital og gjeld":
+                table_rows.append(("", "", "", ""))
         _populate_table(
             self.balance_table,
             ["Kategori", current_label, previous_label, "Endring"],
@@ -946,6 +992,9 @@ class RegnskapsanalysePage(QWidget):
         )
         self.balance_info.hide()
         self.balance_table.show()
+        self._apply_balance_styles()
+        self._apply_change_coloring(self.balance_table)
+        self._set_analysis_column_widths(self.balance_table)
 
     def _update_result_table(self) -> None:
         if self._prepared_df is None or self._prepared_df.empty:
@@ -968,34 +1017,118 @@ class RegnskapsanalysePage(QWidget):
         )
         self.result_info.hide()
         self.result_table.show()
+        self._apply_change_coloring(self.result_table)
+        self._set_analysis_column_widths(self.result_table)
+
+    def _configure_analysis_table(
+        self,
+        table: QTableWidget,
+        *,
+        font_point_size: int,
+        row_height: int,
+    ) -> None:
+        font = table.font()
+        font.setPointSize(font_point_size)
+        table.setFont(font)
+        header = table.horizontalHeader()
+        header_font = header.font()
+        header_font.setPointSize(font_point_size)
+        header.setFont(header_font)
+        header.setSectionResizeMode(QHeaderView.ResizeToContents)
+        header.setStretchLastSection(False)
+        header.setMinimumSectionSize(70)
+        table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        table.verticalHeader().setSectionResizeMode(QHeaderView.Fixed)
+        table.verticalHeader().setDefaultSectionSize(row_height)
+        table.setStyleSheet("QTableWidget::item { padding: 2px 6px; }")
+
+    def _set_analysis_column_widths(self, table: QTableWidget) -> None:
+        header = table.horizontalHeader()
+        column_count = table.columnCount()
+        if column_count == 0:
+            return
+        for col in range(column_count):
+            header.setSectionResizeMode(col, QHeaderView.ResizeToContents)
+
+    def _apply_balance_styles(self) -> None:
+        bold_labels = {
+            "Eiendeler",
+            "Egenkapital og gjeld",
+            "Avvik",
+            "Sum eiendeler",
+            "Sum egenkapital og gjeld",
+        }
+        bottom_border_labels = {
+            "Eiendeler",
+            "Egenkapital og gjeld",
+            "Kontroll",
+            "Kontanter, bankinnskudd o.l.",
+            "Kortsiktig gjeld",
+            "Sum eiendeler",
+            "Sum egenkapital og gjeld",
+        }
+        top_border_labels = {"Eiendeler", "Sum eiendeler", "Sum egenkapital og gjeld"}
+        labels: List[str] = []
+        for row_idx in range(self.balance_table.rowCount()):
+            label_item = self.balance_table.item(row_idx, 0)
+            labels.append(label_item.text().strip() if label_item else "")
+        for row_idx in range(self.balance_table.rowCount()):
+            label_text = labels[row_idx]
+            if not label_text:
+                continue
+            is_bold = label_text in bold_labels
+            has_bottom_border = label_text in bottom_border_labels
+            has_top_border = label_text in top_border_labels
+            next_label = labels[row_idx + 1] if row_idx + 1 < len(labels) else ""
+            if has_bottom_border and next_label in top_border_labels and next_label:
+                has_bottom_border = False
+            for col_idx in range(self.balance_table.columnCount()):
+                item = self.balance_table.item(row_idx, col_idx)
+                if item is None:
+                    continue
+                font = item.font()
+                font.setBold(is_bold)
+                item.setFont(font)
+                item.setData(BOTTOM_BORDER_ROLE, has_bottom_border)
+                item.setData(TOP_BORDER_ROLE, has_top_border)
+        self.balance_table.viewport().update()
+
+    def _apply_change_coloring(self, table: QTableWidget) -> None:
+        change_col = 3
+        green = QBrush(QColor(21, 128, 61))
+        red = QBrush(QColor(220, 38, 38))
+        default_brush = QBrush(QColor(15, 23, 42))
+        for row_idx in range(table.rowCount()):
+            item = table.item(row_idx, change_col)
+            if item is None:
+                continue
+            label_item = table.item(row_idx, 0)
+            label_text = label_item.text().strip().lower() if label_item else ""
+            if label_text != "avvik":
+                item.setForeground(default_brush)
+                continue
+            value = item.data(Qt.UserRole)
+            if value is None:
+                item.setForeground(default_brush)
+                continue
+            try:
+                numeric = float(value)
+            except (TypeError, ValueError):
+                item.setForeground(default_brush)
+                continue
+            if abs(numeric) < 1e-6:
+                item.setForeground(green)
+            elif numeric < 0:
+                item.setForeground(red)
+            else:
+                item.setForeground(green)
 
     def update_comparison(
         self,
-        rows: Optional[Sequence[Tuple[str, Optional[float], Optional[float], Optional[float]]]],
+        _rows: Optional[Sequence[Tuple[str, Optional[float], Optional[float], Optional[float]]]],
     ) -> None:
-        if not rows:
-            self.compare_table.hide()
-            self.compare_table.setRowCount(0)
-            self.compare_info.show()
-            return
-
-        formatted_rows = [
-            (
-                label,
-                format_currency(saf_v),
-                format_currency(brreg_v),
-                format_difference(saf_v, brreg_v),
-            )
-            for label, saf_v, brreg_v, _ in rows
-        ]
-        _populate_table(
-            self.compare_table,
-            ["Nøkkel", "SAF-T", "Brreg", "Avvik"],
-            formatted_rows,
-            money_cols={1, 2, 3},
-        )
-        self.compare_info.hide()
-        self.compare_table.show()
+        return
 
 
 class BrregPage(QWidget):
@@ -1491,6 +1624,7 @@ class NordlysWindow(QMainWindow):
             #card { background-color: #ffffff; border-radius: 18px; border: 1px solid rgba(148, 163, 184, 0.28); }
             #cardTitle { font-size: 20px; font-weight: 600; color: #0f172a; letter-spacing: 0.2px; }
             #cardSubtitle { color: #64748b; font-size: 13px; line-height: 1.4; }
+            #analysisSectionTitle { font-size: 16px; font-weight: 600; color: #0f172a; letter-spacing: 0.2px; }
             #pageTitle { font-size: 28px; font-weight: 700; color: #020617; letter-spacing: 0.4px; }
             #statusLabel { color: #1f2937; font-size: 14px; line-height: 1.5; }
             #infoLabel { color: #475569; font-size: 14px; }
@@ -2187,6 +2321,10 @@ def _populate_table(
         for col_idx, value in enumerate(row):
             display = _format_value(value, col_idx in money_idx)
             item = QTableWidgetItem(display)
+            if isinstance(value, (int, float)):
+                item.setData(Qt.UserRole, float(value))
+            else:
+                item.setData(Qt.UserRole, None)
             if col_idx in money_idx:
                 item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             else:

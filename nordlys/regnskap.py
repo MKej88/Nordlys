@@ -169,55 +169,61 @@ def compute_balance_analysis(prepared: pd.DataFrame) -> List[AnalysisRow]:
 
     immaterielle = sum_ub("10")
     immaterielle_py = sum_py("10")
-    assets_rows.append(_make_row("10 Immaterielle", immaterielle, immaterielle_py))
+    assets_rows.append(_make_row("Immaterielle eiendeler", immaterielle, immaterielle_py))
 
     tomter = sum_ub("11")
     tomter_py = sum_py("11")
-    assets_rows.append(_make_row("11 Tomter/bygninger", tomter, tomter_py))
+    assets_rows.append(
+        _make_row("Tomter, bygninger og annen fast eiendom", tomter, tomter_py)
+    )
 
     maskiner = sum_ub("12")
     maskiner_py = sum_py("12")
-    assets_rows.append(_make_row("12 Maskiner/inventar/transport", maskiner, maskiner_py))
+    assets_rows.append(
+        _make_row("Transportmidler, inventar, maskiner o.l.", maskiner, maskiner_py)
+    )
 
     finans_anlegg = sum_ub("13")
     finans_anlegg_py = sum_py("13")
-    assets_rows.append(_make_row("13 Finansielle anleggsmidler", finans_anlegg, finans_anlegg_py))
+    assets_rows.append(
+        _make_row("Finansielle anleggsmidler", finans_anlegg, finans_anlegg_py)
+    )
 
     varelager = sum_ub("14")
     varelager_py = sum_py("14")
-    assets_rows.append(_make_row("14 Varelager", varelager, varelager_py))
+    assets_rows.append(_make_row("Varelager og forskudd til leverandører", varelager, varelager_py))
 
     kundefordr = sum_ub("1500") + sum_ub("1580")
     kundefordr_py = sum_py("1500") + sum_py("1580")
-    assets_rows.append(_make_row("Kundefordringer (netto)", kundefordr, kundefordr_py))
+    assets_rows.append(_make_row("Kundefordringer", kundefordr, kundefordr_py))
 
     korts_fordr_total = sum_ub("15")
     korts_fordr_total_py = sum_py("15")
     korts_fordr_ovrige = korts_fordr_total - kundefordr
     korts_fordr_ovrige_py = korts_fordr_total_py - kundefordr_py
     assets_rows.append(
-        _make_row("Kortsiktige fordringer (øvrige)", korts_fordr_ovrige, korts_fordr_ovrige_py)
+        _make_row("Andre kortsiktige fordringer", korts_fordr_ovrige, korts_fordr_ovrige_py)
     )
 
     mva = sum_ub("16")
     mva_py = sum_py("16")
-    assets_rows.append(_make_row("16 MVA/tilskudd", mva, mva_py))
+    assets_rows.append(_make_row("Merverdiavgift, tilskudd o.l.", mva, mva_py))
 
     forskudd = sum_ub("17")
     forskudd_py = sum_py("17")
     assets_rows.append(
-        _make_row("17 Forskuddsbet. kostn./påløpt inntekt", forskudd, forskudd_py)
+        _make_row("Forskuddsbetalte kostnader og påløpte inntekter", forskudd, forskudd_py)
     )
 
     finans_kortsiktig = sum_ub("18")
     finans_kortsiktig_py = sum_py("18")
     assets_rows.append(
-        _make_row("18 Kortsiktige finansinvesteringer", finans_kortsiktig, finans_kortsiktig_py)
+        _make_row("Kortsiktige finansinvesteringer", finans_kortsiktig, finans_kortsiktig_py)
     )
 
     bank = sum_ub("19")
     bank_py = sum_py("19")
-    assets_rows.append(_make_row("19 Bank/kasse", bank, bank_py))
+    assets_rows.append(_make_row("Kontanter, bankinnskudd o.l.", bank, bank_py))
 
     sum_eiendeler = sum(
         value.current if value.current is not None else 0.0
@@ -230,35 +236,37 @@ def compute_balance_analysis(prepared: pd.DataFrame) -> List[AnalysisRow]:
         if not value.is_header
     )
 
+    assets_rows.append(_make_row("Sum eiendeler", sum_eiendeler, sum_eiendeler_py))
+
     ek_rows: List[AnalysisRow] = []
     ek_rows.append(_make_header("Egenkapital og gjeld"))
 
     egenkapital = -sum_ub("20")
     egenkapital_py = -sum_py("20")
-    ek_rows.append(_make_row("Egenkapital (20)", egenkapital, egenkapital_py))
+    ek_rows.append(_make_row("Egenkapital", egenkapital, egenkapital_py))
 
     avsetninger = -sum_ub("21")
     avsetninger_py = -sum_py("21")
-    ek_rows.append(_make_row("21 Avsetninger", avsetninger, avsetninger_py))
+    ek_rows.append(_make_row("Avsetninger for forpliktelser", avsetninger, avsetninger_py))
 
     langsiktig = -sum_ub("22")
     langsiktig_py = -sum_py("22")
-    ek_rows.append(_make_row("22 Langsiktig gjeld", langsiktig, langsiktig_py))
+    ek_rows.append(_make_row("Langsiktig gjeld", langsiktig, langsiktig_py))
 
     kortsiktig = -sum(sum_ub(prefix) for prefix in ["23", "24", "25", "26", "27", "28", "29"])
     kortsiktig_py = -sum(sum_py(prefix) for prefix in ["23", "24", "25", "26", "27", "28", "29"])
-    ek_rows.append(_make_row("Kortsiktig gjeld (23–29)", kortsiktig, kortsiktig_py))
+    ek_rows.append(_make_row("Kortsiktig gjeld", kortsiktig, kortsiktig_py))
 
     sum_ek_gjeld = egenkapital + avsetninger + langsiktig + kortsiktig
     sum_ek_gjeld_py = egenkapital_py + avsetninger_py + langsiktig_py + kortsiktig_py
 
+    ek_rows.append(_make_row("Sum egenkapital og gjeld", sum_ek_gjeld, sum_ek_gjeld_py))
+
     control_rows: List[AnalysisRow] = []
     control_rows.append(_make_header("Kontroll"))
-    control_rows.append(_make_row("Sum eiendeler", sum_eiendeler, sum_eiendeler_py))
-    control_rows.append(_make_row("Sum EK og gjeld", sum_ek_gjeld, sum_ek_gjeld_py))
     control_rows.append(
         _make_row(
-            "Differanse",
+            "Avvik",
             sum_eiendeler - sum_ek_gjeld,
             sum_eiendeler_py - sum_ek_gjeld_py,
         )
@@ -289,7 +297,7 @@ def compute_result_analysis(prepared: pd.DataFrame) -> List[AnalysisRow]:
     sum_salg_total_py = -sum_py("3")
     salg = sum_salg_total - annen_inntekt
     salg_py = sum_salg_total_py - annen_inntekt_py
-    rows.append(_make_row("Salgsinntekter (3xxx ekskl. 38/39)", salg, salg_py))
+    rows.append(_make_row("Salgsinntekter", salg, salg_py))
 
     rows.append(_make_row("Sum inntekter", sum_salg_total, sum_salg_total_py))
 
@@ -299,7 +307,7 @@ def compute_result_analysis(prepared: pd.DataFrame) -> List[AnalysisRow]:
 
     lonn = sum_ub("5")
     lonn_py = sum_py("5")
-    rows.append(_make_row("Lønn", lonn, lonn_py))
+    rows.append(_make_row("Lønnskostnader", lonn, lonn_py))
 
     avskr = sum_ub("60")
     avskr_py = sum_py("60")
