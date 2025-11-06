@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 import xml.etree.ElementTree as ET
+import re
 
 import pandas as pd
 
@@ -248,6 +249,19 @@ def parse_saldobalanse(root: ET.Element) -> pd.DataFrame:
     def get(acct: ET.Element, tag: str) -> Optional[str]:
         return text_or_none(acct.find(f"n1:{tag}", NS))
 
+    konto_pattern = re.compile(r'-?\d+')
+
+    def konto_to_int(value: Optional[str]) -> Optional[int]:
+        if not value:
+            return None
+        match = konto_pattern.search(value)
+        if not match:
+            return None
+        try:
+            return int(match.group())
+        except ValueError:
+            return None
+
     for account in accounts:
         konto = get(account, 'AccountID')
         navn = get(account, 'AccountDescription') or ''
@@ -255,16 +269,22 @@ def parse_saldobalanse(root: ET.Element) -> pd.DataFrame:
         opening_credit = to_float(get(account, 'OpeningCreditBalance'))
         closing_debit = to_float(get(account, 'ClosingDebitBalance'))
         closing_credit = to_float(get(account, 'ClosingCreditBalance'))
+        ib_netto = opening_debit - opening_credit
+        ub_netto = closing_debit - closing_credit
+        endring = ub_netto - ib_netto
         rows.append(
             {
                 'Konto': konto,
                 'Kontonavn': navn,
                 'IB Debet': opening_debit,
                 'IB Kredit': opening_credit,
-                'Endring Debet': 0.0,
-                'Endring Kredit': 0.0,
+                'Endring Debet': endring if endring > 0 else 0.0,
+                'Endring Kredit': -endring if endring < 0 else 0.0,
                 'UB Debet': closing_debit,
                 'UB Kredit': closing_credit,
+                'IB_netto': ib_netto,
+                'UB_netto': ub_netto,
+                'Konto_int': konto_to_int(konto),
             }
         )
 
@@ -279,32 +299,50 @@ def parse_saldobalanse(root: ET.Element) -> pd.DataFrame:
             'Endring Kredit',
             'UB Debet',
             'UB Kredit',
+            'IB_netto',
+            'UB_netto',
+            'Konto_int',
         ],
     )
-    df['IB_netto'] = df['IB Debet'].fillna(0) - df['IB Kredit'].fillna(0)
-    df['UB_netto'] = df['UB Debet'].fillna(0) - df['UB Kredit'].fillna(0)
-    endring = df['UB_netto'] - df['IB_netto']
-    df['Endring Debet'] = endring.where(endring > 0, 0.0)
-    df['Endring Kredit'] = (-endring).where(endring < 0, 0.0)
-
-    konto_series = df['Konto'].fillna('').astype(str)
-    konto_digits = konto_series.str.extract(r'(-?\d+)', expand=False)
-    df['Konto_int'] = pd.to_numeric(konto_digits, errors='coerce')
     return df
 
 
 def ns4102_summary_from_tb(df: pd.DataFrame) -> Dict[str, float]:
     """Utleder nøkkeltall basert på saldobalansen."""
-    work = df.copy()
-    work = work[~work['Konto_int'].isna()].copy()
-    work['Konto_int'] = work['Konto_int'].astype(int)
-    work['IB_netto'] = work['IB Debet'].fillna(0) - work['IB Kredit'].fillna(0)
-    work['UB_netto'] = work['UB Debet'].fillna(0) - work['UB Kredit'].fillna(0)
-    work['END_netto'] = work['Endring Debet'].fillna(0) - work['Endring Kredit'].fillna(0)
+    mask = df['Konto_int'].notna()
+    if not mask.any():
+        return {
+            'driftsinntekter': 0.0,
+            'varekostnad': 0.0,
+            'lonn': 0.0,
+            'avskrivninger': 0.0,
+            'andre_drift': 0.0,
+            'ebitda': 0.0,
+            'ebit': 0.0,
+            'finans_netto': 0.0,
+            'skattekostnad': 0.0,
+            'ebt': 0.0,
+            'arsresultat': 0.0,
+            'eiendeler_UB': 0.0,
+            'egenkapital_UB': 0.0,
+            'gjeld_UB': 0.0,
+            'balanse_diff': 0.0,
+            'eiendeler_UB_brreg': 0.0,
+            'gjeld_UB_brreg': 0.0,
+            'balanse_diff_brreg': 0.0,
+            'liab_debet_21xx_29xx': 0.0,
+        }
 
-    konto_values = work['Konto_int'].to_numpy()
-    end_values = work['END_netto'].to_numpy()
-    ub_values = work['UB_netto'].to_numpy()
+    subset = df.loc[mask]
+    konto_values = subset['Konto_int'].astype(int).to_numpy()
+    ib_debet = subset['IB Debet'].fillna(0.0).to_numpy()
+    ib_kredit = subset['IB Kredit'].fillna(0.0).to_numpy()
+    ub_debet = subset['UB Debet'].fillna(0.0).to_numpy()
+    ub_kredit = subset['UB Kredit'].fillna(0.0).to_numpy()
+
+    ib_values = ib_debet - ib_kredit
+    ub_values = ub_debet - ub_kredit
+    end_values = ub_values - ib_values
 
     def sum_in_range(values, start: int, stop: int) -> float:
         mask = (konto_values >= start) & (konto_values <= stop)
