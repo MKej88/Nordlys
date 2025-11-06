@@ -577,7 +577,6 @@ class DashboardPage(QWidget):
                 ("ebitda_margin", "EBITDA-margin", "EBITDA i prosent av driftsinntekter."),
                 ("ebit_margin", "EBIT-margin", "Driftsresultat i prosent av driftsinntekter."),
                 ("result_margin", "Resultatmargin", "Årsresultat i prosent av driftsinntekter."),
-                ("balance_gap", "Balanseavvik", "Differanse mellom eiendeler og gjeld."),
             ]
         ):
             badge = StatBadge(title, desc)
@@ -615,7 +614,6 @@ class DashboardPage(QWidget):
             ("Årsresultat", summary.get("arsresultat")),
             ("Eiendeler (UB)", summary.get("eiendeler_UB")),
             ("Gjeld (UB)", summary.get("gjeld_UB")),
-            ("Balanseavvik", summary.get("balanse_diff")),
         ]
         _populate_table(self.summary_table, ["Nøkkel", "Beløp"], rows, money_cols={1})
         self._update_kpis(summary)
@@ -650,10 +648,6 @@ class DashboardPage(QWidget):
         set_badge("ebitda_margin", percent(ebitda))
         set_badge("ebit_margin", percent(ebit))
         set_badge("result_margin", percent(result))
-        set_badge(
-            "balance_gap",
-            format_difference(summary.get("eiendeler_UB"), summary.get("gjeld_UB")),
-        )
 
 class DataFramePage(QWidget):
     """Generisk side som viser en pandas DataFrame."""
