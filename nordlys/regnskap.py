@@ -138,8 +138,8 @@ def _clean_value(value: float) -> float:
     value = float(value)
     if abs(value) < 1e-6:
         return 0.0
-    rounded = math.ceil(value)
-    return float(rounded)
+    trimmed = math.trunc(value)
+    return float(trimmed)
 
 
 def _make_row(label: str, current: float, previous: float) -> AnalysisRow:
