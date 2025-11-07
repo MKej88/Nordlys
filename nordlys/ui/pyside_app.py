@@ -8,9 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple, cast
-
-import pandas as pd
+from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple, TYPE_CHECKING, cast
 from PySide6.QtCore import QObject, Qt, QThread, Signal, Slot, QTimer
 from PySide6.QtGui import QBrush, QColor, QFont, QIcon, QTextCursor, QPen
 from PySide6.QtWidgets import (
@@ -72,7 +70,12 @@ from ..saft import (
     validate_saft_against_xsd,
 )
 from ..saft_customers import compute_customer_supplier_totals, parse_saft
-from ..utils import format_currency, format_difference
+from ..utils import format_currency, format_difference, lazy_pandas
+
+if TYPE_CHECKING:  # pragma: no cover - kun for typekontroll
+    import pandas as pd
+
+pd = lazy_pandas()
 
 
 REVISION_TASKS: Dict[str, List[str]] = {

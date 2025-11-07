@@ -5,14 +5,17 @@ import importlib
 import importlib.util
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple, TYPE_CHECKING
 import xml.etree.ElementTree as ET
 import re
 
-import pandas as pd
-
 from .constants import NS
-from .utils import text_or_none, to_float
+from .utils import lazy_pandas, text_or_none, to_float
+
+if TYPE_CHECKING:  # pragma: no cover - kun for typekontroll
+    import pandas as pd
+
+pd = lazy_pandas()
 
 
 _XMLSCHEMA_SPEC = importlib.util.find_spec("xmlschema")

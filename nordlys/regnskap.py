@@ -2,12 +2,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Iterable, List, Optional
+from typing import Callable, Iterable, List, Optional, TYPE_CHECKING
 
 import math
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP, ROUND_UP
 
-import pandas as pd
+from .utils import lazy_pandas
+
+if TYPE_CHECKING:  # pragma: no cover - kun for typekontroll
+    import pandas as pd
+
+pd = lazy_pandas()
 
 
 @dataclass(frozen=True)
