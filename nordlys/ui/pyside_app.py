@@ -2485,9 +2485,9 @@ def _format_value(value: object, money: bool) -> str:
 
 
 def _format_money_norwegian(value: float) -> str:
-    formatted = f"{value:,.2f}"
-    formatted = formatted.replace(",", " ")
-    return formatted.replace(".", ",")
+    truncated = math.trunc(value)
+    formatted = f"{truncated:,}"
+    return formatted.replace(",", " ")
 
 
 def _format_integer_norwegian(value: float) -> str:

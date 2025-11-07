@@ -87,7 +87,7 @@ def test_compute_balance_analysis_matches_expected_totals():
     assert korts_fordringer.current == pytest.approx(40)
     assert korts_fordringer.previous == pytest.approx(30)
 
-    kortsiktig_gjeld = row_by_label(rows, "Kortsiktig gjeld")
+    kortsiktig_gjeld = row_by_label(rows, "Sum kortsiktig gjeld")
     assert kortsiktig_gjeld.current == pytest.approx(170)
     assert kortsiktig_gjeld.previous == pytest.approx(139)
 
