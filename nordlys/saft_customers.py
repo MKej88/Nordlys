@@ -46,6 +46,18 @@ def _has_namespace(ns: Dict[str, str]) -> bool:
     return bool({k: v for k, v in ns.items() if k not in {_NS_FLAG_KEY, _NS_CACHE_KEY}})
 
 
+def _et_namespace(ns: Dict[str, str]) -> Dict[str, str]:
+    """Returnerer bare oppslagstabellen for ElementTree med strenger."""
+
+    namespace: Dict[str, str] = {}
+    for key, value in ns.items():
+        if key in {_NS_FLAG_KEY, _NS_CACHE_KEY}:
+            continue
+        if isinstance(key, str) and isinstance(value, str):
+            namespace[key] = value
+    return namespace
+
+
 def _normalize_path(path: str, ns: Dict[str, str]) -> str:
     if _has_namespace(ns):
         return path
@@ -68,14 +80,14 @@ def _normalize_path(path: str, ns: Dict[str, str]) -> str:
 def _find(element: ET.Element, path: str, ns: Dict[str, str]) -> Optional[ET.Element]:
     normalized = _normalize_path(path, ns)
     if _has_namespace(ns):
-        return element.find(normalized, ns)
+        return element.find(normalized, _et_namespace(ns))
     return element.find(normalized)
 
 
 def _findall(element: ET.Element, path: str, ns: Dict[str, str]) -> Iterable[ET.Element]:
     normalized = _normalize_path(path, ns)
     if _has_namespace(ns):
-        return element.findall(normalized, ns)
+        return element.findall(normalized, _et_namespace(ns))
     return element.findall(normalized)
 
 
