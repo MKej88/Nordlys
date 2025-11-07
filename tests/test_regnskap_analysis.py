@@ -127,7 +127,7 @@ def test_compute_result_analysis_rounds_negative_values_away_from_zero():
                 "Kontonavn": "Varekostnad",
                 "IB Debet": 0.0,
                 "IB Kredit": 0.0,
-                "UB Debet": 100.4,
+                "UB Debet": 100.2,
                 "UB Kredit": 0.0,
             },
             {
@@ -135,7 +135,7 @@ def test_compute_result_analysis_rounds_negative_values_away_from_zero():
                 "Kontonavn": "Lønn",
                 "IB Debet": 0.0,
                 "IB Kredit": 0.0,
-                "UB Debet": 50.4,
+                "UB Debet": 50.0,
                 "UB Kredit": 0.0,
             },
         ]

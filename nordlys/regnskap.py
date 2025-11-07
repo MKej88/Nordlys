@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Callable, Iterable, List, Optional
 
 import math
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP, ROUND_UP
 
 import pandas as pd
 
@@ -145,7 +145,9 @@ def _clean_value(value: float) -> float:
         return 0.0
 
     try:
-        quantized = Decimal(str(numeric)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+        decimal_value = Decimal(str(numeric))
+        rounding_mode = ROUND_UP if decimal_value < 0 else ROUND_HALF_UP
+        quantized = decimal_value.quantize(Decimal("1"), rounding=rounding_mode)
     except (InvalidOperation, ValueError):
         return 0.0
 
