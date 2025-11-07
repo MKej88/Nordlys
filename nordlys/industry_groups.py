@@ -84,7 +84,10 @@ def _apply_secondary_hints(name: str) -> Optional[str]:
         (("transport", "logist", "spedisjon", "frakt", "taxi", "buss"), "Transporttjenester"),
         (("restaurant", "restaur", "bar", "pub", "cafe", "kafé", "pizza", "pizz", "mat og drikke"), "Restauranter og uteliv"),
         (("butikk", "handel", "shop", "store"), "Salg av varer (detaljhandel)"),
-        (("bygg", "entrepren", "elektro", "verksted", "mekanisk", "betong", "trelast", "vvs", "rør", "anlegg"), "Salg av varer og tjenester"),
+        (
+            ("bygg", "entrepren", "elektro", "verksted", "mekanisk", "betong", "trelast", "vvs", "rør", "anlegg"),
+            "Salg av varer og tjenester",
+        ),
     ]
     for tokens, group in hints:
         if any(token in lowered for token in tokens):
