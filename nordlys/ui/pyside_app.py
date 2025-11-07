@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple, cast
 
 import pandas as pd
-from PySide6.QtCore import QObject, Qt, QThread, Signal, Slot
+from PySide6.QtCore import QObject, Qt, QThread, Signal, Slot, QTimer
 from PySide6.QtGui import QBrush, QColor, QFont, QIcon, QTextCursor, QPen
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -44,6 +44,11 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
     QStyledItemDelegate,
 )
+
+try:
+    from PySide6.QtWidgets import QWIDGETSIZE_MAX
+except ImportError:  # PySide6 < 6.7
+    QWIDGETSIZE_MAX = 16777215
 
 from ..brreg import fetch_brreg, map_brreg_metrics
 from ..constants import APP_TITLE
@@ -363,6 +368,7 @@ def _create_table_widget() -> QTableWidget:
     table.setAlternatingRowColors(True)
     table.setEditTriggers(QAbstractItemView.NoEditTriggers)
     table.setSelectionBehavior(QAbstractItemView.SelectRows)
+    table.setFocusPolicy(Qt.NoFocus)
     table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
     table.verticalHeader().setVisible(False)
     table.setObjectName("cardTable")
@@ -948,12 +954,12 @@ class RegnskapsanalysePage(QWidget):
         balance_layout.addWidget(self.balance_info)
         self.balance_table = _create_table_widget()
         self.balance_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self._configure_analysis_table(self.balance_table, font_point_size=9, row_height=20)
+        self._configure_analysis_table(self.balance_table, font_point_size=8, row_height=18)
         balance_layout.addWidget(self.balance_table, 1)
         self.balance_table.hide()
 
         self.result_section = QWidget()
-        self.result_section.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.result_section.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
         result_layout = QVBoxLayout(self.result_section)
         result_layout.setContentsMargins(0, 0, 0, 0)
         result_layout.setSpacing(0)
@@ -968,9 +974,11 @@ class RegnskapsanalysePage(QWidget):
         self.result_info.setContentsMargins(0, 0, 0, 4)
         result_layout.addWidget(self.result_info)
         self.result_table = _create_table_widget()
-        self.result_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self._configure_analysis_table(self.result_table, font_point_size=9, row_height=22)
-        result_layout.addWidget(self.result_table, 1)
+        self.result_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
+        self._configure_analysis_table(self.result_table, font_point_size=8, row_height=18)
+        result_layout.addWidget(self.result_table)
+        result_layout.setAlignment(self.result_table, Qt.AlignTop)
+        result_layout.addStretch(1)
         self.result_table.hide()
 
         self._table_delegate = _AnalysisTableDelegate(self)
@@ -981,6 +989,8 @@ class RegnskapsanalysePage(QWidget):
         analysis_split.addWidget(self.result_section, 1)
         analysis_split.setStretch(0, 1)
         analysis_split.setStretch(1, 1)
+        analysis_split.setAlignment(self.balance_section, Qt.AlignTop)
+        analysis_split.setAlignment(self.result_section, Qt.AlignTop)
         self.analysis_card.add_layout(analysis_split)
         layout.addWidget(self.analysis_card, 1)
 
@@ -1012,11 +1022,13 @@ class RegnskapsanalysePage(QWidget):
         self.balance_table.hide()
         self.balance_table.setRowCount(0)
         self.balance_info.show()
+        self._reset_analysis_table_height(self.balance_table)
 
     def _clear_result_table(self) -> None:
         self.result_table.hide()
         self.result_table.setRowCount(0)
         self.result_info.show()
+        self._reset_analysis_table_height(self.result_table)
 
     def _update_balance_table(self) -> None:
         if self._prepared_df is None or self._prepared_df.empty:
@@ -1031,8 +1043,6 @@ class RegnskapsanalysePage(QWidget):
                 table_rows.append((row.label, "", "", ""))
             else:
                 table_rows.append((row.label, row.current, row.previous, row.change))
-            if row.label == "Sum eiendeler" or row.label == "Sum egenkapital og gjeld":
-                table_rows.append(("", "", "", ""))
         _populate_table(
             self.balance_table,
             ["Kategori", current_label, previous_label, "Endring"],
@@ -1043,7 +1053,8 @@ class RegnskapsanalysePage(QWidget):
         self.balance_table.show()
         self._apply_balance_styles()
         self._apply_change_coloring(self.balance_table)
-        self._set_analysis_column_widths(self.balance_table)
+        self._lock_analysis_column_widths(self.balance_table)
+        self._schedule_table_height_adjustment(self.balance_table)
 
     def _update_result_table(self) -> None:
         if self._prepared_df is None or self._prepared_df.empty:
@@ -1067,7 +1078,8 @@ class RegnskapsanalysePage(QWidget):
         self.result_info.hide()
         self.result_table.show()
         self._apply_change_coloring(self.result_table)
-        self._set_analysis_column_widths(self.result_table)
+        self._lock_analysis_column_widths(self.result_table)
+        self._schedule_table_height_adjustment(self.result_table)
 
     def _configure_analysis_table(
         self,
@@ -1086,19 +1098,54 @@ class RegnskapsanalysePage(QWidget):
         header.setSectionResizeMode(QHeaderView.ResizeToContents)
         header.setStretchLastSection(False)
         header.setMinimumSectionSize(70)
-        table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        table.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         table.verticalHeader().setSectionResizeMode(QHeaderView.Fixed)
         table.verticalHeader().setDefaultSectionSize(row_height)
         table.setStyleSheet("QTableWidget::item { padding: 2px 6px; }")
 
-    def _set_analysis_column_widths(self, table: QTableWidget) -> None:
+    def _lock_analysis_column_widths(self, table: QTableWidget) -> None:
         header = table.horizontalHeader()
         column_count = table.columnCount()
         if column_count == 0:
             return
+        widths: List[int] = []
         for col in range(column_count):
             header.setSectionResizeMode(col, QHeaderView.ResizeToContents)
+        table.resizeColumnsToContents()
+        for col in range(column_count):
+            widths.append(header.sectionSize(col))
+        for col, width in enumerate(widths):
+            header.setSectionResizeMode(col, QHeaderView.Interactive)
+            header.resizeSection(col, width)
+
+    def _schedule_table_height_adjustment(self, table: QTableWidget) -> None:
+        QTimer.singleShot(0, lambda tbl=table: self._set_analysis_table_height(tbl))
+
+    def _set_analysis_table_height(self, table: QTableWidget) -> None:
+        if table.rowCount() == 0:
+            self._reset_analysis_table_height(table)
+            return
+        table.resizeRowsToContents()
+        header_height = table.horizontalHeader().height()
+        rows_height = sum(table.rowHeight(row) for row in range(table.rowCount()))
+        if rows_height <= 0:
+            rows_height = sum(table.sizeHintForRow(row) for row in range(table.rowCount()))
+        if rows_height <= 0:
+            default_row = table.verticalHeader().defaultSectionSize() or 18
+            rows_height = default_row * table.rowCount()
+        grid_extra = max(0, table.rowCount() - 1)
+        rows_height += grid_extra
+        buffer = max(16, table.verticalHeader().defaultSectionSize() // 2)
+        frame = table.frameWidth() * 2
+        margins = table.contentsMargins()
+        total = header_height + rows_height + buffer + frame + margins.top() + margins.bottom()
+        table.setMinimumHeight(total)
+        table.setMaximumHeight(total)
+
+    def _reset_analysis_table_height(self, table: QTableWidget) -> None:
+        table.setMinimumHeight(0)
+        table.setMaximumHeight(QWIDGETSIZE_MAX)
 
     def _apply_balance_styles(self) -> None:
         bold_labels = {
