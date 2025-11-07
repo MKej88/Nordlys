@@ -3,6 +3,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
+import nordlys.regnskap as regnskap
 from nordlys.regnskap import (
     AnalysisRow,
     compute_balance_analysis,
@@ -119,7 +120,7 @@ def test_compute_result_analysis_calculates_income_statement_lines():
     assert resultat.previous == pytest.approx(-35)
 
 
-def test_compute_result_analysis_rounds_negative_values_away_from_zero():
+def test_compute_result_analysis_rounds_negative_values_to_nearest_integer():
     df = pd.DataFrame(
         [
             {
@@ -144,4 +145,12 @@ def test_compute_result_analysis_rounds_negative_values_away_from_zero():
     prepared = prepare_regnskap_dataframe(df)
     rows = compute_result_analysis(prepared)
     resultat = row_by_label(rows, "Resultat før skatt")
-    assert resultat.current == -151
+    assert resultat.current == -150
+
+
+def test_clean_value_rounds_negative_numbers_to_nearest_integer():
+    """Sikrer symmetrisk avrunding for negative verdier."""
+
+    value = regnskap._clean_value(-100.2)
+
+    assert value == -100

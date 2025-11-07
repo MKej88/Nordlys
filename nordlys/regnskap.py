@@ -146,9 +146,11 @@ def _clean_value(value: float) -> float:
 
     try:
         decimal_value = Decimal(str(numeric))
-        rounding_mode = ROUND_UP if decimal_value < 0 else ROUND_HALF_UP
-        quantized = decimal_value.quantize(Decimal("1"), rounding=rounding_mode)
+        quantized = decimal_value.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
     except (InvalidOperation, ValueError):
+        return 0.0
+
+    if quantized == 0:
         return 0.0
 
     return float(quantized)
