@@ -38,6 +38,11 @@ def test_secondary_hint_changes_fallback() -> None:
     assert result.group == "Salg av varer og tjenester"
 
 
+def test_secondary_hint_returns_correct_text() -> None:
+    group = industry_groups._apply_secondary_hints("Byggmester Anlegg AS")
+    assert group == "Salg av varer og tjenester"
+
+
 def test_cache_prevents_double_fetch(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     cache_path = tmp_path / "cache.json"
     monkeypatch.setattr(industry_groups, "CACHE_PATH", cache_path)
