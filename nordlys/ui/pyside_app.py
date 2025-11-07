@@ -1465,6 +1465,7 @@ class NordlysWindow(QMainWindow):
 
         self._dataset_results: Dict[str, SaftLoadResult] = {}
         self._dataset_years: Dict[str, Optional[int]] = {}
+        self._dataset_orgnrs: Dict[str, Optional[str]] = {}
         self._dataset_order: List[str] = []
         self._dataset_positions: Dict[str, int] = {}
         self._current_dataset_key: Optional[str] = None
@@ -1958,6 +1959,7 @@ class NordlysWindow(QMainWindow):
         if not results:
             self._dataset_results = {}
             self._dataset_years = {}
+            self._dataset_orgnrs = {}
             self._dataset_order = []
             self._dataset_positions = {}
             self._current_dataset_key = None
@@ -1968,6 +1970,9 @@ class NordlysWindow(QMainWindow):
         self._dataset_positions = {res.file_path: idx for idx, res in enumerate(results)}
         self._dataset_years = {
             res.file_path: self._resolve_dataset_year(res) for res in results
+        }
+        self._dataset_orgnrs = {
+            res.file_path: self._resolve_dataset_orgnr(res) for res in results
         }
         self._dataset_order = self._sorted_dataset_keys()
         default_key = self._select_default_dataset_key()
@@ -1993,6 +1998,18 @@ class NordlysWindow(QMainWindow):
             except (TypeError, ValueError):
                 return None
         return None
+
+    def _resolve_dataset_orgnr(self, result: SaftLoadResult) -> Optional[str]:
+        header = result.header
+        if not header or not header.orgnr:
+            return None
+        raw_orgnr = str(header.orgnr).strip()
+        if not raw_orgnr:
+            return None
+        normalized = "".join(ch for ch in raw_orgnr if ch.isdigit())
+        if normalized:
+            return normalized
+        return raw_orgnr
 
     def _sorted_dataset_keys(self) -> List[str]:
         def sort_key(key: str) -> Tuple[int, int]:
@@ -2049,18 +2066,21 @@ class NordlysWindow(QMainWindow):
 
     def _find_previous_dataset_key(self, current_key: str) -> Optional[str]:
         current_year = self._dataset_years.get(current_key)
-        if current_year is None:
+        current_org = self._dataset_orgnrs.get(current_key)
+        if current_year is None or not current_org:
             return None
         exact_year = current_year - 1
         for key, year in self._dataset_years.items():
             if key == current_key or year is None:
                 continue
-            if year == exact_year:
+            if year == exact_year and self._dataset_orgnrs.get(key) == current_org:
                 return key
         closest_key: Optional[str] = None
         closest_year: Optional[int] = None
         for key, year in self._dataset_years.items():
             if key == current_key or year is None:
+                continue
+            if self._dataset_orgnrs.get(key) != current_org:
                 continue
             if year < current_year and (closest_year is None or year > closest_year):
                 closest_key = key
