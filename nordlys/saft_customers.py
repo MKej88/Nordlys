@@ -14,25 +14,55 @@ import zipfile
 import pandas as pd
 
 
+_NS_FLAG_KEY = "__has_namespace__"
+_NS_CACHE_KEY = "__plain_cache__"
+
+
 def parse_saft(path: str | Path) -> Tuple[ET.ElementTree, Dict[str, str]]:
     """Leser SAF-T XML og oppdager default namespace dynamisk."""
 
     xml_path = Path(path)
     tree = ET.parse(xml_path)
     root = tree.getroot()
-    namespace: Dict[str, str] = {}
+    namespace: Dict[str, str] = {"n1": ""}
+    has_namespace = False
     if root.tag.startswith("{") and "}" in root.tag:
         uri = root.tag.split("}", 1)[0][1:]
-        namespace = {"n1": uri}
+        namespace["n1"] = uri
+        has_namespace = bool(uri)
+    else:
+        namespace.pop("n1")
+
+    namespace[_NS_FLAG_KEY] = has_namespace
+    namespace[_NS_CACHE_KEY] = {}
     return tree, namespace
 
 
 def _has_namespace(ns: Dict[str, str]) -> bool:
-    return bool(ns) and any(ns.values())
+    flag = ns.get(_NS_FLAG_KEY)
+    if isinstance(flag, bool):
+        return flag
+    # Fallback dersom parse_saft ikke har satt flagget (bakoverkompatibilitet i tester)
+    return bool({k: v for k, v in ns.items() if k not in {_NS_FLAG_KEY, _NS_CACHE_KEY}})
 
 
 def _normalize_path(path: str, ns: Dict[str, str]) -> str:
-    return path if _has_namespace(ns) else path.replace("n1:", "")
+    if _has_namespace(ns):
+        return path
+
+    cache = ns.get(_NS_CACHE_KEY)
+    if isinstance(cache, dict):
+        cached = cache.get(path)
+        if cached is not None:
+            return cached
+
+    normalized = path.replace("n1:", "")
+
+    if isinstance(cache, dict):
+        cache[path] = normalized
+    else:
+        ns[_NS_CACHE_KEY] = {path: normalized}
+    return normalized
 
 
 def _find(element: ET.Element, path: str, ns: Dict[str, str]) -> Optional[ET.Element]:
