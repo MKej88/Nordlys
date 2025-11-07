@@ -16,6 +16,7 @@ from PySide6.QtGui import QBrush, QColor, QFont, QIcon, QTextCursor, QPen
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
+    QComboBox,
     QFileDialog,
     QFrame,
     QGridLayout,
@@ -167,6 +168,7 @@ class SaftLoadResult:
     customer_sales: Optional[pd.DataFrame]
     suppliers: Dict[str, SupplierInfo]
     supplier_purchases: Optional[pd.DataFrame]
+    analysis_year: Optional[int]
     summary: Optional[Dict[str, float]]
     validation: SaftValidationResult
     brreg_json: Optional[Dict[str, object]]
@@ -174,6 +176,138 @@ class SaftLoadResult:
     brreg_error: Optional[str]
     industry: Optional[IndustryClassification]
     industry_error: Optional[str]
+
+
+def load_saft_file(file_path: str) -> SaftLoadResult:
+    """Laster en enkelt SAF-T-fil og returnerer resultatet."""
+
+    tree, ns = parse_saft(file_path)
+    root = tree.getroot()
+    header = parse_saft_header(root)
+    dataframe = parse_saldobalanse(root)
+    customers = parse_customers(root)
+    suppliers = parse_suppliers(root)
+
+    def _parse_date(value: Optional[str]) -> Optional[date]:
+        if value is None:
+            return None
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            return date.fromisoformat(text)
+        except ValueError:
+            try:
+                return datetime.strptime(text, "%Y-%m-%d").date()
+            except ValueError:
+                return None
+
+    period_start = _parse_date(header.period_start) if header else None
+    period_end = _parse_date(header.period_end) if header else None
+    analysis_year: Optional[int] = None
+    customer_sales: Optional[pd.DataFrame] = None
+    supplier_purchases: Optional[pd.DataFrame] = None
+    if period_start or period_end:
+        customer_sales, supplier_purchases = compute_customer_supplier_totals(
+            root,
+            ns,
+            date_from=period_start,
+            date_to=period_end,
+        )
+        if period_end:
+            analysis_year = period_end.year
+        elif period_start:
+            analysis_year = period_start.year
+    else:
+        if header and header.fiscal_year:
+            try:
+                analysis_year = int(header.fiscal_year)
+            except (TypeError, ValueError):
+                analysis_year = None
+        if analysis_year is None and header and header.period_end:
+            parsed_end = _parse_date(header.period_end)
+            if parsed_end:
+                analysis_year = parsed_end.year
+        if analysis_year is None:
+            for tx in root.findall('.//n1:GeneralLedgerEntries/n1:Journal/n1:Transaction', ns):
+                date_element = tx.find('n1:TransactionDate', ns)
+                if date_element is not None and date_element.text:
+                    parsed = _parse_date(date_element.text)
+                    if parsed:
+                        analysis_year = parsed.year
+                        break
+        if analysis_year is not None:
+            customer_sales, supplier_purchases = compute_customer_supplier_totals(
+                root,
+                ns,
+                year=analysis_year,
+            )
+
+    summary = ns4102_summary_from_tb(dataframe)
+    validation = validate_saft_against_xsd(
+        file_path,
+        header.file_version if header else None,
+    )
+
+    brreg_json: Optional[Dict[str, object]] = None
+    brreg_map: Optional[Dict[str, Optional[float]]] = None
+    brreg_error: Optional[str] = None
+    industry: Optional[IndustryClassification] = None
+    industry_error: Optional[str] = None
+    if header and header.orgnr:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            brreg_future = executor.submit(fetch_brreg, header.orgnr)
+            industry_future = executor.submit(
+                classify_from_orgnr,
+                header.orgnr,
+                header.company_name,
+            )
+
+            try:
+                brreg_json = brreg_future.result()
+                brreg_map = map_brreg_metrics(brreg_json)
+            except Exception as exc:  # pragma: no cover - nettverksfeil vises i GUI
+                brreg_error = str(exc)
+
+            try:
+                industry = industry_future.result()
+            except Exception as exc:  # pragma: no cover - nettverksfeil vises i GUI
+                industry_error = str(exc)
+                cached: Optional[Dict[str, object]]
+                try:
+                    cached = load_cached_brreg(header.orgnr)
+                except Exception:
+                    cached = None
+                if cached:
+                    try:
+                        industry = classify_from_brreg_json(
+                            header.orgnr,
+                            header.company_name,
+                            cached,
+                        )
+                        industry_error = None
+                    except Exception as cache_exc:  # pragma: no cover - sjelden
+                        industry_error = str(cache_exc)
+    elif header:
+        industry_error = "SAF-T mangler organisasjonsnummer."
+
+    return SaftLoadResult(
+        file_path=file_path,
+        header=header,
+        dataframe=dataframe,
+        customers=customers,
+        customer_sales=customer_sales,
+        suppliers=suppliers,
+        supplier_purchases=supplier_purchases,
+        analysis_year=analysis_year,
+        summary=summary,
+        validation=validation,
+        brreg_json=brreg_json,
+        brreg_map=brreg_map,
+        brreg_error=brreg_error,
+        industry=industry,
+        industry_error=industry_error,
+    )
 
 
 class SaftLoadWorker(QObject):
@@ -189,131 +323,39 @@ class SaftLoadWorker(QObject):
     @Slot()
     def run(self) -> None:
         try:
-            tree, ns = parse_saft(self._file_path)
-            root = tree.getroot()
-            header = parse_saft_header(root)
-            dataframe = parse_saldobalanse(root)
-            customers = parse_customers(root)
-            suppliers = parse_suppliers(root)
-
-            def _parse_date(value: Optional[str]) -> Optional[date]:
-                if value is None:
-                    return None
-                text = value.strip()
-                if not text:
-                    return None
-                try:
-                    return date.fromisoformat(text)
-                except ValueError:
-                    try:
-                        return datetime.strptime(text, "%Y-%m-%d").date()
-                    except ValueError:
-                        return None
-
-            period_start = _parse_date(header.period_start) if header else None
-            period_end = _parse_date(header.period_end) if header else None
-            customer_sales: Optional[pd.DataFrame] = None
-            supplier_purchases: Optional[pd.DataFrame] = None
-            if period_start or period_end:
-                customer_sales, supplier_purchases = compute_customer_supplier_totals(
-                    root,
-                    ns,
-                    date_from=period_start,
-                    date_to=period_end,
-                )
-            else:
-                analysis_year: Optional[int] = None
-                if header and header.fiscal_year:
-                    try:
-                        analysis_year = int(header.fiscal_year)
-                    except (TypeError, ValueError):
-                        analysis_year = None
-                if analysis_year is None and header and header.period_end:
-                    parsed_end = _parse_date(header.period_end)
-                    if parsed_end:
-                        analysis_year = parsed_end.year
-                if analysis_year is None:
-                    for tx in root.findall('.//n1:GeneralLedgerEntries/n1:Journal/n1:Transaction', ns):
-                        date_element = tx.find('n1:TransactionDate', ns)
-                        if date_element is not None and date_element.text:
-                            parsed = _parse_date(date_element.text)
-                            if parsed:
-                                analysis_year = parsed.year
-                                break
-                if analysis_year is not None:
-                    customer_sales, supplier_purchases = compute_customer_supplier_totals(
-                        root,
-                        ns,
-                        year=analysis_year,
-                    )
-
-            summary = ns4102_summary_from_tb(dataframe)
-            validation = validate_saft_against_xsd(
-                self._file_path,
-                header.file_version if header else None,
-            )
-
-            brreg_json: Optional[Dict[str, object]] = None
-            brreg_map: Optional[Dict[str, Optional[float]]] = None
-            brreg_error: Optional[str] = None
-            industry: Optional[IndustryClassification] = None
-            industry_error: Optional[str] = None
-            if header and header.orgnr:
-                with ThreadPoolExecutor(max_workers=2) as executor:
-                    brreg_future = executor.submit(fetch_brreg, header.orgnr)
-                    industry_future = executor.submit(
-                        classify_from_orgnr,
-                        header.orgnr,
-                        header.company_name,
-                    )
-
-                    try:
-                        brreg_json = brreg_future.result()
-                        brreg_map = map_brreg_metrics(brreg_json)
-                    except Exception as exc:  # pragma: no cover - nettverksfeil vises i GUI
-                        brreg_error = str(exc)
-
-                    try:
-                        industry = industry_future.result()
-                    except Exception as exc:  # pragma: no cover - nettverksfeil vises i GUI
-                        industry_error = str(exc)
-                        cached: Optional[Dict[str, object]]
-                        try:
-                            cached = load_cached_brreg(header.orgnr)
-                        except Exception:
-                            cached = None
-                        if cached:
-                            try:
-                                industry = classify_from_brreg_json(
-                                    header.orgnr,
-                                    header.company_name,
-                                    cached,
-                                )
-                                industry_error = None
-                            except Exception as cache_exc:  # pragma: no cover - sjelden
-                                industry_error = str(cache_exc)
-            elif header:
-                industry_error = "SAF-T mangler organisasjonsnummer."
-
-            result = SaftLoadResult(
-                file_path=self._file_path,
-                header=header,
-                dataframe=dataframe,
-                customers=customers,
-                customer_sales=customer_sales,
-                suppliers=suppliers,
-                supplier_purchases=supplier_purchases,
-                summary=summary,
-                validation=validation,
-                brreg_json=brreg_json,
-                brreg_map=brreg_map,
-                brreg_error=brreg_error,
-                industry=industry,
-                industry_error=industry_error,
-            )
+            result = load_saft_file(self._file_path)
             self.finished.emit(result)
         except Exception as exc:  # pragma: no cover - presenteres i GUI
             self.error.emit(str(exc))
+
+
+class MultiSaftLoadWorker(QObject):
+    """Laster flere SAF-T-filer sekvensielt i bakgrunnen."""
+
+    finished: Signal = Signal(object)
+    error: Signal = Signal(str)
+
+    def __init__(self, file_paths: Sequence[str]) -> None:
+        super().__init__()
+        self._file_paths = list(file_paths)
+
+    @Slot()
+    def run(self) -> None:
+        results: List[SaftLoadResult] = []
+        try:
+            for path in self._file_paths:
+                result = load_saft_file(path)
+                results.append(result)
+        except Exception as exc:  # pragma: no cover - feil vises i GUI
+            failed_index = len(results)
+            if 0 <= failed_index < len(self._file_paths):
+                failed_path = Path(self._file_paths[failed_index]).name
+                message = f"Feil ved lesing av {failed_path}: {exc}"
+            else:
+                message = str(exc)
+            self.error.emit(message)
+            return
+        self.finished.emit(results)
 
 
 def _create_table_widget() -> QTableWidget:
@@ -1420,10 +1462,17 @@ class NordlysWindow(QMainWindow):
         self._industry: Optional[IndustryClassification] = None
         self._industry_error: Optional[str] = None
         self._current_file: Optional[str] = None
-        self._loading_file: Optional[str] = None
+
+        self._dataset_results: Dict[str, SaftLoadResult] = {}
+        self._dataset_years: Dict[str, Optional[int]] = {}
+        self._dataset_orgnrs: Dict[str, Optional[str]] = {}
+        self._dataset_order: List[str] = []
+        self._dataset_positions: Dict[str, int] = {}
+        self._current_dataset_key: Optional[str] = None
+        self._loading_files: List[str] = []
 
         self._load_thread: Optional[QThread] = None
-        self._load_worker: Optional[SaftLoadWorker] = None
+        self._load_worker: Optional[QObject] = None
         self._progress_dialog: Optional[QProgressDialog] = None
 
         self._page_map: Dict[str, QWidget] = {}
@@ -1465,6 +1514,13 @@ class NordlysWindow(QMainWindow):
         self.title_label = QLabel("Import")
         self.title_label.setObjectName("pageTitle")
         header_layout.addWidget(self.title_label, 1)
+
+        self.dataset_combo = QComboBox()
+        self.dataset_combo.setObjectName("datasetCombo")
+        self.dataset_combo.setSizeAdjustPolicy(QComboBox.AdjustToContents)
+        self.dataset_combo.setVisible(False)
+        self.dataset_combo.currentIndexChanged.connect(self._on_dataset_changed)
+        header_layout.addWidget(self.dataset_combo)
 
         self.btn_open = QPushButton("Åpne SAF-T XML …")
         self.btn_open.clicked.connect(self.on_open)
@@ -1776,17 +1832,24 @@ class NordlysWindow(QMainWindow):
                 "En SAF-T-fil lastes inn i bakgrunnen. Vent til prosessen er ferdig.",
             )
             return
-        file_name, _ = QFileDialog.getOpenFileName(
+        file_names, _ = QFileDialog.getOpenFileNames(
             self,
             "Åpne SAF-T XML",
             str(Path.home()),
             "SAF-T XML (*.xml);;Alle filer (*)",
         )
-        if not file_name:
+        if not file_names:
             return
-        self._loading_file = file_name
-        self._log_import_event(f"Starter import av {Path(file_name).name}", reset=True)
-        worker = SaftLoadWorker(file_name)
+        self._loading_files = list(file_names)
+        summary = (
+            "Starter import av 1 SAF-T-fil"
+            if len(file_names) == 1
+            else f"Starter import av {len(file_names)} SAF-T-filer"
+        )
+        self._log_import_event(summary, reset=True)
+        for name in file_names:
+            self._log_import_event(f"Forbereder: {Path(name).name}")
+        worker = MultiSaftLoadWorker(file_names)
         thread = QThread(self)
         worker.moveToThread(thread)
 
@@ -1807,9 +1870,12 @@ class NordlysWindow(QMainWindow):
 
     @Slot()
     def _on_loader_started(self) -> None:
-        message = "Laster SAF-T …"
-        if self._loading_file:
-            message = f"Laster SAF-T: {Path(self._loading_file).name} …"
+        if len(self._loading_files) == 1:
+            message = f"Laster SAF-T: {Path(self._loading_files[0]).name} …"
+        elif len(self._loading_files) > 1:
+            message = f"Laster {len(self._loading_files)} SAF-T-filer …"
+        else:
+            message = "Laster SAF-T …"
         self._set_loading_state(True, message)
         self._show_progress_dialog(message)
 
@@ -1841,6 +1907,11 @@ class NordlysWindow(QMainWindow):
         self.btn_open.setEnabled(not loading)
         has_data = self._saft_df is not None
         self.btn_export.setEnabled(False if loading else has_data)
+        if hasattr(self, "dataset_combo"):
+            if loading:
+                self.dataset_combo.setEnabled(False)
+            else:
+                self.dataset_combo.setEnabled(bool(self._dataset_order))
         if self.sales_ar_page:
             if loading:
                 self.sales_ar_page.set_controls_enabled(False)
@@ -1872,17 +1943,223 @@ class NordlysWindow(QMainWindow):
         self._set_loading_state(False)
         if status_message:
             self.statusBar().showMessage(status_message)
-        self._loading_file = None
+        self._loading_files = []
 
     @Slot(object)
     def _on_load_finished(self, result_obj: object) -> None:
-        result = cast(SaftLoadResult, result_obj)
-        self._apply_saft_result(result)
+        results: List[SaftLoadResult]
+        if isinstance(result_obj, list):
+            results = [cast(SaftLoadResult, item) for item in result_obj]
+        else:
+            results = [cast(SaftLoadResult, result_obj)]
+        self._apply_saft_batch(results)
         self._finalize_loading()
 
-    def _apply_saft_result(self, result: SaftLoadResult) -> None:
+    def _apply_saft_batch(self, results: Sequence[SaftLoadResult]) -> None:
+        if not results:
+            self._dataset_results = {}
+            self._dataset_years = {}
+            self._dataset_orgnrs = {}
+            self._dataset_order = []
+            self._dataset_positions = {}
+            self._current_dataset_key = None
+            self._update_dataset_selector()
+            return
+
+        self._dataset_results = {res.file_path: res for res in results}
+        self._dataset_positions = {res.file_path: idx for idx, res in enumerate(results)}
+        self._dataset_years = {
+            res.file_path: self._resolve_dataset_year(res) for res in results
+        }
+        self._dataset_orgnrs = {
+            res.file_path: self._resolve_dataset_orgnr(res) for res in results
+        }
+        self._dataset_order = self._sorted_dataset_keys()
+        default_key = self._select_default_dataset_key()
+        self._current_dataset_key = default_key
+        self._update_dataset_selector()
+
+        if default_key is None:
+            return
+
+        self._activate_dataset(default_key, log_event=True)
+        if len(results) > 1:
+            self._log_import_event(
+                "Alle filer er lastet inn. Bruk årvelgeren for å bytte datasett."
+            )
+
+    def _resolve_dataset_year(self, result: SaftLoadResult) -> Optional[int]:
+        if result.analysis_year is not None:
+            return result.analysis_year
+        header = result.header
+        if header and header.fiscal_year:
+            try:
+                return int(str(header.fiscal_year).strip())
+            except (TypeError, ValueError):
+                return None
+        return None
+
+    def _resolve_dataset_orgnr(self, result: SaftLoadResult) -> Optional[str]:
+        header = result.header
+        if not header or not header.orgnr:
+            return None
+        raw_orgnr = str(header.orgnr).strip()
+        if not raw_orgnr:
+            return None
+        normalized = "".join(ch for ch in raw_orgnr if ch.isdigit())
+        if normalized:
+            return normalized
+        return raw_orgnr
+
+    def _sorted_dataset_keys(self) -> List[str]:
+        def sort_key(key: str) -> Tuple[int, int]:
+            year = self._dataset_years.get(key)
+            year_value = year if year is not None else 9999
+            position = self._dataset_positions.get(key, 0)
+            return (year_value, position)
+
+        return sorted(self._dataset_results.keys(), key=sort_key)
+
+    def _select_default_dataset_key(self) -> Optional[str]:
+        if not self._dataset_order:
+            return None
+        for key in reversed(self._dataset_order):
+            year = self._dataset_years.get(key)
+            if year is not None:
+                return key
+        return self._dataset_order[-1]
+
+    def _update_dataset_selector(self) -> None:
+        if not hasattr(self, "dataset_combo"):
+            return
+        combo = self.dataset_combo
+        combo.blockSignals(True)
+        combo.clear()
+        if not self._dataset_order:
+            combo.setVisible(False)
+            combo.blockSignals(False)
+            return
+        for key in self._dataset_order:
+            result = self._dataset_results.get(key)
+            if result is None:
+                continue
+            combo.addItem(self._dataset_label(result), userData=key)
+        combo.setVisible(True)
+        combo.setEnabled(bool(self._dataset_order))
+        if self._current_dataset_key in self._dataset_order:
+            combo.setCurrentIndex(self._dataset_order.index(self._current_dataset_key))
+        combo.blockSignals(False)
+
+    def _dataset_label(self, result: SaftLoadResult) -> str:
+        year = self._dataset_years.get(result.file_path)
+        if year is None and result.analysis_year is not None:
+            year = result.analysis_year
+        if year is not None:
+            return str(year)
+        header = result.header
+        if header and header.fiscal_year and str(header.fiscal_year).strip():
+            return str(header.fiscal_year).strip()
+        position = self._dataset_positions.get(result.file_path)
+        if position is not None:
+            return str(position + 1)
+        return "1"
+
+    def _find_previous_dataset_key(self, current_key: str) -> Optional[str]:
+        current_year = self._dataset_years.get(current_key)
+        current_org = self._dataset_orgnrs.get(current_key)
+        if current_year is None or not current_org:
+            return None
+        exact_year = current_year - 1
+        for key, year in self._dataset_years.items():
+            if key == current_key or year is None:
+                continue
+            if year == exact_year and self._dataset_orgnrs.get(key) == current_org:
+                return key
+        closest_key: Optional[str] = None
+        closest_year: Optional[int] = None
+        for key, year in self._dataset_years.items():
+            if key == current_key or year is None:
+                continue
+            if self._dataset_orgnrs.get(key) != current_org:
+                continue
+            if year < current_year and (closest_year is None or year > closest_year):
+                closest_key = key
+                closest_year = year
+        return closest_key
+
+    def _prepare_dataframe_with_previous(
+        self,
+        current_df: pd.DataFrame,
+        previous_df: Optional[pd.DataFrame],
+    ) -> pd.DataFrame:
+        work = current_df.copy()
+        if previous_df is None:
+            return work
+        if "Konto" not in work.columns or "UB_netto" not in previous_df.columns:
+            return work
+
+        def _konto_key(value: object) -> str:
+            if value is None:
+                return ""
+            try:
+                if pd.isna(value):  # type: ignore[arg-type]
+                    return ""
+            except Exception:
+                pass
+            return str(value).strip()
+
+        prev_work = previous_df.copy()
+        if "Konto" not in prev_work.columns:
+            return work
+        prev_work["_konto_key"] = prev_work["Konto"].map(_konto_key)
+        mapping = (
+            prev_work.loc[prev_work["_konto_key"] != ""]
+            .drop_duplicates("_konto_key")
+            .set_index("_konto_key")["UB_netto"]
+            .fillna(0.0)
+        )
+
+        work["forrige"] = work["Konto"].map(_konto_key).map(mapping).fillna(0.0)
+        return work
+
+    def _activate_dataset(self, key: str, *, log_event: bool = False) -> None:
+        result = self._dataset_results.get(key)
+        if result is None:
+            return
+        previous_key = self._find_previous_dataset_key(key)
+        previous_result = (
+            self._dataset_results.get(previous_key) if previous_key else None
+        )
+        self._current_dataset_key = key
+        if hasattr(self, "dataset_combo") and key in self._dataset_order:
+            combo = self.dataset_combo
+            combo.blockSignals(True)
+            combo.setCurrentIndex(self._dataset_order.index(key))
+            combo.blockSignals(False)
+        self._apply_saft_result(result, previous_result, log_event=log_event)
+        if not log_event:
+            self._log_import_event(f"Viser datasett: {self._dataset_label(result)}")
+
+    def _on_dataset_changed(self, index: int) -> None:
+        if index < 0 or index >= self.dataset_combo.count():
+            return
+        key = self.dataset_combo.itemData(index)
+        if not isinstance(key, str):
+            return
+        if key == self._current_dataset_key:
+            return
+        self._activate_dataset(key)
+
+    def _apply_saft_result(
+        self,
+        result: SaftLoadResult,
+        previous_result: Optional[SaftLoadResult] = None,
+        *,
+        log_event: bool = False,
+    ) -> None:
         self._header = result.header
-        self._saft_df = result.dataframe
+        previous_df = previous_result.dataframe if previous_result is not None else None
+        self._saft_df = self._prepare_dataframe_with_previous(result.dataframe, previous_df)
         self._saft_summary = result.summary
         self._validation_result = result.validation
         self._current_file = result.file_path
@@ -1936,7 +2213,7 @@ class NordlysWindow(QMainWindow):
                 :, ordered_sup_cols + remaining_sup
             ]
 
-        df = result.dataframe
+        df = self._saft_df if self._saft_df is not None else result.dataframe
         self._update_header_fields()
         saldobalanse_page = cast(Optional[DataFramePage], getattr(self, "saldobalanse_page", None))
         if saldobalanse_page:
@@ -1962,6 +2239,7 @@ class NordlysWindow(QMainWindow):
             else "—"
         )
         account_count = len(df.index)
+        dataset_label = self._dataset_label(result)
         status_bits = [
             company or "Ukjent selskap",
             f"Org.nr: {orgnr}" if orgnr else "Org.nr: –",
@@ -1969,22 +2247,26 @@ class NordlysWindow(QMainWindow):
             f"{account_count} konti analysert",
             f"Driftsinntekter: {revenue_txt}",
         ]
+        if dataset_label:
+            status_bits.append(f"Datasett: {dataset_label}")
         status_message = " · ".join(bit for bit in status_bits if bit)
         if getattr(self, "import_page", None):
             self.import_page.update_status(status_message)
-        self._log_import_event(
-            f"SAF-T lesing fullført. {account_count} konti analysert."
-        )
+        if log_event:
+            self._log_import_event(
+                f"{dataset_label or Path(result.file_path).name}: SAF-T lesing fullført. {account_count} konti analysert."
+            )
 
         validation = result.validation
         if getattr(self, "import_page", None):
             self.import_page.update_validation_status(validation)
-        if validation.is_valid is True:
-            self._log_import_event("XSD-validering fullført: OK.")
-        elif validation.is_valid is False:
-            self._log_import_event("XSD-validering feilet.")
-        elif validation.is_valid is None and validation.details:
-            self._log_import_event("XSD-validering: detaljer tilgjengelig, se importstatus.")
+        if log_event:
+            if validation.is_valid is True:
+                self._log_import_event("XSD-validering fullført: OK.")
+            elif validation.is_valid is False:
+                self._log_import_event("XSD-validering feilet.")
+            elif validation.is_valid is None and validation.details:
+                self._log_import_event("XSD-validering: detaljer tilgjengelig, se importstatus.")
         if validation.is_valid is False:
             QMessageBox.warning(
                 self,
@@ -2017,7 +2299,9 @@ class NordlysWindow(QMainWindow):
         brreg_status = self._process_brreg_result(result)
 
         self.btn_export.setEnabled(True)
-        status_parts = [f"SAF-T lastet: {result.file_path}."]
+        status_parts = [f"Datasett aktivt: {dataset_label or Path(result.file_path).name}."]
+        if len(self._dataset_order) > 1:
+            status_parts.append(f"{len(self._dataset_order)} filer tilgjengelig.")
         if brreg_status:
             status_parts.append(brreg_status)
         self.statusBar().showMessage(" ".join(status_parts))
