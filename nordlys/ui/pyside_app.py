@@ -2191,7 +2191,7 @@ class NordlysWindow(QMainWindow):
                 :, ordered_sup_cols + remaining_sup
             ]
 
-        df = result.dataframe
+        df = self._saft_df if self._saft_df is not None else result.dataframe
         self._update_header_fields()
         saldobalanse_page = cast(Optional[DataFramePage], getattr(self, "saldobalanse_page", None))
         if saldobalanse_page:
