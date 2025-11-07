@@ -2037,13 +2037,15 @@ class NordlysWindow(QMainWindow):
         year = self._dataset_years.get(result.file_path)
         if year is None and result.analysis_year is not None:
             year = result.analysis_year
-        file_name = Path(result.file_path).name
         if year is not None:
-            return f"{year} · {file_name}"
+            return str(year)
         header = result.header
         if header and header.fiscal_year and str(header.fiscal_year).strip():
-            return f"{str(header.fiscal_year).strip()} · {file_name}"
-        return file_name
+            return str(header.fiscal_year).strip()
+        position = self._dataset_positions.get(result.file_path)
+        if position is not None:
+            return str(position + 1)
+        return "1"
 
     def _find_previous_dataset_key(self, current_key: str) -> Optional[str]:
         current_year = self._dataset_years.get(current_key)
