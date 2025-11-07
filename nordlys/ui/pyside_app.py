@@ -1098,7 +1098,7 @@ class RegnskapsanalysePage(QWidget):
         header.setSectionResizeMode(QHeaderView.ResizeToContents)
         header.setStretchLastSection(False)
         header.setMinimumSectionSize(70)
-        table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        table.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         table.verticalHeader().setSectionResizeMode(QHeaderView.Fixed)
         table.verticalHeader().setDefaultSectionSize(row_height)
@@ -1109,12 +1109,14 @@ class RegnskapsanalysePage(QWidget):
         column_count = table.columnCount()
         if column_count == 0:
             return
+        widths: List[int] = []
         for col in range(column_count):
             header.setSectionResizeMode(col, QHeaderView.ResizeToContents)
         table.resizeColumnsToContents()
         for col in range(column_count):
-            width = header.sectionSize(col)
-            header.setSectionResizeMode(col, QHeaderView.Fixed)
+            widths.append(header.sectionSize(col))
+        for col, width in enumerate(widths):
+            header.setSectionResizeMode(col, QHeaderView.Interactive)
             header.resizeSection(col, width)
 
     def _schedule_table_height_adjustment(self, table: QTableWidget) -> None:
