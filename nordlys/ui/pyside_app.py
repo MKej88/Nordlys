@@ -881,11 +881,11 @@ class RegnskapsanalysePage(QWidget):
         )
         self.analysis_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         analysis_split = QHBoxLayout()
-        analysis_split.setSpacing(16)
+        analysis_split.setSpacing(24)
         analysis_split.setContentsMargins(0, 0, 0, 0)
 
         self.balance_section = QWidget()
-        self.balance_section.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.balance_section.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         balance_layout = QVBoxLayout(self.balance_section)
         balance_layout.setContentsMargins(0, 0, 0, 0)
         balance_layout.setSpacing(4)
@@ -904,7 +904,7 @@ class RegnskapsanalysePage(QWidget):
         self.balance_table.hide()
 
         self.result_section = QWidget()
-        self.result_section.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.result_section.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         result_layout = QVBoxLayout(self.result_section)
         result_layout.setContentsMargins(0, 0, 0, 0)
         result_layout.setSpacing(0)
@@ -995,6 +995,7 @@ class RegnskapsanalysePage(QWidget):
         self._apply_balance_styles()
         self._apply_change_coloring(self.balance_table)
         self._set_analysis_column_widths(self.balance_table)
+        self._ensure_table_height(self.balance_table)
 
     def _update_result_table(self) -> None:
         if self._prepared_df is None or self._prepared_df.empty:
@@ -1019,6 +1020,7 @@ class RegnskapsanalysePage(QWidget):
         self.result_table.show()
         self._apply_change_coloring(self.result_table)
         self._set_analysis_column_widths(self.result_table)
+        self._ensure_table_height(self.result_table)
 
     def _configure_analysis_table(
         self,
@@ -1051,6 +1053,17 @@ class RegnskapsanalysePage(QWidget):
         header.setSectionResizeMode(0, QHeaderView.Stretch)
         for col in range(1, column_count):
             header.setSectionResizeMode(col, QHeaderView.ResizeToContents)
+
+    def _ensure_table_height(self, table: QTableWidget) -> None:
+        header_height = table.horizontalHeader().height()
+        row_height = table.verticalHeader().defaultSectionSize()
+        frame = table.frameWidth()
+        row_count = table.rowCount()
+        if row_count == 0:
+            table.setMinimumHeight(header_height + 2 * frame)
+            return
+        total_height = header_height + row_count * row_height + 2 * frame
+        table.setMinimumHeight(total_height)
 
     def _apply_balance_styles(self) -> None:
         bold_labels = {
