@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Callable, Iterable, List, Optional
 
 import math
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 import pandas as pd
 
@@ -135,11 +136,20 @@ def _sum_column(prepared: pd.DataFrame, column: str, prefixes: Iterable[str]) ->
 
 
 def _clean_value(value: float) -> float:
-    value = float(value)
-    if abs(value) < 1e-6:
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
         return 0.0
-    trimmed = math.trunc(value)
-    return float(trimmed)
+
+    if abs(numeric) < 1e-6:
+        return 0.0
+
+    try:
+        quantized = Decimal(str(numeric)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    except (InvalidOperation, ValueError):
+        return 0.0
+
+    return float(quantized)
 
 
 def _make_row(label: str, current: float, previous: float) -> AnalysisRow:

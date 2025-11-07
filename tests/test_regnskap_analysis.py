@@ -117,3 +117,31 @@ def test_compute_result_analysis_calculates_income_statement_lines():
     resultat = row_by_label(rows, "Resultat før skatt")
     assert resultat.current == pytest.approx(-10)
     assert resultat.previous == pytest.approx(-35)
+
+
+def test_compute_result_analysis_rounds_negative_values_away_from_zero():
+    df = pd.DataFrame(
+        [
+            {
+                "Konto": "4000",
+                "Kontonavn": "Varekostnad",
+                "IB Debet": 0.0,
+                "IB Kredit": 0.0,
+                "UB Debet": 100.4,
+                "UB Kredit": 0.0,
+            },
+            {
+                "Konto": "5000",
+                "Kontonavn": "Lønn",
+                "IB Debet": 0.0,
+                "IB Kredit": 0.0,
+                "UB Debet": 50.4,
+                "UB Kredit": 0.0,
+            },
+        ]
+    )
+
+    prepared = prepare_regnskap_dataframe(df)
+    rows = compute_result_analysis(prepared)
+    resultat = row_by_label(rows, "Resultat før skatt")
+    assert resultat.current == -151
