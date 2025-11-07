@@ -881,7 +881,7 @@ class RegnskapsanalysePage(QWidget):
         )
         self.analysis_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         analysis_split = QHBoxLayout()
-        analysis_split.setSpacing(24)
+        analysis_split.setSpacing(16)
         analysis_split.setContentsMargins(0, 0, 0, 0)
 
         self.balance_section = QWidget()
@@ -899,7 +899,7 @@ class RegnskapsanalysePage(QWidget):
         balance_layout.addWidget(self.balance_info)
         self.balance_table = _create_table_widget()
         self.balance_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self._configure_analysis_table(self.balance_table, font_point_size=9, row_height=20)
+        self._configure_analysis_table(self.balance_table, font_point_size=8, row_height=18)
         balance_layout.addWidget(self.balance_table, 1)
         self.balance_table.hide()
 
@@ -920,7 +920,7 @@ class RegnskapsanalysePage(QWidget):
         result_layout.addWidget(self.result_info)
         self.result_table = _create_table_widget()
         self.result_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self._configure_analysis_table(self.result_table, font_point_size=9, row_height=22)
+        self._configure_analysis_table(self.result_table, font_point_size=8, row_height=18)
         result_layout.addWidget(self.result_table, 1)
         self.result_table.hide()
 
@@ -1034,21 +1034,22 @@ class RegnskapsanalysePage(QWidget):
         header_font = header.font()
         header_font.setPointSize(font_point_size)
         header.setFont(header_font)
-        header.setSectionResizeMode(QHeaderView.ResizeToContents)
         header.setStretchLastSection(False)
-        header.setMinimumSectionSize(70)
+        header.setMinimumSectionSize(60)
         table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         table.verticalHeader().setSectionResizeMode(QHeaderView.Fixed)
         table.verticalHeader().setDefaultSectionSize(row_height)
-        table.setStyleSheet("QTableWidget::item { padding: 2px 6px; }")
+        table.setWordWrap(True)
+        table.setStyleSheet("QTableWidget::item { padding: 2px 4px; }")
 
     def _set_analysis_column_widths(self, table: QTableWidget) -> None:
         header = table.horizontalHeader()
         column_count = table.columnCount()
         if column_count == 0:
             return
-        for col in range(column_count):
+        header.setSectionResizeMode(0, QHeaderView.Stretch)
+        for col in range(1, column_count):
             header.setSectionResizeMode(col, QHeaderView.ResizeToContents)
 
     def _apply_balance_styles(self) -> None:
