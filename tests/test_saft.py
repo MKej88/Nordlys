@@ -329,6 +329,54 @@ def test_compute_customer_supplier_totals_matches_individual():
     pd.testing.assert_frame_equal(purchases, expected_purchases)
 
 
+def test_compute_customer_supplier_totals_empty_results_and_export(tmp_path):
+    xml = """
+    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <GeneralLedgerEntries>
+        <Journal>
+          <Transaction>
+            <TransactionDate>2023-02-01</TransactionDate>
+            <Line>
+              <AccountID>1000</AccountID>
+              <DebitAmount>500</DebitAmount>
+              <CustomerID>CU-1</CustomerID>
+            </Line>
+            <Line>
+              <AccountID>1900</AccountID>
+              <CreditAmount>500</CreditAmount>
+            </Line>
+          </Transaction>
+          <Transaction>
+            <TransactionDate>2023-03-15</TransactionDate>
+            <Line>
+              <AccountID>2900</AccountID>
+              <DebitAmount>750</DebitAmount>
+            </Line>
+            <Line>
+              <AccountID>2100</AccountID>
+              <CreditAmount>750</CreditAmount>
+              <SupplierID>SUP-1</SupplierID>
+            </Line>
+          </Transaction>
+        </Journal>
+      </GeneralLedgerEntries>
+    </AuditFile>
+    """
+    root = ET.fromstring(xml)
+    ns = {'n1': root.tag.split('}')[0][1:]}
+
+    customer_df, supplier_df = compute_customer_supplier_totals(root, ns, year=2023)
+
+    assert list(customer_df.columns) == ["Kundenr", "Kundenavn", "Omsetning eks mva"]
+    assert list(supplier_df.columns) == ["Leverandørnr", "Leverandørnavn", "Innkjøp eks mva"]
+    assert customer_df.empty
+    assert supplier_df.empty
+
+    csv_path, xlsx_path = save_outputs(customer_df, tmp_path, 2023)
+    assert csv_path.exists()
+    assert xlsx_path.exists()
+
+
 def test_compute_purchases_includes_all_cost_accounts():
     xml = """
     <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
