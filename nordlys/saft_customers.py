@@ -6,12 +6,17 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import numbers
 from pathlib import Path
-from typing import Dict, Iterable, Optional, Tuple
+from typing import Dict, Iterable, Optional, Tuple, TYPE_CHECKING
 import xml.etree.ElementTree as ET
 from xml.sax.saxutils import escape
 import zipfile
 
-import pandas as pd
+from .utils import lazy_pandas
+
+if TYPE_CHECKING:  # pragma: no cover - kun for typekontroll
+    import pandas as pd
+
+pd = lazy_pandas()
 
 
 _NS_FLAG_KEY = "__has_namespace__"
