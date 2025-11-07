@@ -4,6 +4,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable, Iterable, List, Optional
 
+import math
+
 import pandas as pd
 
 
@@ -134,7 +136,10 @@ def _sum_column(prepared: pd.DataFrame, column: str, prefixes: Iterable[str]) ->
 
 def _clean_value(value: float) -> float:
     value = float(value)
-    return 0.0 if abs(value) < 1e-6 else value
+    if abs(value) < 1e-6:
+        return 0.0
+    rounded = math.ceil(value)
+    return float(rounded)
 
 
 def _make_row(label: str, current: float, previous: float) -> AnalysisRow:
@@ -241,24 +246,59 @@ def compute_balance_analysis(prepared: pd.DataFrame) -> List[AnalysisRow]:
     ek_rows: List[AnalysisRow] = []
     ek_rows.append(_make_header("Egenkapital og gjeld"))
 
-    egenkapital = -sum_ub("20")
-    egenkapital_py = -sum_py("20")
-    ek_rows.append(_make_row("Egenkapital", egenkapital, egenkapital_py))
+    egenkapital_row = _make_row("Egenkapital", -sum_ub("20"), -sum_py("20"))
+    ek_rows.append(egenkapital_row)
 
-    avsetninger = -sum_ub("21")
-    avsetninger_py = -sum_py("21")
-    ek_rows.append(_make_row("Avsetninger for forpliktelser", avsetninger, avsetninger_py))
+    avsetninger_row = _make_row(
+        "Avsetninger for forpliktelser", -sum_ub("21"), -sum_py("21")
+    )
+    ek_rows.append(avsetninger_row)
 
-    langsiktig = -sum_ub("22")
-    langsiktig_py = -sum_py("22")
-    ek_rows.append(_make_row("Langsiktig gjeld", langsiktig, langsiktig_py))
+    ek_rows.append(_make_header("Langsiktig gjeld"))
+    annen_langsiktig_row = _make_row(
+        "Annen langsiktig gjeld", -sum_ub("22"), -sum_py("22")
+    )
+    ek_rows.append(annen_langsiktig_row)
 
-    kortsiktig = -sum(sum_ub(prefix) for prefix in ["23", "24", "25", "26", "27", "28", "29"])
-    kortsiktig_py = -sum(sum_py(prefix) for prefix in ["23", "24", "25", "26", "27", "28", "29"])
-    ek_rows.append(_make_row("Kortsiktig gjeld", kortsiktig, kortsiktig_py))
+    sum_langsiktig = (annen_langsiktig_row.current or 0.0)
+    sum_langsiktig_py = (annen_langsiktig_row.previous or 0.0)
+    ek_rows.append(_make_row("Sum langsiktig gjeld", sum_langsiktig, sum_langsiktig_py))
 
-    sum_ek_gjeld = egenkapital + avsetninger + langsiktig + kortsiktig
-    sum_ek_gjeld_py = egenkapital_py + avsetninger_py + langsiktig_py + kortsiktig_py
+    ek_rows.append(_make_header("Kortsiktig gjeld"))
+
+    kortsiktig_kategorier = [
+        ("Kassakreditt og annet", "23"),
+        ("Leverandørgjeld", "24"),
+        ("Betalbar skatt", "25"),
+        ("Skattetrekk og andre trekk", "26"),
+        ("Skyldige offentlige avgifter", "27"),
+        ("Utbytte", "28"),
+        ("Annen kortsiktig gjeld", "29"),
+    ]
+
+    kortsiktig_sum = 0.0
+    kortsiktig_sum_py = 0.0
+
+    for label, prefix in kortsiktig_kategorier:
+        row = _make_row(label, -sum_ub(prefix), -sum_py(prefix))
+        kortsiktig_sum += row.current or 0.0
+        kortsiktig_sum_py += row.previous or 0.0
+        ek_rows.append(row)
+
+    ek_rows.append(_make_row("Sum kortsiktig gjeld", kortsiktig_sum, kortsiktig_sum_py))
+
+    sum_ek_gjeld = (
+        (egenkapital_row.current or 0.0)
+        + (avsetninger_row.current or 0.0)
+        + sum_langsiktig
+        + kortsiktig_sum
+    )
+    sum_ek_gjeld_py = (
+        (egenkapital_row.previous or 0.0)
+        + (avsetninger_row.previous or 0.0)
+        + sum_langsiktig_py
+        + kortsiktig_sum_py
+    )
 
     ek_rows.append(_make_row("Sum egenkapital og gjeld", sum_ek_gjeld, sum_ek_gjeld_py))
 
