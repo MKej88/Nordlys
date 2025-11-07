@@ -823,7 +823,14 @@ def _standard_tb_frame(df: pd.DataFrame) -> pd.DataFrame:
         "Endringer": work["Endringer"].fillna(0.0),
         "UB": work["UB_netto"].fillna(0.0),
     })
-    return result[columns].reset_index(drop=True)
+    filtered = result[columns]
+    zero_mask = (
+        filtered["IB"].abs().le(1e-9)
+        & filtered["Endringer"].abs().le(1e-9)
+        & filtered["UB"].abs().le(1e-9)
+    )
+    filtered = filtered[~zero_mask]
+    return filtered.reset_index(drop=True)
 
 
 class SummaryPage(QWidget):
