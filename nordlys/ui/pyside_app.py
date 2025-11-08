@@ -1319,6 +1319,7 @@ class CostVoucherReviewPage(QWidget):
         input_layout.setSpacing(24)
 
         self.control_card = CardFrame(title, subtitle)
+        self.control_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         intro_label = QLabel(
             "Velg et tilfeldig utvalg av inngående fakturaer og dokumenter vurderingen din."
         )
@@ -1343,7 +1344,6 @@ class CostVoucherReviewPage(QWidget):
         self.control_card.add_widget(self.lbl_available)
 
         input_layout.addWidget(self.control_card)
-        input_layout.addStretch(1)
 
         self.tab_widget.addTab(input_container, "Innput")
 
@@ -1353,7 +1353,7 @@ class CostVoucherReviewPage(QWidget):
         selection_layout.setSpacing(24)
 
         self.detail_card = CardFrame("Gjennomgang av bilag")
-        self.detail_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.detail_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.lbl_progress = QLabel("Ingen bilag valgt.")
         self.lbl_progress.setObjectName("statusLabel")
         self.detail_card.add_widget(self.lbl_progress)
@@ -1429,7 +1429,6 @@ class CostVoucherReviewPage(QWidget):
         self.detail_card.add_layout(button_row)
 
         selection_layout.addWidget(self.detail_card)
-        selection_layout.addStretch(1)
 
         self.tab_widget.addTab(selection_container, "Utvalg")
 
@@ -1439,7 +1438,7 @@ class CostVoucherReviewPage(QWidget):
         summary_layout.setSpacing(24)
 
         self.summary_card = CardFrame("Oppsummering av kontrollerte bilag")
-        self.summary_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.summary_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.lbl_summary = QLabel("Ingen bilag kontrollert ennå.")
         self.lbl_summary.setObjectName("statusLabel")
         self.summary_card.add_widget(self.lbl_summary)
@@ -1648,10 +1647,12 @@ class CostVoucherReviewPage(QWidget):
         ]
         approved = sum(1 for result in completed_results if result.status == "Godkjent")
         rejected = len(completed_results) - approved
-        self.lbl_progress.setText("Kontroll fullført.")
-        self.txt_comment.clear()
-        self.detail_card.setEnabled(False)
-        self._update_status_display(None)
+        current_result = self._get_current_result()
+        self.lbl_progress.setText("Kontroll fullført – du kan fortsatt bla mellom bilagene.")
+        if current_result:
+            self._update_status_display(current_result.status)
+        else:
+            self._update_status_display(None)
         self._refresh_summary_table()
         self.lbl_summary.setText(
             f"Resultat: {approved} godkjent / {rejected} ikke godkjent av {len(self._sample)} bilag."
@@ -1762,7 +1763,7 @@ class CostVoucherReviewPage(QWidget):
         return bool(self._sample) and all(result is not None for result in self._results)
 
     def _update_navigation_state(self) -> None:
-        has_sample = bool(self._sample) and self.detail_card.isEnabled()
+        has_sample = bool(self._sample)
         total = len(self._sample)
         self.btn_prev.setEnabled(has_sample and self._current_index > 0)
         self.btn_next.setEnabled(has_sample and self._current_index < total - 1)
