@@ -42,6 +42,7 @@ from PySide6.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QStyledItemDelegate,
+    QTabWidget,
 )
 
 try:
@@ -1308,6 +1309,15 @@ class CostVoucherReviewPage(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(24)
 
+        self.tab_widget = QTabWidget()
+        self.tab_widget.setObjectName("costTabs")
+        layout.addWidget(self.tab_widget)
+
+        input_container = QWidget()
+        input_layout = QVBoxLayout(input_container)
+        input_layout.setContentsMargins(0, 0, 0, 0)
+        input_layout.setSpacing(24)
+
         self.control_card = CardFrame(title, subtitle)
         intro_label = QLabel(
             "Velg et tilfeldig utvalg av inngående fakturaer og dokumenter vurderingen din."
@@ -1332,9 +1342,18 @@ class CostVoucherReviewPage(QWidget):
         self.lbl_available.setObjectName("infoLabel")
         self.control_card.add_widget(self.lbl_available)
 
-        layout.addWidget(self.control_card)
+        input_layout.addWidget(self.control_card)
+        input_layout.addStretch(1)
+
+        self.tab_widget.addTab(input_container, "Innput")
+
+        selection_container = QWidget()
+        selection_layout = QVBoxLayout(selection_container)
+        selection_layout.setContentsMargins(0, 0, 0, 0)
+        selection_layout.setSpacing(24)
 
         self.detail_card = CardFrame("Gjennomgang av bilag")
+        self.detail_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.lbl_progress = QLabel("Ingen bilag valgt.")
         self.lbl_progress.setObjectName("statusLabel")
         self.detail_card.add_widget(self.lbl_progress)
@@ -1392,9 +1411,18 @@ class CostVoucherReviewPage(QWidget):
         button_row.addWidget(self.btn_approve)
         self.detail_card.add_layout(button_row)
 
-        layout.addWidget(self.detail_card, 1)
+        selection_layout.addWidget(self.detail_card)
+        selection_layout.addStretch(1)
+
+        self.tab_widget.addTab(selection_container, "Utvalg")
+
+        summary_container = QWidget()
+        summary_layout = QVBoxLayout(summary_container)
+        summary_layout.setContentsMargins(0, 0, 0, 0)
+        summary_layout.setSpacing(24)
 
         self.summary_card = CardFrame("Oppsummering av kontrollerte bilag")
+        self.summary_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.lbl_summary = QLabel("Ingen bilag kontrollert ennå.")
         self.lbl_summary.setObjectName("statusLabel")
         self.summary_card.add_widget(self.lbl_summary)
@@ -1419,7 +1447,14 @@ class CostVoucherReviewPage(QWidget):
         self.btn_export_pdf.setEnabled(False)
         self.summary_card.add_widget(self.btn_export_pdf)
 
-        layout.addWidget(self.summary_card)
+        summary_layout.addWidget(self.summary_card)
+        summary_layout.addStretch(1)
+
+        self.tab_widget.addTab(summary_container, "Oppsummering")
+
+        self.tab_widget.setTabEnabled(1, False)
+        self.tab_widget.setTabEnabled(2, False)
+        self.tab_widget.setCurrentIndex(0)
 
         self.detail_card.setEnabled(False)
 
@@ -1433,6 +1468,9 @@ class CostVoucherReviewPage(QWidget):
         self.btn_start_sample.setText("Start bilagskontroll")
         self._clear_current_display()
         self._refresh_summary_table()
+        self.tab_widget.setCurrentIndex(0)
+        self.tab_widget.setTabEnabled(1, False)
+        self.tab_widget.setTabEnabled(2, False)
         count = len(self._vouchers)
         if count:
             self.lbl_available.setText(
@@ -1466,6 +1504,9 @@ class CostVoucherReviewPage(QWidget):
         self.btn_export_pdf.setEnabled(False)
         self.lbl_summary.setText("Ingen bilag kontrollert ennå.")
         self.btn_start_sample.setText("Start nytt utvalg")
+        self.tab_widget.setTabEnabled(1, True)
+        self.tab_widget.setTabEnabled(2, False)
+        self.tab_widget.setCurrentIndex(1)
         self._show_current_voucher()
 
     def _show_current_voucher(self) -> None:
@@ -1538,6 +1579,8 @@ class CostVoucherReviewPage(QWidget):
         )
         self.summary_table.setVisible(True)
         self.btn_export_pdf.setEnabled(len(self._results) == len(self._sample) and len(self._results) > 0)
+        self.tab_widget.setTabEnabled(2, bool(self._results))
+        self.tab_widget.setCurrentIndex(2)
 
     def _refresh_summary_table(self) -> None:
         if not self._results:
@@ -1545,6 +1588,7 @@ class CostVoucherReviewPage(QWidget):
             self.summary_table.setVisible(False)
             self.btn_export_pdf.setEnabled(False)
             self.lbl_summary.setText("Ingen bilag kontrollert ennå.")
+            self.tab_widget.setTabEnabled(2, False)
             return
 
         self.summary_table.setVisible(True)
@@ -1553,6 +1597,7 @@ class CostVoucherReviewPage(QWidget):
             self.lbl_summary.setText(
                 f"{len(self._results)} av {len(self._sample)} bilag vurdert."
             )
+        self.tab_widget.setTabEnabled(2, True)
         for row, result in enumerate(self._results):
             voucher = result.voucher
             bilag_text = voucher.document_number or voucher.transaction_id or "Bilag"
