@@ -1301,7 +1301,7 @@ class CostVoucherReviewPage(QWidget):
         super().__init__()
         self._vouchers: List[CostVoucher] = []
         self._sample: List[CostVoucher] = []
-        self._results: List[VoucherReviewResult] = []
+        self._results: List[Optional[VoucherReviewResult]] = []
         self._current_index: int = -1
         self._sample_started_at: Optional[datetime] = None
 
@@ -1367,6 +1367,7 @@ class CostVoucherReviewPage(QWidget):
             ("Dato", "value_date"),
             ("Beløp (kostnad)", "value_amount"),
             ("Beskrivelse", "value_description"),
+            ("Status", "value_status"),
         ]
         for row, (label_text, attr_name) in enumerate(meta_labels):
             label = QLabel(label_text)
@@ -1380,13 +1381,20 @@ class CostVoucherReviewPage(QWidget):
 
         self.detail_card.add_layout(meta_grid)
 
+        self.value_status = cast(QLabel, getattr(self, "value_status"))
+        self._update_status_display(None)
+
         self.table_lines = _create_table_widget()
-        self.table_lines.setColumnCount(4)
-        self.table_lines.setHorizontalHeaderLabels(["Konto", "Tekst", "Debet", "Kredit"])
+        self.table_lines.setColumnCount(6)
+        self.table_lines.setHorizontalHeaderLabels(
+            ["Konto", "Kontonavn", "MVA-kode", "Tekst", "Debet", "Kredit"]
+        )
         self.table_lines.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
         self.table_lines.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         self.table_lines.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        self.table_lines.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        self.table_lines.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
+        self.table_lines.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        self.table_lines.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeToContents)
         self.detail_card.add_widget(self.table_lines)
 
         comment_label = QLabel("Kommentar (frivillig):")
@@ -1400,6 +1408,10 @@ class CostVoucherReviewPage(QWidget):
 
         button_row = QHBoxLayout()
         button_row.setSpacing(12)
+        self.btn_prev = QPushButton("Forrige")
+        self.btn_prev.setObjectName("navButton")
+        self.btn_prev.clicked.connect(self._on_previous_clicked)
+        button_row.addWidget(self.btn_prev)
         button_row.addStretch(1)
         self.btn_reject = QPushButton("Ikke godkjent")
         self.btn_reject.setObjectName("rejectButton")
@@ -1409,6 +1421,11 @@ class CostVoucherReviewPage(QWidget):
         self.btn_approve.setObjectName("approveButton")
         self.btn_approve.clicked.connect(self._on_approve_clicked)
         button_row.addWidget(self.btn_approve)
+        button_row.addStretch(1)
+        self.btn_next = QPushButton("Neste")
+        self.btn_next.setObjectName("navButton")
+        self.btn_next.clicked.connect(self._on_next_clicked)
+        button_row.addWidget(self.btn_next)
         self.detail_card.add_layout(button_row)
 
         selection_layout.addWidget(self.detail_card)
@@ -1447,8 +1464,7 @@ class CostVoucherReviewPage(QWidget):
         self.btn_export_pdf.setEnabled(False)
         self.summary_card.add_widget(self.btn_export_pdf)
 
-        summary_layout.addWidget(self.summary_card)
-        summary_layout.addStretch(1)
+        summary_layout.addWidget(self.summary_card, 1)
 
         self.tab_widget.addTab(summary_container, "Oppsummering")
 
@@ -1480,6 +1496,7 @@ class CostVoucherReviewPage(QWidget):
         else:
             self.lbl_available.setText("Ingen kostnadsbilag tilgjengelig i valgt periode.")
             self.btn_start_sample.setEnabled(False)
+        self._update_navigation_state()
 
     def _on_start_sample(self) -> None:
         if not self._vouchers:
@@ -1496,7 +1513,7 @@ class CostVoucherReviewPage(QWidget):
             return
 
         self._sample = random.sample(self._vouchers, sample_size)
-        self._results = []
+        self._results = [None] * len(self._sample)
         self._current_index = 0
         self._sample_started_at = datetime.now()
         self.detail_card.setEnabled(True)
@@ -1507,6 +1524,8 @@ class CostVoucherReviewPage(QWidget):
         self.tab_widget.setTabEnabled(1, True)
         self.tab_widget.setTabEnabled(2, False)
         self.tab_widget.setCurrentIndex(1)
+        self._update_status_display(None)
+        self._refresh_summary_table()
         self._show_current_voucher()
 
     def _show_current_voucher(self) -> None:
@@ -1530,17 +1549,28 @@ class CostVoucherReviewPage(QWidget):
         self.table_lines.setRowCount(len(voucher.lines))
         for row, line in enumerate(voucher.lines):
             self.table_lines.setItem(row, 0, QTableWidgetItem(line.account or "–"))
-            self.table_lines.setItem(row, 1, QTableWidgetItem(line.description or ""))
+            account_name_item = QTableWidgetItem(line.account_name or "–")
+            account_name_item.setToolTip(line.account_name or "")
+            self.table_lines.setItem(row, 1, account_name_item)
+            vat_item = QTableWidgetItem(line.vat_code or "–")
+            self.table_lines.setItem(row, 2, vat_item)
+            self.table_lines.setItem(row, 3, QTableWidgetItem(line.description or ""))
             debit_item = QTableWidgetItem(self._format_amount(line.debit))
             debit_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            self.table_lines.setItem(row, 2, debit_item)
+            self.table_lines.setItem(row, 4, debit_item)
             credit_item = QTableWidgetItem(self._format_amount(line.credit))
             credit_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            self.table_lines.setItem(row, 3, credit_item)
+            self.table_lines.setItem(row, 5, credit_item)
 
         self.table_lines.resizeRowsToContents()
-        self.txt_comment.clear()
+        current_result = self._get_current_result()
+        if current_result and current_result.comment:
+            self.txt_comment.setPlainText(current_result.comment)
+        else:
+            self.txt_comment.clear()
+        self._update_status_display(current_result.status if current_result else None)
         self.txt_comment.setFocus()
+        self._update_navigation_state()
 
     def _on_approve_clicked(self) -> None:
         self._record_decision("Godkjent")
@@ -1548,42 +1578,92 @@ class CostVoucherReviewPage(QWidget):
     def _on_reject_clicked(self) -> None:
         self._record_decision("Ikke godkjent")
 
+    def _on_previous_clicked(self) -> None:
+        if not self._sample or self._current_index <= 0:
+            return
+        self._save_current_comment()
+        self._current_index -= 1
+        self._show_current_voucher()
+
+    def _on_next_clicked(self) -> None:
+        if not self._sample:
+            return
+        self._save_current_comment()
+        if self._current_index < len(self._sample) - 1:
+            self._current_index += 1
+            self._show_current_voucher()
+            return
+        if self.detail_card.isEnabled() and self._all_results_completed():
+            self._finish_review()
+            return
+        next_unreviewed = self._find_next_unreviewed()
+        if next_unreviewed is not None and next_unreviewed != self._current_index:
+            self._current_index = next_unreviewed
+            self._show_current_voucher()
+        else:
+            self._update_navigation_state()
+
     def _record_decision(self, status: str) -> None:
         if self._current_index < 0 or self._current_index >= len(self._sample):
             return
 
         voucher = self._sample[self._current_index]
         comment = self.txt_comment.toPlainText().strip()
-        self._results.append(VoucherReviewResult(voucher=voucher, status=status, comment=comment))
-        self._current_index += 1
+        self._results[self._current_index] = VoucherReviewResult(
+            voucher=voucher,
+            status=status,
+            comment=comment,
+        )
+        self._update_status_display(status)
         self._refresh_summary_table()
-        if len(self._results) < len(self._sample):
-            self.btn_export_pdf.setEnabled(False)
-        if self._current_index >= len(self._sample):
-            self._finish_review()
-        else:
+        next_index = self._current_index + 1
+        if next_index < len(self._sample):
+            self._current_index = next_index
             self._show_current_voucher()
+            return
+
+        if self._all_results_completed():
+            self._finish_review()
+            return
+
+        next_unreviewed = self._find_next_unreviewed()
+        if next_unreviewed is not None:
+            self._current_index = next_unreviewed
+            self._show_current_voucher()
+        else:
+            self._update_navigation_state()
 
     def _finish_review(self) -> None:
         if not self._sample:
             self._clear_current_display()
             return
+        if not self._all_results_completed():
+            self._update_navigation_state()
+            return
 
-        approved = sum(1 for result in self._results if result.status == "Godkjent")
-        rejected = sum(1 for result in self._results if result.status != "Godkjent")
+        completed_results = [
+            cast(VoucherReviewResult, result)
+            for result in self._results
+            if result is not None
+        ]
+        approved = sum(1 for result in completed_results if result.status == "Godkjent")
+        rejected = len(completed_results) - approved
         self.lbl_progress.setText("Kontroll fullført.")
         self.txt_comment.clear()
         self.detail_card.setEnabled(False)
+        self._update_status_display(None)
+        self._refresh_summary_table()
         self.lbl_summary.setText(
             f"Resultat: {approved} godkjent / {rejected} ikke godkjent av {len(self._sample)} bilag."
         )
         self.summary_table.setVisible(True)
-        self.btn_export_pdf.setEnabled(len(self._results) == len(self._sample) and len(self._results) > 0)
-        self.tab_widget.setTabEnabled(2, bool(self._results))
+        self.btn_export_pdf.setEnabled(True)
+        self.tab_widget.setTabEnabled(2, True)
         self.tab_widget.setCurrentIndex(2)
+        self._update_navigation_state()
 
     def _refresh_summary_table(self) -> None:
-        if not self._results:
+        if not self._sample:
             self.summary_table.setRowCount(0)
             self.summary_table.setVisible(False)
             self.btn_export_pdf.setEnabled(False)
@@ -1592,14 +1672,19 @@ class CostVoucherReviewPage(QWidget):
             return
 
         self.summary_table.setVisible(True)
-        self.summary_table.setRowCount(len(self._results))
-        if self._sample:
+        self.summary_table.setRowCount(len(self._sample))
+        completed_count = sum(1 for result in self._results if result is not None)
+        if completed_count == 0:
+            self.lbl_summary.setText("Ingen bilag kontrollert ennå.")
+        elif completed_count < len(self._sample):
             self.lbl_summary.setText(
-                f"{len(self._results)} av {len(self._sample)} bilag vurdert."
+                f"{completed_count} av {len(self._sample)} bilag vurdert."
             )
+        else:
+            self.lbl_summary.setText(f"Alle {len(self._sample)} bilag er kontrollert.")
         self.tab_widget.setTabEnabled(2, True)
-        for row, result in enumerate(self._results):
-            voucher = result.voucher
+
+        for row, voucher in enumerate(self._sample):
             bilag_text = voucher.document_number or voucher.transaction_id or "Bilag"
             self.summary_table.setItem(row, 0, QTableWidgetItem(bilag_text))
             self.summary_table.setItem(
@@ -1614,10 +1699,73 @@ class CostVoucherReviewPage(QWidget):
             amount_item = QTableWidgetItem(self._format_amount(voucher.amount))
             amount_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             self.summary_table.setItem(row, 3, amount_item)
-            self.summary_table.setItem(row, 4, QTableWidgetItem(result.status))
-            self.summary_table.setItem(row, 5, QTableWidgetItem(result.comment or ""))
+            result = self._results[row] if row < len(self._results) else None
+            status_text = result.status if result else "Ikke vurdert"
+            comment_text = result.comment if result and result.comment else ""
+            self.summary_table.setItem(row, 4, QTableWidgetItem(status_text))
+            self.summary_table.setItem(row, 5, QTableWidgetItem(comment_text))
 
+        self.btn_export_pdf.setEnabled(
+            completed_count == len(self._sample) and completed_count > 0
+        )
         self.summary_table.resizeRowsToContents()
+
+    def _get_current_result(self) -> Optional[VoucherReviewResult]:
+        if 0 <= self._current_index < len(self._results):
+            return self._results[self._current_index]
+        return None
+
+    def _save_current_comment(self) -> None:
+        if not (0 <= self._current_index < len(self._results)):
+            return
+        current = self._results[self._current_index]
+        if current is None:
+            return
+        comment = self.txt_comment.toPlainText().strip()
+        if comment == current.comment:
+            return
+        self._results[self._current_index] = VoucherReviewResult(
+            voucher=current.voucher,
+            status=current.status,
+            comment=comment,
+        )
+        self._refresh_summary_table()
+
+    def _update_status_display(self, status: Optional[str]) -> None:
+        if status == "Godkjent":
+            state = "approved"
+            text = "Godkjent"
+        elif status == "Ikke godkjent":
+            state = "rejected"
+            text = "Ikke godkjent"
+        else:
+            state = "pending"
+            text = "Ikke vurdert"
+        self.value_status.setText(text)
+        self.value_status.setProperty("statusState", state)
+        self.value_status.style().unpolish(self.value_status)
+        self.value_status.style().polish(self.value_status)
+
+    def _find_next_unreviewed(self, start: int = 0) -> Optional[int]:
+        if not self._sample:
+            return None
+        total = len(self._sample)
+        for offset in range(start, total):
+            if self._results[offset] is None:
+                return offset
+        for offset in range(0, start):
+            if self._results[offset] is None:
+                return offset
+        return None
+
+    def _all_results_completed(self) -> bool:
+        return bool(self._sample) and all(result is not None for result in self._results)
+
+    def _update_navigation_state(self) -> None:
+        has_sample = bool(self._sample) and self.detail_card.isEnabled()
+        total = len(self._sample)
+        self.btn_prev.setEnabled(has_sample and self._current_index > 0)
+        self.btn_next.setEnabled(has_sample and self._current_index < total - 1)
 
     def _clear_current_display(self) -> None:
         self.lbl_progress.setText("Ingen bilag valgt.")
@@ -1626,8 +1774,10 @@ class CostVoucherReviewPage(QWidget):
         self.value_date.setText("–")
         self.value_amount.setText("–")
         self.value_description.setText("–")
+        self._update_status_display(None)
         self.table_lines.setRowCount(0)
         self.txt_comment.clear()
+        self._update_navigation_state()
 
     def _format_amount(self, value: Optional[float]) -> str:
         if value is None:
@@ -1643,7 +1793,7 @@ class CostVoucherReviewPage(QWidget):
         return value.strftime("%d.%m.%Y")
 
     def _on_export_pdf(self) -> None:
-        if not self._results or len(self._results) != len(self._sample):
+        if not self._results or any(result is None for result in self._results):
             QMessageBox.information(
                 self,
                 "Utvalget er ikke ferdig",
@@ -1691,6 +1841,7 @@ class CostVoucherReviewPage(QWidget):
         story.append(Paragraph("Bilagskontroll – Kostnader", styles["Title"]))
         story.append(Spacer(1, 6 * mm))
 
+        completed_results = [cast(VoucherReviewResult, result) for result in self._results]
         total_available = len(self._vouchers)
         sample_size = len(self._sample)
         timestamp = (
@@ -1698,8 +1849,8 @@ class CostVoucherReviewPage(QWidget):
             if self._sample_started_at
             else datetime.now().strftime("%d.%m.%Y %H:%M")
         )
-        approved = sum(1 for result in self._results if result.status == "Godkjent")
-        rejected = sum(1 for result in self._results if result.status != "Godkjent")
+        approved = sum(1 for result in completed_results if result.status == "Godkjent")
+        rejected = sum(1 for result in completed_results if result.status != "Godkjent")
 
         info_paragraphs = [
             f"Utvalg: {sample_size} av {total_available} tilgjengelige bilag.",
@@ -1711,7 +1862,7 @@ class CostVoucherReviewPage(QWidget):
         story.append(Spacer(1, 5 * mm))
 
         summary_data = [["Bilag", "Dato", "Leverandør", "Beløp", "Status", "Kommentar"]]
-        for result in self._results:
+        for result in completed_results:
             voucher = result.voucher
             bilag_text = voucher.document_number or voucher.transaction_id or "Bilag"
             supplier_text = voucher.supplier_name or voucher.supplier_id or "–"
@@ -1748,7 +1899,7 @@ class CostVoucherReviewPage(QWidget):
         story.append(summary_table)
         story.append(Spacer(1, 6 * mm))
 
-        for index, result in enumerate(self._results, start=1):
+        for index, result in enumerate(completed_results, start=1):
             voucher = result.voucher
             heading = voucher.document_number or voucher.transaction_id or f"Bilag {index}"
             story.append(Paragraph(f"{index}. {heading}", styles["Heading3"]))
@@ -1777,11 +1928,13 @@ class CostVoucherReviewPage(QWidget):
             )
             story.append(meta_table)
 
-            line_data = [["Konto", "Tekst", "Debet", "Kredit"]]
+            line_data = [["Konto", "Kontonavn", "MVA-kode", "Tekst", "Debet", "Kredit"]]
             for line in voucher.lines:
                 line_data.append(
                     [
                         line.account or "–",
+                        line.account_name or "–",
+                        line.vat_code or "–",
                         line.description or "",
                         self._format_amount(line.debit),
                         self._format_amount(line.credit),
@@ -1789,14 +1942,14 @@ class CostVoucherReviewPage(QWidget):
                 )
             line_table = Table(
                 line_data,
-                colWidths=[25 * mm, None, 25 * mm, 25 * mm],
+                colWidths=[20 * mm, 35 * mm, 18 * mm, None, 20 * mm, 20 * mm],
             )
             line_table.setStyle(
                 TableStyle(
                     [
                         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e0f2fe")),
                         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                        ("ALIGN", (2, 1), (-1, -1), "RIGHT"),
+                        ("ALIGN", (4, 1), (-1, -1), "RIGHT"),
                         ("VALIGN", (0, 0), (-1, -1), "TOP"),
                         ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#cbd5f5")),
                         ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#94a3b8")),
@@ -2422,6 +2575,9 @@ class NordlysWindow(QMainWindow):
             QPushButton#rejectButton { background-color: #dc2626; }
             QPushButton#rejectButton:hover:!disabled { background-color: #b91c1c; }
             QPushButton#rejectButton:pressed { background-color: #991b1b; }
+            QPushButton#navButton { background-color: #0ea5e9; }
+            QPushButton#navButton:hover:!disabled { background-color: #0284c7; }
+            QPushButton#navButton:pressed { background-color: #0369a1; }
             QPushButton#exportPdfButton { background-color: #f97316; }
             QPushButton#exportPdfButton:hover:!disabled { background-color: #ea580c; }
             QPushButton#exportPdfButton:pressed { background-color: #c2410c; }
@@ -2431,6 +2587,9 @@ class NordlysWindow(QMainWindow):
             #analysisSectionTitle { font-size: 16px; font-weight: 600; color: #0f172a; letter-spacing: 0.2px; }
             #pageTitle { font-size: 28px; font-weight: 700; color: #020617; letter-spacing: 0.4px; }
             #statusLabel { color: #1f2937; font-size: 14px; line-height: 1.5; }
+            QLabel[statusState='approved'] { color: #166534; font-weight: 600; }
+            QLabel[statusState='rejected'] { color: #b91c1c; font-weight: 600; }
+            QLabel[statusState='pending'] { color: #64748b; font-weight: 500; }
             #infoLabel { color: #475569; font-size: 14px; }
             #cardTable { border: none; gridline-color: rgba(148, 163, 184, 0.35); background-color: transparent; alternate-background-color: #f8fafc; }
             QTableWidget { background-color: transparent; alternate-background-color: #f8fafc; }

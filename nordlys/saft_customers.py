@@ -29,7 +29,9 @@ class VoucherLine:
     """Representerer én linje i et bilag fra hovedboken."""
 
     account: str
+    account_name: Optional[str]
     description: Optional[str]
+    vat_code: Optional[str]
     debit: float
     credit: float
 
@@ -541,6 +543,54 @@ def _format_decimal(value: Decimal) -> float:
     return float(value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
+def _normalize_account_key(account: str) -> Optional[str]:
+    """Fjerner ikke-numeriske tegn fra kontonummer for enklere oppslag."""
+
+    digits = "".join(ch for ch in account if ch.isdigit())
+    return digits or None
+
+
+def build_account_name_map(root: ET.Element, ns: Dict[str, str]) -> Dict[str, Optional[str]]:
+    """Bygger oppslagstabell fra kontonummer til kontonavn."""
+
+    accounts_root = _find(root, "n1:MasterFiles/n1:GeneralLedgerAccounts", ns)
+    mapping: Dict[str, Optional[str]] = {}
+    if accounts_root is None:
+        return mapping
+
+    for account in _findall(accounts_root, "n1:Account", ns):
+        id_element = _find(account, "n1:AccountID", ns)
+        account_id = _clean_text(id_element.text if id_element is not None else None)
+        if not account_id:
+            continue
+        name_element = _find(account, "n1:AccountDescription", ns)
+        account_name = _clean_text(name_element.text if name_element is not None else None)
+        mapping[account_id] = account_name
+        normalized = _normalize_account_key(account_id)
+        if normalized and normalized not in mapping:
+            mapping[normalized] = account_name
+
+    return mapping
+
+
+def _extract_vat_code(line: ET.Element, ns: Dict[str, str]) -> Optional[str]:
+    """Henter mva-kode fra en bilagslinje, dersom tilgjengelig."""
+
+    codes: List[str] = []
+    for tax_info in _findall(line, "n1:TaxInformation", ns):
+        code_element = _find(tax_info, "n1:TaxCode", ns)
+        code = _clean_text(code_element.text if code_element is not None else None)
+        if not code:
+            type_element = _find(tax_info, "n1:TaxType", ns)
+            code = _clean_text(type_element.text if type_element is not None else None)
+        if code and code not in codes:
+            codes.append(code)
+
+    if not codes:
+        return None
+    return ", ".join(codes)
+
+
 def compute_customer_supplier_totals(
     root: ET.Element,
     ns: Dict[str, str],
@@ -862,6 +912,7 @@ def extract_cost_vouchers(
         raise ValueError("Angi enten year eller date_from/date_to.")
 
     supplier_names = build_supplier_name_map(root, ns)
+    account_names = build_account_name_map(root, ns)
     vouchers: List[CostVoucher] = []
 
     def _first_text(element: ET.Element, paths: Iterable[str]) -> Optional[str]:
@@ -902,10 +953,15 @@ def extract_cost_vouchers(
         for line in lines:
             account_element = _find(line, "n1:AccountID", ns)
             account = _clean_text(account_element.text if account_element is not None else None) or ""
+            normalized_account = _normalize_account_key(account) if account else None
+            account_name = account_names.get(account) if account else None
+            if account_name is None and normalized_account:
+                account_name = account_names.get(normalized_account)
             description_element = _find(line, "n1:Description", ns)
             description = _clean_text(description_element.text if description_element is not None else None)
             debit = get_amount(line, "DebitAmount", ns)
             credit = get_amount(line, "CreditAmount", ns)
+            vat_code = _extract_vat_code(line, ns)
 
             if _is_cost_account(account):
                 has_cost_line = True
@@ -914,7 +970,9 @@ def extract_cost_vouchers(
             voucher_lines.append(
                 VoucherLine(
                     account=account or "—",
+                    account_name=account_name,
                     description=description,
+                    vat_code=vat_code,
                     debit=_format_decimal(debit),
                     credit=_format_decimal(credit),
                 )
