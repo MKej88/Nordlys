@@ -5,6 +5,7 @@ import math
 import sys
 import textwrap
 from concurrent.futures import ThreadPoolExecutor
+import random
 from datetime import date, datetime
 from dataclasses import dataclass
 from pathlib import Path
@@ -69,7 +70,12 @@ from ..saft import (
     parse_suppliers,
     validate_saft_against_xsd,
 )
-from ..saft_customers import compute_customer_supplier_totals, parse_saft
+from ..saft_customers import (
+    CostVoucher,
+    compute_customer_supplier_totals,
+    extract_cost_vouchers,
+    parse_saft,
+)
 from ..utils import format_currency, format_difference, lazy_pandas
 
 if TYPE_CHECKING:  # pragma: no cover - kun for typekontroll
@@ -176,6 +182,7 @@ class SaftLoadResult:
     customer_sales: Optional[pd.DataFrame]
     suppliers: Dict[str, SupplierInfo]
     supplier_purchases: Optional[pd.DataFrame]
+    cost_vouchers: List[CostVoucher]
     analysis_year: Optional[int]
     summary: Optional[Dict[str, float]]
     validation: SaftValidationResult
@@ -215,8 +222,15 @@ def load_saft_file(file_path: str) -> SaftLoadResult:
     analysis_year: Optional[int] = None
     customer_sales: Optional[pd.DataFrame] = None
     supplier_purchases: Optional[pd.DataFrame] = None
+    cost_vouchers: List[CostVoucher] = []
     if period_start or period_end:
         customer_sales, supplier_purchases = compute_customer_supplier_totals(
+            root,
+            ns,
+            date_from=period_start,
+            date_to=period_end,
+        )
+        cost_vouchers = extract_cost_vouchers(
             root,
             ns,
             date_from=period_start,
@@ -250,6 +264,7 @@ def load_saft_file(file_path: str) -> SaftLoadResult:
                 ns,
                 year=analysis_year,
             )
+            cost_vouchers = extract_cost_vouchers(root, ns, year=analysis_year)
 
     summary = ns4102_summary_from_tb(dataframe)
     validation = validate_saft_against_xsd(
@@ -307,6 +322,7 @@ def load_saft_file(file_path: str) -> SaftLoadResult:
         customer_sales=customer_sales,
         suppliers=suppliers,
         supplier_purchases=supplier_purchases,
+        cost_vouchers=cost_vouchers,
         analysis_year=analysis_year,
         summary=summary,
         validation=validation,
@@ -1268,6 +1284,499 @@ class ChecklistPage(QWidget):
             QListWidgetItem(item, self.list_widget)
 
 
+@dataclass
+class VoucherReviewResult:
+    """Resultat fra vurdering av et enkelt bilag."""
+
+    voucher: CostVoucher
+    status: str
+    comment: str
+
+
+class CostVoucherReviewPage(QWidget):
+    """Interaktiv side for bilagskontroll av kostnader."""
+
+    def __init__(self, title: str, subtitle: str) -> None:
+        super().__init__()
+        self._vouchers: List[CostVoucher] = []
+        self._sample: List[CostVoucher] = []
+        self._results: List[VoucherReviewResult] = []
+        self._current_index: int = -1
+        self._sample_started_at: Optional[datetime] = None
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(24)
+
+        self.control_card = CardFrame(title, subtitle)
+        intro_label = QLabel(
+            "Velg et tilfeldig utvalg av inngående fakturaer og dokumenter vurderingen din."
+        )
+        intro_label.setWordWrap(True)
+        self.control_card.add_widget(intro_label)
+
+        controls = QHBoxLayout()
+        controls.setSpacing(12)
+        controls.addWidget(QLabel("Antall i utvalg:"))
+        self.spin_sample = QSpinBox()
+        self.spin_sample.setRange(1, 200)
+        self.spin_sample.setValue(5)
+        controls.addWidget(self.spin_sample)
+        controls.addStretch(1)
+        self.btn_start_sample = QPushButton("Start bilagskontroll")
+        self.btn_start_sample.clicked.connect(self._on_start_sample)
+        controls.addWidget(self.btn_start_sample)
+        self.control_card.add_layout(controls)
+
+        self.lbl_available = QLabel("Ingen bilag tilgjengelig.")
+        self.lbl_available.setObjectName("infoLabel")
+        self.control_card.add_widget(self.lbl_available)
+
+        layout.addWidget(self.control_card)
+
+        self.detail_card = CardFrame("Gjennomgang av bilag")
+        self.lbl_progress = QLabel("Ingen bilag valgt.")
+        self.lbl_progress.setObjectName("statusLabel")
+        self.detail_card.add_widget(self.lbl_progress)
+
+        meta_grid = QGridLayout()
+        meta_grid.setHorizontalSpacing(24)
+        meta_grid.setVerticalSpacing(8)
+        meta_labels = [
+            ("Leverandør", "value_supplier"),
+            ("Dokument", "value_document"),
+            ("Dato", "value_date"),
+            ("Beløp (kostnad)", "value_amount"),
+            ("Beskrivelse", "value_description"),
+        ]
+        for row, (label_text, attr_name) in enumerate(meta_labels):
+            label = QLabel(label_text)
+            label.setObjectName("infoLabel")
+            meta_grid.addWidget(label, row, 0)
+            value_label = QLabel("–")
+            value_label.setObjectName("statusLabel")
+            value_label.setWordWrap(True)
+            meta_grid.addWidget(value_label, row, 1)
+            setattr(self, attr_name, value_label)
+
+        self.detail_card.add_layout(meta_grid)
+
+        self.table_lines = _create_table_widget()
+        self.table_lines.setColumnCount(4)
+        self.table_lines.setHorizontalHeaderLabels(["Konto", "Tekst", "Debet", "Kredit"])
+        self.table_lines.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self.table_lines.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.table_lines.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        self.table_lines.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        self.detail_card.add_widget(self.table_lines)
+
+        comment_label = QLabel("Kommentar (frivillig):")
+        comment_label.setObjectName("infoLabel")
+        self.detail_card.add_widget(comment_label)
+
+        self.txt_comment = QPlainTextEdit()
+        self.txt_comment.setPlaceholderText("Noter funn eller videre oppfølging for bilaget.")
+        self.txt_comment.setFixedHeight(100)
+        self.detail_card.add_widget(self.txt_comment)
+
+        button_row = QHBoxLayout()
+        button_row.setSpacing(12)
+        button_row.addStretch(1)
+        self.btn_reject = QPushButton("Ikke godkjent")
+        self.btn_reject.setObjectName("rejectButton")
+        self.btn_reject.clicked.connect(self._on_reject_clicked)
+        button_row.addWidget(self.btn_reject)
+        self.btn_approve = QPushButton("Godkjent")
+        self.btn_approve.setObjectName("approveButton")
+        self.btn_approve.clicked.connect(self._on_approve_clicked)
+        button_row.addWidget(self.btn_approve)
+        self.detail_card.add_layout(button_row)
+
+        layout.addWidget(self.detail_card, 1)
+
+        self.summary_card = CardFrame("Oppsummering av kontrollerte bilag")
+        self.lbl_summary = QLabel("Ingen bilag kontrollert ennå.")
+        self.lbl_summary.setObjectName("statusLabel")
+        self.summary_card.add_widget(self.lbl_summary)
+
+        self.summary_table = _create_table_widget()
+        self.summary_table.setColumnCount(6)
+        self.summary_table.setHorizontalHeaderLabels(
+            ["Bilag", "Dato", "Leverandør", "Beløp", "Status", "Kommentar"]
+        )
+        self.summary_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self.summary_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self.summary_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self.summary_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        self.summary_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        self.summary_table.horizontalHeader().setSectionResizeMode(5, QHeaderView.Stretch)
+        self.summary_table.setVisible(False)
+        self.summary_card.add_widget(self.summary_table)
+
+        self.btn_export_pdf = QPushButton("Eksporter arbeidspapir (PDF)")
+        self.btn_export_pdf.setObjectName("exportPdfButton")
+        self.btn_export_pdf.clicked.connect(self._on_export_pdf)
+        self.btn_export_pdf.setEnabled(False)
+        self.summary_card.add_widget(self.btn_export_pdf)
+
+        layout.addWidget(self.summary_card)
+
+        self.detail_card.setEnabled(False)
+
+    def set_vouchers(self, vouchers: Sequence[CostVoucher]) -> None:
+        self._vouchers = list(vouchers)
+        self._sample = []
+        self._results = []
+        self._current_index = -1
+        self._sample_started_at = None
+        self.detail_card.setEnabled(False)
+        self.btn_start_sample.setText("Start bilagskontroll")
+        self._clear_current_display()
+        self._refresh_summary_table()
+        count = len(self._vouchers)
+        if count:
+            self.lbl_available.setText(
+                f"Tilgjengelige inngående fakturaer: {count} bilag klar for kontroll."
+            )
+            self.btn_start_sample.setEnabled(True)
+        else:
+            self.lbl_available.setText("Ingen kostnadsbilag tilgjengelig i valgt periode.")
+            self.btn_start_sample.setEnabled(False)
+
+    def _on_start_sample(self) -> None:
+        if not self._vouchers:
+            QMessageBox.information(
+                self,
+                "Ingen bilag",
+                "Det finnes ingen inngående fakturaer å kontrollere for valgt datasett.",
+            )
+            return
+
+        sample_size = min(int(self.spin_sample.value()), len(self._vouchers))
+        if sample_size <= 0:
+            QMessageBox.information(self, "Ingen utvalg", "Velg et antall større enn null.")
+            return
+
+        self._sample = random.sample(self._vouchers, sample_size)
+        self._results = []
+        self._current_index = 0
+        self._sample_started_at = datetime.now()
+        self.detail_card.setEnabled(True)
+        self.summary_table.setVisible(False)
+        self.btn_export_pdf.setEnabled(False)
+        self.lbl_summary.setText("Ingen bilag kontrollert ennå.")
+        self.btn_start_sample.setText("Start nytt utvalg")
+        self._show_current_voucher()
+
+    def _show_current_voucher(self) -> None:
+        if self._current_index < 0 or self._current_index >= len(self._sample):
+            self._finish_review()
+            return
+
+        voucher = self._sample[self._current_index]
+        total = len(self._sample)
+        self.lbl_progress.setText(f"Bilag {self._current_index + 1} av {total}")
+        supplier_text = voucher.supplier_name or voucher.supplier_id or "–"
+        if voucher.supplier_name and voucher.supplier_id:
+            supplier_text = f"{voucher.supplier_name} ({voucher.supplier_id})"
+        self.value_supplier.setText(supplier_text or "–")
+        document_text = voucher.document_number or voucher.transaction_id or "Uten bilagsnummer"
+        self.value_document.setText(document_text)
+        self.value_date.setText(self._format_date(voucher.transaction_date))
+        self.value_amount.setText(self._format_amount(voucher.amount))
+        self.value_description.setText(voucher.description or "–")
+
+        self.table_lines.setRowCount(len(voucher.lines))
+        for row, line in enumerate(voucher.lines):
+            self.table_lines.setItem(row, 0, QTableWidgetItem(line.account or "–"))
+            self.table_lines.setItem(row, 1, QTableWidgetItem(line.description or ""))
+            debit_item = QTableWidgetItem(self._format_amount(line.debit))
+            debit_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            self.table_lines.setItem(row, 2, debit_item)
+            credit_item = QTableWidgetItem(self._format_amount(line.credit))
+            credit_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            self.table_lines.setItem(row, 3, credit_item)
+
+        self.table_lines.resizeRowsToContents()
+        self.txt_comment.clear()
+        self.txt_comment.setFocus()
+
+    def _on_approve_clicked(self) -> None:
+        self._record_decision("Godkjent")
+
+    def _on_reject_clicked(self) -> None:
+        self._record_decision("Ikke godkjent")
+
+    def _record_decision(self, status: str) -> None:
+        if self._current_index < 0 or self._current_index >= len(self._sample):
+            return
+
+        voucher = self._sample[self._current_index]
+        comment = self.txt_comment.toPlainText().strip()
+        self._results.append(VoucherReviewResult(voucher=voucher, status=status, comment=comment))
+        self._current_index += 1
+        self._refresh_summary_table()
+        if len(self._results) < len(self._sample):
+            self.btn_export_pdf.setEnabled(False)
+        if self._current_index >= len(self._sample):
+            self._finish_review()
+        else:
+            self._show_current_voucher()
+
+    def _finish_review(self) -> None:
+        if not self._sample:
+            self._clear_current_display()
+            return
+
+        approved = sum(1 for result in self._results if result.status == "Godkjent")
+        rejected = sum(1 for result in self._results if result.status != "Godkjent")
+        self.lbl_progress.setText("Kontroll fullført.")
+        self.txt_comment.clear()
+        self.detail_card.setEnabled(False)
+        self.lbl_summary.setText(
+            f"Resultat: {approved} godkjent / {rejected} ikke godkjent av {len(self._sample)} bilag."
+        )
+        self.summary_table.setVisible(True)
+        self.btn_export_pdf.setEnabled(len(self._results) == len(self._sample) and len(self._results) > 0)
+
+    def _refresh_summary_table(self) -> None:
+        if not self._results:
+            self.summary_table.setRowCount(0)
+            self.summary_table.setVisible(False)
+            self.btn_export_pdf.setEnabled(False)
+            self.lbl_summary.setText("Ingen bilag kontrollert ennå.")
+            return
+
+        self.summary_table.setVisible(True)
+        self.summary_table.setRowCount(len(self._results))
+        if self._sample:
+            self.lbl_summary.setText(
+                f"{len(self._results)} av {len(self._sample)} bilag vurdert."
+            )
+        for row, result in enumerate(self._results):
+            voucher = result.voucher
+            bilag_text = voucher.document_number or voucher.transaction_id or "Bilag"
+            self.summary_table.setItem(row, 0, QTableWidgetItem(bilag_text))
+            self.summary_table.setItem(
+                row,
+                1,
+                QTableWidgetItem(self._format_date(voucher.transaction_date)),
+            )
+            supplier_text = voucher.supplier_name or voucher.supplier_id or "–"
+            if voucher.supplier_name and voucher.supplier_id:
+                supplier_text = f"{voucher.supplier_name} ({voucher.supplier_id})"
+            self.summary_table.setItem(row, 2, QTableWidgetItem(supplier_text))
+            amount_item = QTableWidgetItem(self._format_amount(voucher.amount))
+            amount_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            self.summary_table.setItem(row, 3, amount_item)
+            self.summary_table.setItem(row, 4, QTableWidgetItem(result.status))
+            self.summary_table.setItem(row, 5, QTableWidgetItem(result.comment or ""))
+
+        self.summary_table.resizeRowsToContents()
+
+    def _clear_current_display(self) -> None:
+        self.lbl_progress.setText("Ingen bilag valgt.")
+        self.value_supplier.setText("–")
+        self.value_document.setText("–")
+        self.value_date.setText("–")
+        self.value_amount.setText("–")
+        self.value_description.setText("–")
+        self.table_lines.setRowCount(0)
+        self.txt_comment.clear()
+
+    def _format_amount(self, value: Optional[float]) -> str:
+        if value is None:
+            return "–"
+        try:
+            return f"{float(value):,.2f}".replace(",", " ").replace(".", ",")
+        except Exception:
+            return "–"
+
+    def _format_date(self, value: Optional[date]) -> str:
+        if value is None:
+            return "–"
+        return value.strftime("%d.%m.%Y")
+
+    def _on_export_pdf(self) -> None:
+        if not self._results or len(self._results) != len(self._sample):
+            QMessageBox.information(
+                self,
+                "Utvalget er ikke ferdig",
+                "Fullfør kontrollen av alle bilag før du eksporterer arbeidspapiret.",
+            )
+            return
+
+        default_name = f"bilagskontroll_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Lagre arbeidspapir",
+            default_name,
+            "PDF-filer (*.pdf)",
+        )
+        if not file_path:
+            return
+        if not file_path.lower().endswith(".pdf"):
+            file_path += ".pdf"
+
+        try:
+            from reportlab.lib import colors
+            from reportlab.lib.pagesizes import A4
+            from reportlab.lib.styles import getSampleStyleSheet
+            from reportlab.lib.units import mm
+            from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+        except ImportError:
+            QMessageBox.warning(
+                self,
+                "Manglende avhengighet",
+                "Kunne ikke importere reportlab. Installer pakken for å lage PDF-arbeidspapir.",
+            )
+            return
+
+        styles = getSampleStyleSheet()
+        story: List[object] = []
+        doc = SimpleDocTemplate(
+            file_path,
+            pagesize=A4,
+            leftMargin=20 * mm,
+            rightMargin=20 * mm,
+            topMargin=20 * mm,
+            bottomMargin=20 * mm,
+        )
+
+        story.append(Paragraph("Bilagskontroll – Kostnader", styles["Title"]))
+        story.append(Spacer(1, 6 * mm))
+
+        total_available = len(self._vouchers)
+        sample_size = len(self._sample)
+        timestamp = (
+            self._sample_started_at.strftime("%d.%m.%Y %H:%M")
+            if self._sample_started_at
+            else datetime.now().strftime("%d.%m.%Y %H:%M")
+        )
+        approved = sum(1 for result in self._results if result.status == "Godkjent")
+        rejected = sum(1 for result in self._results if result.status != "Godkjent")
+
+        info_paragraphs = [
+            f"Utvalg: {sample_size} av {total_available} tilgjengelige bilag.",
+            f"Tidspunkt for kontroll: {timestamp}.",
+            f"Resultat: {approved} godkjent / {rejected} ikke godkjent.",
+        ]
+        for line in info_paragraphs:
+            story.append(Paragraph(line, styles["Normal"]))
+        story.append(Spacer(1, 5 * mm))
+
+        summary_data = [["Bilag", "Dato", "Leverandør", "Beløp", "Status", "Kommentar"]]
+        for result in self._results:
+            voucher = result.voucher
+            bilag_text = voucher.document_number or voucher.transaction_id or "Bilag"
+            supplier_text = voucher.supplier_name or voucher.supplier_id or "–"
+            if voucher.supplier_name and voucher.supplier_id:
+                supplier_text = f"{voucher.supplier_name} ({voucher.supplier_id})"
+            summary_data.append(
+                [
+                    bilag_text,
+                    self._format_date(voucher.transaction_date),
+                    supplier_text,
+                    self._format_amount(voucher.amount),
+                    result.status,
+                    (result.comment or "").replace("\n", " "),
+                ]
+            )
+
+        summary_table = Table(
+            summary_data,
+            colWidths=[30 * mm, 22 * mm, 60 * mm, 20 * mm, 25 * mm, None],
+        )
+        summary_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e2e8f0")),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#0f172a")),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("ALIGN", (3, 1), (3, -1), "RIGHT"),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#cbd5f5")),
+                    ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#94a3b8")),
+                ]
+            )
+        )
+        story.append(summary_table)
+        story.append(Spacer(1, 6 * mm))
+
+        for index, result in enumerate(self._results, start=1):
+            voucher = result.voucher
+            heading = voucher.document_number or voucher.transaction_id or f"Bilag {index}"
+            story.append(Paragraph(f"{index}. {heading}", styles["Heading3"]))
+
+            meta_rows = [
+                ["Dato", self._format_date(voucher.transaction_date)],
+                ["Leverandør", voucher.supplier_name or voucher.supplier_id or "–"],
+                ["Beløp (kostnad)", self._format_amount(voucher.amount)],
+                ["Status", result.status],
+            ]
+            if voucher.description:
+                meta_rows.insert(2, ["Beskrivelse", voucher.description])
+            if result.comment:
+                meta_rows.append(["Kommentar", result.comment])
+
+            meta_table = Table(meta_rows, colWidths=[35 * mm, None])
+            meta_table.setStyle(
+                TableStyle(
+                    [
+                        ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#f1f5f9")),
+                        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                        ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#cbd5f5")),
+                        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#94a3b8")),
+                    ]
+                )
+            )
+            story.append(meta_table)
+
+            line_data = [["Konto", "Tekst", "Debet", "Kredit"]]
+            for line in voucher.lines:
+                line_data.append(
+                    [
+                        line.account or "–",
+                        line.description or "",
+                        self._format_amount(line.debit),
+                        self._format_amount(line.credit),
+                    ]
+                )
+            line_table = Table(
+                line_data,
+                colWidths=[25 * mm, None, 25 * mm, 25 * mm],
+            )
+            line_table.setStyle(
+                TableStyle(
+                    [
+                        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e0f2fe")),
+                        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                        ("ALIGN", (2, 1), (-1, -1), "RIGHT"),
+                        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                        ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#cbd5f5")),
+                        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#94a3b8")),
+                    ]
+                )
+            )
+            story.append(line_table)
+            story.append(Spacer(1, 6 * mm))
+
+        try:
+            doc.build(story)
+        except Exception as exc:  # pragma: no cover - filsystemfeil vises for bruker
+            QMessageBox.warning(
+                self,
+                "Feil ved lagring",
+                f"Klarte ikke å skrive PDF: {exc}",
+            )
+            return
+
+        QMessageBox.information(
+            self,
+            "Arbeidspapir lagret",
+            f"Arbeidspapiret ble lagret til {file_path}.",
+        )
+
 class SalesArPage(QWidget):
     """Revisjonsside for salg og kundefordringer med topp kunder."""
 
@@ -1515,6 +2024,7 @@ class NordlysWindow(QMainWindow):
         self._sup_name_by_nr: Dict[str, str] = {}
         self._sup_id_to_nr: Dict[str, str] = {}
         self._supplier_purchases: Optional[pd.DataFrame] = None
+        self._cost_vouchers: List[CostVoucher] = []
         self._validation_result: Optional[SaftValidationResult] = None
         self._industry: Optional[IndustryClassification] = None
         self._industry_error: Optional[str] = None
@@ -1542,6 +2052,7 @@ class NordlysWindow(QMainWindow):
         self.import_page: Optional['ImportPage'] = None
         self.sales_ar_page: Optional[SalesArPage] = None
         self.purchases_ap_page: Optional['PurchasesApPage'] = None
+        self.cost_review_page: Optional['CostVoucherReviewPage'] = None
         self.regnskap_page: Optional['RegnskapsanalysePage'] = None
 
         self._setup_ui()
@@ -1679,6 +2190,12 @@ class NordlysWindow(QMainWindow):
                     lambda title=title, subtitle=subtitle: self._build_purchases_page(title, subtitle),
                     attr="purchases_ap_page",
                 )
+            elif key == "rev.kostnad":
+                self._register_lazy_page(
+                    key,
+                    lambda title=title, subtitle=subtitle: self._build_cost_page(title, subtitle),
+                    attr="cost_review_page",
+                )
             else:
                 self._register_lazy_page(
                     key,
@@ -1773,6 +2290,8 @@ class NordlysWindow(QMainWindow):
             widget.set_controls_enabled(has_data)
             if not has_data:
                 widget.clear_top_suppliers()
+        elif key == "rev.kostnad" and isinstance(widget, CostVoucherReviewPage):
+            widget.set_vouchers(self._cost_vouchers)
         elif key in REVISION_TASKS and isinstance(widget, ChecklistPage):
             widget.set_items(REVISION_TASKS.get(key, []))
 
@@ -1824,6 +2343,11 @@ class NordlysWindow(QMainWindow):
             page.clear_top_suppliers()
         return page
 
+    def _build_cost_page(self, title: str, subtitle: str) -> 'CostVoucherReviewPage':
+        page = CostVoucherReviewPage(title, subtitle)
+        page.set_vouchers(self._cost_vouchers)
+        return page
+
     def _build_checklist_page(self, key: str, title: str, subtitle: str) -> ChecklistPage:
         page = ChecklistPage(title, subtitle)
         page.set_items(REVISION_TASKS.get(key, []))
@@ -1847,6 +2371,15 @@ class NordlysWindow(QMainWindow):
             QPushButton:disabled { background-color: #94a3b8; color: #e5e7eb; }
             QPushButton:hover:!disabled { background-color: #1e40af; }
             QPushButton:pressed { background-color: #1d4ed8; }
+            QPushButton#approveButton { background-color: #16a34a; }
+            QPushButton#approveButton:hover:!disabled { background-color: #15803d; }
+            QPushButton#approveButton:pressed { background-color: #166534; }
+            QPushButton#rejectButton { background-color: #dc2626; }
+            QPushButton#rejectButton:hover:!disabled { background-color: #b91c1c; }
+            QPushButton#rejectButton:pressed { background-color: #991b1b; }
+            QPushButton#exportPdfButton { background-color: #f97316; }
+            QPushButton#exportPdfButton:hover:!disabled { background-color: #ea580c; }
+            QPushButton#exportPdfButton:pressed { background-color: #c2410c; }
             #card { background-color: #ffffff; border-radius: 18px; border: 1px solid rgba(148, 163, 184, 0.28); }
             #cardTitle { font-size: 20px; font-weight: 600; color: #0f172a; letter-spacing: 0.2px; }
             #cardSubtitle { color: #64748b; font-size: 13px; line-height: 1.4; }
@@ -2231,6 +2764,7 @@ class NordlysWindow(QMainWindow):
             if result.supplier_purchases is not None
             else None
         )
+        self._cost_vouchers = list(result.cost_vouchers)
 
         if self._customer_sales is not None and not self._customer_sales.empty:
             if "Kundenavn" in self._customer_sales.columns:
@@ -2345,6 +2879,8 @@ class NordlysWindow(QMainWindow):
             )
             self.purchases_ap_page.set_controls_enabled(has_supplier_data)
             self.purchases_ap_page.clear_top_suppliers()
+        if self.cost_review_page:
+            self.cost_review_page.set_vouchers(self._cost_vouchers)
 
         vesentlig_page = cast(Optional[SummaryPage], getattr(self, "vesentlig_page", None))
         if vesentlig_page:

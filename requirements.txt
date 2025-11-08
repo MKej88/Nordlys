@@ -6,6 +6,7 @@ requests>=2.31
 # Rapportering og eksport
 openpyxl>=3.1
 xlsxwriter>=3.0
+reportlab>=3.6
 
 # Kvalitetssikring og validering
 pytest>=7.4
