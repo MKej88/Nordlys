@@ -16,6 +16,7 @@ from nordlys.utils import to_float
         ("1.234", 1.234),
         ("123.4567", 123.4567),
         (1234, 1234.0),
+        ("1 234,50-", -1234.5),
     ],
 )
 def test_to_float_handles_common_separators(value, expected):
