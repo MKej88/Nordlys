@@ -1319,7 +1319,7 @@ class CostVoucherReviewPage(QWidget):
         input_layout.setSpacing(24)
 
         self.control_card = CardFrame(title, subtitle)
-        self.control_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.control_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
         intro_label = QLabel(
             "Velg et tilfeldig utvalg av inngående fakturaer og dokumenter vurderingen din."
         )
@@ -1343,7 +1343,8 @@ class CostVoucherReviewPage(QWidget):
         self.lbl_available.setObjectName("infoLabel")
         self.control_card.add_widget(self.lbl_available)
 
-        input_layout.addWidget(self.control_card)
+        input_layout.addWidget(self.control_card, 0, Qt.AlignTop)
+        input_layout.addStretch(1)
 
         self.tab_widget.addTab(input_container, "Innput")
 
