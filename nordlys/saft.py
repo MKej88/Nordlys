@@ -246,8 +246,7 @@ def parse_saft_header(root: ET.Element) -> SaftHeader:
 def parse_saldobalanse(root: ET.Element) -> pd.DataFrame:
     """Returnerer saldobalansen som Pandas DataFrame."""
     gl = root.find('n1:MasterFiles/n1:GeneralLedgerAccounts', NS)
-    rows: List[Dict[str, Optional[float]]] = []
-    accounts = gl.findall('n1:Account', NS) if gl is not None else []
+    accounts = gl.iterfind('n1:Account', NS) if gl is not None else ()
 
     def get(acct: ET.Element, tag: str) -> Optional[str]:
         return text_or_none(acct.find(f"n1:{tag}", NS))
@@ -265,6 +264,18 @@ def parse_saldobalanse(root: ET.Element) -> pd.DataFrame:
         except ValueError:
             return None
 
+    konto_values: List[Optional[str]] = []
+    navn_values: List[str] = []
+    ib_debet_values: List[float] = []
+    ib_kredit_values: List[float] = []
+    endring_debet_values: List[float] = []
+    endring_kredit_values: List[float] = []
+    ub_debet_values: List[float] = []
+    ub_kredit_values: List[float] = []
+    ib_netto_values: List[float] = []
+    ub_netto_values: List[float] = []
+    konto_int_values: List[Optional[int]] = []
+
     for account in accounts:
         konto = get(account, 'AccountID')
         navn = get(account, 'AccountDescription') or ''
@@ -272,42 +283,38 @@ def parse_saldobalanse(root: ET.Element) -> pd.DataFrame:
         opening_credit = to_float(get(account, 'OpeningCreditBalance'))
         closing_debit = to_float(get(account, 'ClosingDebitBalance'))
         closing_credit = to_float(get(account, 'ClosingCreditBalance'))
+
         ib_netto = opening_debit - opening_credit
         ub_netto = closing_debit - closing_credit
         endring = ub_netto - ib_netto
-        rows.append(
-            {
-                'Konto': konto,
-                'Kontonavn': navn,
-                'IB Debet': opening_debit,
-                'IB Kredit': opening_credit,
-                'Endring Debet': endring if endring > 0 else 0.0,
-                'Endring Kredit': -endring if endring < 0 else 0.0,
-                'UB Debet': closing_debit,
-                'UB Kredit': closing_credit,
-                'IB_netto': ib_netto,
-                'UB_netto': ub_netto,
-                'Konto_int': konto_to_int(konto),
-            }
-        )
 
-    df = pd.DataFrame(
-        rows,
-        columns=[
-            'Konto',
-            'Kontonavn',
-            'IB Debet',
-            'IB Kredit',
-            'Endring Debet',
-            'Endring Kredit',
-            'UB Debet',
-            'UB Kredit',
-            'IB_netto',
-            'UB_netto',
-            'Konto_int',
-        ],
-    )
-    return df
+        konto_values.append(konto)
+        navn_values.append(navn)
+        ib_debet_values.append(opening_debit)
+        ib_kredit_values.append(opening_credit)
+        endring_debet_values.append(endring if endring > 0 else 0.0)
+        endring_kredit_values.append(-endring if endring < 0 else 0.0)
+        ub_debet_values.append(closing_debit)
+        ub_kredit_values.append(closing_credit)
+        ib_netto_values.append(ib_netto)
+        ub_netto_values.append(ub_netto)
+        konto_int_values.append(konto_to_int(konto))
+
+    data = {
+        'Konto': konto_values,
+        'Kontonavn': navn_values,
+        'IB Debet': ib_debet_values,
+        'IB Kredit': ib_kredit_values,
+        'Endring Debet': endring_debet_values,
+        'Endring Kredit': endring_kredit_values,
+        'UB Debet': ub_debet_values,
+        'UB Kredit': ub_kredit_values,
+        'IB_netto': ib_netto_values,
+        'UB_netto': ub_netto_values,
+        'Konto_int': konto_int_values,
+    }
+
+    return pd.DataFrame(data, columns=list(data.keys()))
 
 
 def ns4102_summary_from_tb(df: pd.DataFrame) -> Dict[str, float]:
