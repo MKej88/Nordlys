@@ -379,7 +379,9 @@ def _local_name(tag: str) -> str:
     return tag.split("}", 1)[-1] if "}" in tag else tag
 
 
-def _build_parent_map(root: ET.Element) -> Dict[ET.Element, Optional[ET.Element]]:
+def build_parent_map(root: ET.Element) -> Dict[ET.Element, Optional[ET.Element]]:
+    """Bygger et oppslag fra barn til forelder for hele SAF-T-treet."""
+
     parent_map: Dict[ET.Element, Optional[ET.Element]] = {}
     for parent in root.iter():
         for child in parent:
@@ -412,7 +414,7 @@ def build_customer_name_map(
         if cid and name and cid not in names:
             names[cid] = name
 
-    lookup_map = parent_map if parent_map is not None else _build_parent_map(root)
+    lookup_map = parent_map if parent_map is not None else build_parent_map(root)
 
     def lookup_name(node: ET.Element) -> Optional[str]:
         current: Optional[ET.Element] = node
@@ -475,7 +477,7 @@ def build_supplier_name_map(
         if sid and name and sid not in names:
             names[sid] = name
 
-    lookup_map = parent_map if parent_map is not None else _build_parent_map(root)
+    lookup_map = parent_map if parent_map is not None else build_parent_map(root)
 
     def lookup_name(node: ET.Element) -> Optional[str]:
         current: Optional[ET.Element] = node
@@ -598,6 +600,7 @@ def compute_customer_supplier_totals(
     year: Optional[int] = None,
     date_from: Optional[object] = None,
     date_to: Optional[object] = None,
+    parent_map: Optional[Dict[ET.Element, Optional[ET.Element]]] = None,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """Beregner kundesalg og leverandørkjøp i ett pass gjennom SAF-T-transaksjonene."""
 
@@ -668,14 +671,14 @@ def compute_customer_supplier_totals(
                 supplier_totals[supplier_id] += purchase_total
                 supplier_counts[supplier_id] += 1
 
-    parent_map: Optional[Dict[ET.Element, Optional[ET.Element]]] = None
-    if customer_totals or supplier_totals:
-        parent_map = _build_parent_map(root)
+    lookup_map = parent_map
+    if (customer_totals or supplier_totals) and lookup_map is None:
+        lookup_map = build_parent_map(root)
 
     if not customer_totals:
         customer_df = pd.DataFrame(columns=["Kundenr", "Kundenavn", "Omsetning eks mva"])
     else:
-        customer_names = build_customer_name_map(root, ns, parent_map=parent_map)
+        customer_names = build_customer_name_map(root, ns, parent_map=lookup_map)
         customer_rows = []
         for customer_id, amount in customer_totals.items():
             rounded = amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
@@ -695,7 +698,7 @@ def compute_customer_supplier_totals(
     if not supplier_totals:
         supplier_df = pd.DataFrame(columns=["Leverandørnr", "Leverandørnavn", "Innkjøp eks mva"])
     else:
-        supplier_names = build_supplier_name_map(root, ns, parent_map=parent_map)
+        supplier_names = build_supplier_name_map(root, ns, parent_map=lookup_map)
         supplier_rows = []
         for supplier_id, amount in supplier_totals.items():
             rounded = amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
@@ -902,6 +905,7 @@ def extract_cost_vouchers(
     year: Optional[int] = None,
     date_from: Optional[object] = None,
     date_to: Optional[object] = None,
+    parent_map: Optional[Dict[ET.Element, Optional[ET.Element]]] = None,
 ) -> List[CostVoucher]:
     """Henter kostnadsbilag med leverandørtilknytning fra SAF-T."""
 
@@ -911,7 +915,7 @@ def extract_cost_vouchers(
     if not use_range and year is None:
         raise ValueError("Angi enten year eller date_from/date_to.")
 
-    supplier_names = build_supplier_name_map(root, ns)
+    supplier_names = build_supplier_name_map(root, ns, parent_map=parent_map)
     account_names = build_account_name_map(root, ns)
     vouchers: List[CostVoucher] = []
 
@@ -1171,6 +1175,7 @@ __all__ = [
     "get_tx_supplier_id",
     "build_customer_name_map",
     "build_supplier_name_map",
+    "build_parent_map",
     "compute_customer_supplier_totals",
     "compute_sales_per_customer",
     "compute_purchases_per_supplier",

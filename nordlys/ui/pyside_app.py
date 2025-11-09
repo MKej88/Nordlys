@@ -74,6 +74,7 @@ from ..saft import (
 )
 from ..saft_customers import (
     CostVoucher,
+    build_parent_map,
     compute_customer_supplier_totals,
     extract_cost_vouchers,
     parse_saft,
@@ -225,18 +226,22 @@ def load_saft_file(file_path: str) -> SaftLoadResult:
     customer_sales: Optional[pd.DataFrame] = None
     supplier_purchases: Optional[pd.DataFrame] = None
     cost_vouchers: List[CostVoucher] = []
+    parent_map: Optional[Dict[object, Optional[object]]] = None
     if period_start or period_end:
+        parent_map = build_parent_map(root)
         customer_sales, supplier_purchases = compute_customer_supplier_totals(
             root,
             ns,
             date_from=period_start,
             date_to=period_end,
+            parent_map=parent_map,
         )
         cost_vouchers = extract_cost_vouchers(
             root,
             ns,
             date_from=period_start,
             date_to=period_end,
+            parent_map=parent_map,
         )
         if period_end:
             analysis_year = period_end.year
@@ -261,12 +266,20 @@ def load_saft_file(file_path: str) -> SaftLoadResult:
                         analysis_year = parsed.year
                         break
         if analysis_year is not None:
+            if parent_map is None:
+                parent_map = build_parent_map(root)
             customer_sales, supplier_purchases = compute_customer_supplier_totals(
                 root,
                 ns,
                 year=analysis_year,
+                parent_map=parent_map,
             )
-            cost_vouchers = extract_cost_vouchers(root, ns, year=analysis_year)
+            cost_vouchers = extract_cost_vouchers(
+                root,
+                ns,
+                year=analysis_year,
+                parent_map=parent_map,
+            )
 
     summary = ns4102_summary_from_tb(dataframe)
     validation = validate_saft_against_xsd(
