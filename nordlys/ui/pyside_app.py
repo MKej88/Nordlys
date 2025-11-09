@@ -2253,6 +2253,7 @@ class NordlysWindow(QMainWindow):
         self.purchases_ap_page: Optional['PurchasesApPage'] = None
         self.cost_review_page: Optional['CostVoucherReviewPage'] = None
         self.regnskap_page: Optional['RegnskapsanalysePage'] = None
+        self._navigation_initialized = False
 
         self._setup_ui()
         self._apply_styles()
@@ -2403,9 +2404,12 @@ class NordlysWindow(QMainWindow):
                     ),
                 )
 
-        self._populate_navigation()
+        QTimer.singleShot(0, self._populate_navigation)
 
     def _populate_navigation(self) -> None:
+        if self._navigation_initialized:
+            return
+        self._navigation_initialized = True
         nav = self.nav_panel
         import_item = nav.add_root("Import", "import")
         dashboard_item = nav.add_root("Dashboard", "dashboard")
