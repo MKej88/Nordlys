@@ -261,7 +261,7 @@ class AdaptiveMainWindow(QMainWindow):
         self.table_view.setSelectionBehavior(QTableView.SelectRows)
         self.table_view.setSelectionMode(QTableView.SingleSelection)
         self.table_view.setSortingEnabled(True)
-        self.table_view.setUniformRowHeights(True)
+        self._apply_uniform_row_heights()
         self.table_view.verticalHeader().setVisible(False)
         header = self.table_view.horizontalHeader()
         header.setSectionsMovable(True)
@@ -438,7 +438,14 @@ class AdaptiveMainWindow(QMainWindow):
         else:
             vertical_header.setDefaultSectionSize(32)
             self.table_view.setStyleSheet("QTableView { font-size: 12px; }")
-        self.table_view.setUniformRowHeights(True)
+        self._apply_uniform_row_heights()
+        
+    def _apply_uniform_row_heights(self) -> None:
+        """Aktiverer jevne radhøyder der API-et støttes av PySide-versjonen."""
+
+        set_uniform = getattr(self.table_view, "setUniformRowHeights", None)
+        if callable(set_uniform):
+            set_uniform(True)
 
     # endregion
 
