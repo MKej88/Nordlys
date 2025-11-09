@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSizePolicy,
     QSpinBox,
+    QSplitter,
     QStackedWidget,
     QStatusBar,
     QTreeWidget,
@@ -955,12 +956,8 @@ class RegnskapsanalysePage(QWidget):
             "Balansepostene til venstre og resultatpostene til høyre for enkel sammenligning.",
         )
         self.analysis_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        analysis_split = QHBoxLayout()
-        analysis_split.setSpacing(24)
-        analysis_split.setContentsMargins(0, 0, 0, 0)
-
         self.balance_section = QWidget()
-        self.balance_section.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.balance_section.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         balance_layout = QVBoxLayout(self.balance_section)
         balance_layout.setContentsMargins(0, 0, 0, 0)
         balance_layout.setSpacing(4)
@@ -979,7 +976,7 @@ class RegnskapsanalysePage(QWidget):
         self.balance_table.hide()
 
         self.result_section = QWidget()
-        self.result_section.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
+        self.result_section.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         result_layout = QVBoxLayout(self.result_section)
         result_layout.setContentsMargins(0, 0, 0, 0)
         result_layout.setSpacing(0)
@@ -1005,13 +1002,17 @@ class RegnskapsanalysePage(QWidget):
         self.balance_table.setItemDelegate(self._table_delegate)
         self.result_table.setItemDelegate(self._table_delegate)
 
-        analysis_split.addWidget(self.balance_section, 1)
-        analysis_split.addWidget(self.result_section, 1)
-        analysis_split.setStretch(0, 1)
-        analysis_split.setStretch(1, 1)
-        analysis_split.setAlignment(self.balance_section, Qt.AlignTop)
-        analysis_split.setAlignment(self.result_section, Qt.AlignTop)
-        self.analysis_card.add_layout(analysis_split)
+        analysis_splitter = QSplitter(Qt.Horizontal)
+        analysis_splitter.setHandleWidth(16)
+        analysis_splitter.setChildrenCollapsible(False)
+        analysis_splitter.setContentsMargins(0, 0, 0, 0)
+        analysis_splitter.addWidget(self.balance_section)
+        analysis_splitter.addWidget(self.result_section)
+        analysis_splitter.setStretchFactor(0, 3)
+        analysis_splitter.setStretchFactor(1, 2)
+        analysis_splitter.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        analysis_splitter.setOpaqueResize(True)
+        self.analysis_card.add_widget(analysis_splitter)
         layout.addWidget(self.analysis_card, 1)
 
         self._prepared_df: Optional[pd.DataFrame] = None
