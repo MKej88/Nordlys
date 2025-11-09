@@ -72,6 +72,13 @@ def to_float(value: Optional[str]) -> float:
     sign = ""
     if cleaned[0] in "+-":
         sign, cleaned = cleaned[0], cleaned[1:]
+    elif cleaned[-1] in "+-":
+        sign = cleaned[-1]
+        cleaned = cleaned[:-1]
+
+    cleaned = cleaned.strip()
+    if not cleaned:
+        return 0.0
 
     comma_pos = cleaned.rfind(",")
     dot_pos = cleaned.rfind(".")
