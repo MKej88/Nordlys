@@ -2206,10 +2206,17 @@ class NordlysWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle(APP_TITLE)
-        self.resize(1460, 940)
+        screen = QApplication.primaryScreen()
+        if screen is not None:
+            available = screen.availableGeometry()
+            width = max(1100, int(available.width() * 0.82))
+            height = max(720, int(available.height() * 0.82))
+            self.resize(width, height)
+        else:
+            self.resize(1460, 940)
         # Sikrer at hovedvinduet kan maksimeres uten Qt-advarsler selv om enkelte
         # underliggende widgets har begrensende størrelseshint.
-        self.setMinimumSize(1100, 720)
+        self.setMinimumSize(1024, 680)
         self.setMaximumSize(16777215, 16777215)
 
         self._saft_df: Optional[pd.DataFrame] = None
@@ -2256,6 +2263,9 @@ class NordlysWindow(QMainWindow):
         self.cost_review_page: Optional['CostVoucherReviewPage'] = None
         self.regnskap_page: Optional['RegnskapsanalysePage'] = None
         self._navigation_initialized = False
+        self._content_layout: Optional[QVBoxLayout] = None
+        self._responsive_update_pending = False
+        self._layout_mode: Optional[str] = None
 
         self._setup_ui()
         self._apply_styles()
@@ -2277,6 +2287,7 @@ class NordlysWindow(QMainWindow):
         content_layout.setContentsMargins(32, 32, 32, 32)
         content_layout.setSpacing(24)
         root_layout.addWidget(content_wrapper, 1)
+        self._content_layout = content_layout
 
         header_layout = QHBoxLayout()
         header_layout.setSpacing(16)
@@ -2319,6 +2330,7 @@ class NordlysWindow(QMainWindow):
 
         self.stack = QStackedWidget()
         content_layout.addWidget(self.stack, 1)
+        self.stack.currentChanged.connect(lambda _: self._schedule_responsive_update())
 
         self._create_pages()
 
@@ -2499,6 +2511,7 @@ class NordlysWindow(QMainWindow):
             widget.set_vouchers(self._cost_vouchers)
         elif key in REVISION_TASKS and isinstance(widget, ChecklistPage):
             widget.set_items(REVISION_TASKS.get(key, []))
+        self._schedule_responsive_update()
 
     def _build_dashboard_page(self) -> 'DashboardPage':
         return DashboardPage()
@@ -2621,6 +2634,117 @@ class NordlysWindow(QMainWindow):
             QToolTip { background-color: #0f172a; color: #f8fafc; border: none; padding: 8px 10px; border-radius: 8px; }
             """
         )
+
+    def showEvent(self, event) -> None:  # type: ignore[override]
+        super().showEvent(event)
+        self._schedule_responsive_update()
+
+    def resizeEvent(self, event) -> None:  # type: ignore[override]
+        super().resizeEvent(event)
+        self._schedule_responsive_update()
+
+    def _schedule_responsive_update(self) -> None:
+        if self._responsive_update_pending:
+            return
+        self._responsive_update_pending = True
+        QTimer.singleShot(0, self._run_responsive_update)
+
+    def _run_responsive_update(self) -> None:
+        self._responsive_update_pending = False
+        self._update_responsive_layout()
+
+    def _update_responsive_layout(self) -> None:
+        if self._content_layout is None:
+            return
+        available_width = self.centralWidget().width() if self.centralWidget() else self.width()
+        width = max(self.width(), available_width)
+        if width <= 0:
+            return
+
+        if width < 1400:
+            mode = "compact"
+            nav_width = 210
+            margin = 16
+            spacing = 16
+            card_margin = 18
+            card_spacing = 12
+            nav_spacing = 18
+            header_min = 80
+        elif width < 2000:
+            mode = "medium"
+            nav_width = 250
+            margin = 28
+            spacing = 22
+            card_margin = 24
+            card_spacing = 14
+            nav_spacing = 22
+            header_min = 100
+        else:
+            mode = "wide"
+            nav_width = 300
+            margin = 36
+            spacing = 28
+            card_margin = 28
+            card_spacing = 16
+            nav_spacing = 24
+            header_min = 120
+
+        self._layout_mode = mode
+        self.nav_panel.setMinimumWidth(nav_width)
+        self.nav_panel.setMaximumWidth(nav_width)
+        self._content_layout.setContentsMargins(margin, margin, margin, margin)
+        self._content_layout.setSpacing(spacing)
+
+        nav_layout = self.nav_panel.layout()
+        if isinstance(nav_layout, QVBoxLayout):
+            nav_padding = max(12, margin - 4)
+            nav_layout.setContentsMargins(nav_padding, margin, nav_padding, margin)
+            nav_layout.setSpacing(nav_spacing)
+
+        for card in self.findChildren(CardFrame):
+            layout = card.layout()
+            if isinstance(layout, QVBoxLayout):
+                layout.setContentsMargins(card_margin, card_margin, card_margin, card_margin)
+                layout.setSpacing(max(card_spacing, 10))
+            body_layout = getattr(card, "body_layout", None)
+            if isinstance(body_layout, QVBoxLayout):
+                body_layout.setSpacing(max(card_spacing - 4, 8))
+
+        self._apply_table_sizing(header_min)
+
+    def _apply_table_sizing(self, min_section_size: int) -> None:
+        tables = self.findChildren(QTableWidget)
+        if not tables:
+            return
+
+        for table in tables:
+            header = table.horizontalHeader()
+            if header is None:
+                continue
+            header.setStretchLastSection(True)
+            header.setMinimumSectionSize(min_section_size)
+            column_count = header.count()
+            if column_count <= 0:
+                continue
+
+            needs_contents = any(
+                header.sectionResizeMode(col) == QHeaderView.ResizeToContents for col in range(column_count)
+            )
+            if needs_contents:
+                table.resizeColumnsToContents()
+                continue
+
+            viewport_width = table.viewport().width()
+            if viewport_width <= 0:
+                viewport_width = table.width() - (table.frameWidth() * 2)
+            if viewport_width <= 0:
+                continue
+
+            section_width = max(min_section_size, int(viewport_width / column_count))
+            for col in range(column_count):
+                mode = header.sectionResizeMode(col)
+                if mode in (QHeaderView.Stretch, QHeaderView.Interactive):
+                    header.resizeSection(col, section_width)
 
     # endregion
 
@@ -3505,6 +3629,7 @@ class NordlysWindow(QMainWindow):
         self.title_label.setText(current.text(0))
         if hasattr(self, "info_card"):
             self.info_card.setVisible(key in {"dashboard", "import"})
+        self._schedule_responsive_update()
 
     # endregion
 
@@ -3548,6 +3673,10 @@ def _populate_table(
             table.setItem(row_idx, col_idx, item)
 
     table.resizeRowsToContents()
+    window = table.window()
+    schedule_hook = getattr(window, "_schedule_responsive_update", None)
+    if callable(schedule_hook):
+        schedule_hook()
 
 
 def _format_value(value: object, money: bool) -> str:
