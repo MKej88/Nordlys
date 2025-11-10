@@ -756,7 +756,7 @@ class DataFramePage(QWidget):
         *,
         frame_builder: Optional[Callable[[pd.DataFrame], pd.DataFrame]] = None,
         money_columns: Optional[Sequence[str]] = None,
-        header_mode: QHeaderView.ResizeMode = QHeaderView.Stretch,
+        header_mode: QHeaderView.ResizeMode = QHeaderView.ResizeToContents,
         full_window: bool = False,
     ) -> None:
         super().__init__()
@@ -1130,15 +1130,9 @@ class RegnskapsanalysePage(QWidget):
         column_count = table.columnCount()
         if column_count == 0:
             return
-        widths: List[int] = []
         for col in range(column_count):
             header.setSectionResizeMode(col, QHeaderView.ResizeToContents)
         table.resizeColumnsToContents()
-        for col in range(column_count):
-            widths.append(header.sectionSize(col))
-        for col, width in enumerate(widths):
-            header.setSectionResizeMode(col, QHeaderView.Interactive)
-            header.resizeSection(col, width)
 
     def _schedule_table_height_adjustment(self, table: QTableWidget) -> None:
         QTimer.singleShot(0, lambda tbl=table: self._set_analysis_table_height(tbl))
@@ -2725,58 +2719,12 @@ class NordlysWindow(QMainWindow):
             if column_count <= 0:
                 continue
 
-            header.setStretchLastSection(True)
+            header.setStretchLastSection(False)
             header.setMinimumSectionSize(min_section_size)
 
-            marked_cols = table.property("contentWidthColumns")
-            content_cols: Set[int] = set()
-            if isinstance(marked_cols, (list, tuple, set)):
-                for value in marked_cols:
-                    try:
-                        index = int(value)
-                    except (TypeError, ValueError):
-                        continue
-                    if 0 <= index < column_count:
-                        content_cols.add(index)
-
             for col in range(column_count):
-                if header.sectionResizeMode(col) == QHeaderView.ResizeToContents:
-                    content_cols.add(col)
-
-            if content_cols:
-                for col in sorted(content_cols):
-                    header.setSectionResizeMode(col, QHeaderView.ResizeToContents)
-                    table.resizeColumnToContents(col)
-
-            flexible_cols = [col for col in range(column_count) if col not in content_cols]
-            if not flexible_cols:
-                continue
-
-            viewport_width = table.viewport().width()
-            if viewport_width <= 0:
-                viewport_width = table.width() - (table.frameWidth() * 2)
-            if viewport_width <= 0:
-                continue
-
-            used_width = sum(header.sectionSize(col) for col in content_cols)
-            available_width = max(0, viewport_width - used_width)
-            if available_width <= 0:
-                for col in flexible_cols:
-                    current = header.sectionSize(col)
-                    target = max(current, min_section_size)
-                    header.setSectionResizeMode(col, QHeaderView.Interactive)
-                    header.resizeSection(col, target)
-                continue
-
-            base_width = max(min_section_size, int(available_width / len(flexible_cols)))
-            for idx, col in enumerate(flexible_cols):
-                if idx == len(flexible_cols) - 1:
-                    header.setSectionResizeMode(col, QHeaderView.Stretch)
-                    if header.sectionSize(col) < base_width:
-                        header.resizeSection(col, base_width)
-                else:
-                    header.setSectionResizeMode(col, QHeaderView.Interactive)
-                    header.resizeSection(col, base_width)
+                header.setSectionResizeMode(col, QHeaderView.ResizeToContents)
+            table.resizeColumnsToContents()
 
     # endregion
 
@@ -3705,7 +3653,7 @@ def _populate_table(
             table.setItem(row_idx, col_idx, item)
 
     table.resizeRowsToContents()
-    table.setProperty("contentWidthColumns", sorted(money_idx))
+    table.resizeColumnsToContents()
     window = table.window()
     schedule_hook = getattr(window, "_schedule_responsive_update", None)
     if callable(schedule_hook):
