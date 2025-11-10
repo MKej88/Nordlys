@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
     QComboBox,
+    QDoubleSpinBox,
     QFileDialog,
     QFrame,
     QGridLayout,
@@ -1057,8 +1058,72 @@ class RegnskapsanalysePage(QWidget):
         self.analysis_card.add_widget(analysis_splitter)
         layout.addWidget(self.analysis_card, 1)
 
+        self.cost_card = CardFrame(
+            "Sammenligning av kostnadskonti",
+            "Viser endringene mellom inneværende år og fjoråret for konti 4xxx–8xxx.",
+        )
+        self.cost_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
+
+        self.cost_info = QLabel(
+            "Importer en SAF-T saldobalanse for å analysere kostnadskonti."
+        )
+        self.cost_info.setWordWrap(True)
+        self.cost_card.add_widget(self.cost_info)
+
+        self._cost_highlight_widget = QWidget()
+        highlight_layout = QHBoxLayout(self._cost_highlight_widget)
+        highlight_layout.setContentsMargins(0, 0, 0, 0)
+        highlight_layout.setSpacing(12)
+        highlight_label = QLabel("Marker konti med endring større enn:")
+        highlight_label.setObjectName("infoLabel")
+        self.cost_threshold = QDoubleSpinBox()
+        self.cost_threshold.setDecimals(0)
+        self.cost_threshold.setMaximum(1_000_000_000_000)
+        self.cost_threshold.setSingleStep(10_000)
+        self.cost_threshold.setSuffix(" kr")
+        self.cost_threshold.valueChanged.connect(self._on_cost_threshold_changed)
+        highlight_layout.addWidget(highlight_label)
+        highlight_layout.addWidget(self.cost_threshold)
+        highlight_layout.addStretch(1)
+        self._cost_highlight_widget.hide()
+        self.cost_card.add_widget(self._cost_highlight_widget)
+
+        self.cost_table = _create_table_widget()
+        self.cost_table.setColumnCount(7)
+        self.cost_table.setHorizontalHeaderLabels(
+            [
+                "Konto",
+                "Kontonavn",
+                "Nå",
+                "I fjor",
+                "Endring (kr)",
+                "Endring (%)",
+                "Kommentar",
+            ]
+        )
+        self.cost_table.setEditTriggers(
+            QAbstractItemView.DoubleClicked
+            | QAbstractItemView.SelectedClicked
+            | QAbstractItemView.EditKeyPressed
+        )
+        header = self.cost_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(5, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(6, QHeaderView.Stretch)
+        self.cost_table.itemChanged.connect(self._on_cost_item_changed)
+        self.cost_table.hide()
+        self.cost_card.add_widget(self.cost_table)
+
+        layout.addWidget(self.cost_card)
+
         self._prepared_df: Optional[pd.DataFrame] = None
         self._fiscal_year: Optional[str] = None
+        self._cost_comments: Dict[str, str] = {}
+        self._updating_cost_table = False
 
     def set_dataframe(self, df: Optional[pd.DataFrame], fiscal_year: Optional[str] = None) -> None:
         self._fiscal_year = fiscal_year.strip() if fiscal_year and fiscal_year.strip() else None
@@ -1066,11 +1131,13 @@ class RegnskapsanalysePage(QWidget):
             self._prepared_df = None
             self._clear_balance_table()
             self._clear_result_table()
+            self._clear_cost_table()
             return
 
         self._prepared_df = prepare_regnskap_dataframe(df)
         self._update_balance_table()
         self._update_result_table()
+        self._update_cost_table()
 
     def _year_headers(self) -> Tuple[str, str]:
         if self._fiscal_year and self._fiscal_year.isdigit():
@@ -1092,6 +1159,16 @@ class RegnskapsanalysePage(QWidget):
         self.result_table.setRowCount(0)
         self.result_info.show()
         self._reset_analysis_table_height(self.result_table)
+
+    def _clear_cost_table(self) -> None:
+        self.cost_table.hide()
+        self.cost_table.setRowCount(0)
+        self.cost_info.setText("Importer en SAF-T saldobalanse for å analysere kostnadskonti.")
+        self.cost_info.show()
+        self._cost_highlight_widget.hide()
+        self._reset_analysis_table_height(self.cost_table)
+        with SignalBlocker(self.cost_threshold):
+            self.cost_threshold.setValue(0.0)
 
     def _update_balance_table(self) -> None:
         if self._prepared_df is None or self._prepared_df.empty:
@@ -1143,6 +1220,117 @@ class RegnskapsanalysePage(QWidget):
         self._apply_change_coloring(self.result_table)
         self._lock_analysis_column_widths(self.result_table)
         self._schedule_table_height_adjustment(self.result_table)
+
+    def _update_cost_table(self) -> None:
+        if self._prepared_df is None or self._prepared_df.empty:
+            self._clear_cost_table()
+            return
+
+        prepared = self._prepared_df
+        konto_series = prepared.get("konto", pd.Series("", index=prepared.index))
+        mask = konto_series.astype(str).str.strip().str.startswith(("4", "5", "6", "7", "8"))
+        cost_df = prepared.loc[mask].copy()
+
+        if cost_df.empty:
+            self.cost_table.hide()
+            self.cost_info.setText(
+                "Fant ingen kostnadskonti (4xxx–8xxx) i den importerte saldobalansen."
+            )
+            self.cost_info.show()
+            self._cost_highlight_widget.hide()
+            self._reset_analysis_table_height(self.cost_table)
+            return
+
+        cost_df.sort_values(
+            by="konto",
+            key=lambda s: s.astype(str).str.strip(),
+            inplace=True,
+        )
+
+        current_values = pd.to_numeric(cost_df.get("UB"), errors="coerce").fillna(0.0)
+        previous_values = pd.to_numeric(cost_df.get("forrige"), errors="coerce").fillna(0.0)
+
+        current_label, previous_label = self._year_headers()
+        headers = [
+            "Konto",
+            "Kontonavn",
+            current_label,
+            previous_label,
+            "Endring (kr)",
+            "Endring (%)",
+            "Kommentar",
+        ]
+        self.cost_table.setHorizontalHeaderLabels(headers)
+
+        konto_values = cost_df.get("konto", pd.Series("", index=cost_df.index)).astype(str).str.strip()
+        navn_series = cost_df.get("navn", pd.Series("", index=cost_df.index))
+        navn_values = navn_series.fillna("").astype(str).str.strip()
+
+        rows = []
+        for row_idx, (konto, navn, current, previous) in enumerate(
+            zip(konto_values, navn_values, current_values, previous_values)
+        ):
+            change_value = float(current - previous)
+            previous_abs = abs(previous)
+            if previous_abs > 1e-6:
+                change_percent = (change_value / previous_abs) * 100.0
+            elif abs(change_value) > 1e-6:
+                change_percent = math.copysign(math.inf, change_value)
+            else:
+                change_percent = 0.0
+            rows.append((konto or "", navn or "", float(current), float(previous), change_value, change_percent))
+
+        self._updating_cost_table = True
+        try:
+            self.cost_table.setRowCount(len(rows))
+            for row_idx, (konto, navn, current, previous, change_value, change_percent) in enumerate(rows):
+                konto_item = QTableWidgetItem(konto or "—")
+                konto_item.setData(Qt.UserRole, konto)
+                konto_item.setFlags(konto_item.flags() & ~Qt.ItemIsEditable)
+                self.cost_table.setItem(row_idx, 0, konto_item)
+
+                navn_item = QTableWidgetItem(navn or "—")
+                navn_item.setFlags(navn_item.flags() & ~Qt.ItemIsEditable)
+                self.cost_table.setItem(row_idx, 1, navn_item)
+
+                current_item = QTableWidgetItem(format_currency(current))
+                current_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                current_item.setData(Qt.UserRole, current)
+                current_item.setFlags(current_item.flags() & ~Qt.ItemIsEditable)
+                self.cost_table.setItem(row_idx, 2, current_item)
+
+                previous_item = QTableWidgetItem(format_currency(previous))
+                previous_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                previous_item.setData(Qt.UserRole, previous)
+                previous_item.setFlags(previous_item.flags() & ~Qt.ItemIsEditable)
+                self.cost_table.setItem(row_idx, 3, previous_item)
+
+                change_item = QTableWidgetItem(format_currency(change_value))
+                change_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                change_item.setData(Qt.UserRole, change_value)
+                change_item.setFlags(change_item.flags() & ~Qt.ItemIsEditable)
+                self.cost_table.setItem(row_idx, 4, change_item)
+
+                percent_text = self._format_percent(change_percent)
+                percent_item = QTableWidgetItem(percent_text)
+                percent_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                percent_item.setData(Qt.UserRole, change_percent)
+                percent_item.setFlags(percent_item.flags() & ~Qt.ItemIsEditable)
+                self.cost_table.setItem(row_idx, 5, percent_item)
+
+                comment_key = konto or f"row-{row_idx}"
+                comment_text = self._cost_comments.get(comment_key, "")
+                comment_item = QTableWidgetItem(comment_text)
+                comment_item.setData(Qt.UserRole, comment_key)
+                self.cost_table.setItem(row_idx, 6, comment_item)
+        finally:
+            self._updating_cost_table = False
+
+        self.cost_info.hide()
+        self.cost_table.show()
+        self._cost_highlight_widget.show()
+        self._apply_cost_highlighting()
+        self._schedule_table_height_adjustment(self.cost_table)
 
     def _configure_analysis_table(
         self,
@@ -1281,6 +1469,74 @@ class RegnskapsanalysePage(QWidget):
         _rows: Optional[Sequence[Tuple[str, Optional[float], Optional[float], Optional[float]]]],
     ) -> None:
         return
+
+    @staticmethod
+    def _format_percent(value: Optional[float]) -> str:
+        if value is None:
+            return "—"
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            return "—"
+        if math.isinf(numeric):
+            return "∞ %" if numeric > 0 else "-∞ %"
+        return f"{numeric:.1f} %"
+
+    def _apply_cost_highlighting(self) -> None:
+        threshold = float(self.cost_threshold.value())
+        highlight_brush = QBrush(QColor(254, 243, 199))
+        default_brush = QBrush()
+        for row_idx in range(self.cost_table.rowCount()):
+            change_item = self.cost_table.item(row_idx, 4)
+            if change_item is None:
+                continue
+            value = change_item.data(Qt.UserRole)
+            try:
+                numeric = abs(float(value))
+            except (TypeError, ValueError):
+                numeric = 0.0
+            highlight = threshold > 0.0 and numeric >= threshold
+            brush = highlight_brush if highlight else default_brush
+            for col_idx in range(self.cost_table.columnCount()):
+                item = self.cost_table.item(row_idx, col_idx)
+                if item is not None:
+                    item.setBackground(brush)
+
+    def _on_cost_threshold_changed(self, _value: float) -> None:
+        if self.cost_table.isVisible():
+            self._apply_cost_highlighting()
+
+    def _on_cost_item_changed(self, item: QTableWidgetItem) -> None:
+        if self._updating_cost_table:
+            return
+        if item.column() != 6:
+            return
+        key = item.data(Qt.UserRole)
+        if not key:
+            konto_item = self.cost_table.item(item.row(), 0)
+            key = konto_item.data(Qt.UserRole) if konto_item else None
+        if not key:
+            return
+        text = item.text().strip()
+        if text:
+            self._cost_comments[str(key)] = text
+        else:
+            self._cost_comments.pop(str(key), None)
+
+
+class SignalBlocker:
+    """Hjelpeklasse som midlertidig skrur av signaler for en QObject."""
+
+    def __init__(self, obj: QObject) -> None:
+        self._obj = obj
+        self._was_blocked = obj.signalsBlocked()
+        obj.blockSignals(True)
+
+    def __enter__(self) -> "SignalBlocker":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self._obj.blockSignals(self._was_blocked)
 
 
 class BrregPage(QWidget):
