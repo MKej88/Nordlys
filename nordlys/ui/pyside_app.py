@@ -392,6 +392,7 @@ def _create_table_widget() -> QTableWidget:
     table.setFocusPolicy(Qt.NoFocus)
     table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
     table.verticalHeader().setVisible(False)
+    table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
     table.setObjectName("cardTable")
     return table
 
@@ -1121,8 +1122,9 @@ class RegnskapsanalysePage(QWidget):
         header.setMinimumSectionSize(70)
         table.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        table.verticalHeader().setSectionResizeMode(QHeaderView.Fixed)
+        table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
         table.verticalHeader().setDefaultSectionSize(row_height)
+        table.verticalHeader().setMinimumSectionSize(row_height)
         table.setStyleSheet("QTableWidget::item { padding: 2px 6px; }")
 
     def _lock_analysis_column_widths(self, table: QTableWidget) -> None:
@@ -1551,10 +1553,10 @@ class CostVoucherReviewPage(QWidget):
             self.table_lines.setItem(row, 2, vat_item)
             self.table_lines.setItem(row, 3, QTableWidgetItem(line.description or ""))
             debit_item = QTableWidgetItem(self._format_amount(line.debit))
-            debit_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            debit_item.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
             self.table_lines.setItem(row, 4, debit_item)
             credit_item = QTableWidgetItem(self._format_amount(line.credit))
-            credit_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            credit_item.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
             self.table_lines.setItem(row, 5, credit_item)
 
         self.table_lines.resizeRowsToContents()
@@ -1694,7 +1696,7 @@ class CostVoucherReviewPage(QWidget):
                 supplier_text = f"{voucher.supplier_name} ({voucher.supplier_id})"
             self.summary_table.setItem(row, 2, QTableWidgetItem(supplier_text))
             amount_item = QTableWidgetItem(self._format_amount(voucher.amount))
-            amount_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            amount_item.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
             self.summary_table.setItem(row, 3, amount_item)
             result = self._results[row] if row < len(self._results) else None
             status_text = result.status if result else "Ikke vurdert"
@@ -3646,14 +3648,15 @@ def _populate_table(
                 item.setData(Qt.UserRole, float(value))
             else:
                 item.setData(Qt.UserRole, None)
-            if col_idx in money_idx:
-                item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            if col_idx in money_idx or isinstance(value, (int, float)):
+                item.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
             else:
                 item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
             table.setItem(row_idx, col_idx, item)
 
     table.resizeRowsToContents()
     table.resizeColumnsToContents()
+    table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
     window = table.window()
     schedule_hook = getattr(window, "_schedule_responsive_update", None)
     if callable(schedule_hook):
