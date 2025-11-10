@@ -9,7 +9,7 @@ import random
 from datetime import date, datetime
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple, TYPE_CHECKING, cast
+from typing import Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple, TYPE_CHECKING, cast
 from PySide6.QtCore import QObject, Qt, QThread, Signal, Slot, QTimer
 from PySide6.QtGui import QBrush, QColor, QFont, QIcon, QTextCursor, QPen
 from PySide6.QtWidgets import (
@@ -2721,17 +2721,35 @@ class NordlysWindow(QMainWindow):
             header = table.horizontalHeader()
             if header is None:
                 continue
-            header.setStretchLastSection(True)
-            header.setMinimumSectionSize(min_section_size)
             column_count = header.count()
             if column_count <= 0:
                 continue
 
-            needs_contents = any(
-                header.sectionResizeMode(col) == QHeaderView.ResizeToContents for col in range(column_count)
-            )
-            if needs_contents:
-                table.resizeColumnsToContents()
+            header.setStretchLastSection(True)
+            header.setMinimumSectionSize(min_section_size)
+
+            marked_cols = table.property("contentWidthColumns")
+            content_cols: Set[int] = set()
+            if isinstance(marked_cols, (list, tuple, set)):
+                for value in marked_cols:
+                    try:
+                        index = int(value)
+                    except (TypeError, ValueError):
+                        continue
+                    if 0 <= index < column_count:
+                        content_cols.add(index)
+
+            for col in range(column_count):
+                if header.sectionResizeMode(col) == QHeaderView.ResizeToContents:
+                    content_cols.add(col)
+
+            if content_cols:
+                for col in sorted(content_cols):
+                    header.setSectionResizeMode(col, QHeaderView.ResizeToContents)
+                    table.resizeColumnToContents(col)
+
+            flexible_cols = [col for col in range(column_count) if col not in content_cols]
+            if not flexible_cols:
                 continue
 
             viewport_width = table.viewport().width()
@@ -2740,11 +2758,25 @@ class NordlysWindow(QMainWindow):
             if viewport_width <= 0:
                 continue
 
-            section_width = max(min_section_size, int(viewport_width / column_count))
-            for col in range(column_count):
-                mode = header.sectionResizeMode(col)
-                if mode in (QHeaderView.Stretch, QHeaderView.Interactive):
-                    header.resizeSection(col, section_width)
+            used_width = sum(header.sectionSize(col) for col in content_cols)
+            available_width = max(0, viewport_width - used_width)
+            if available_width <= 0:
+                for col in flexible_cols:
+                    current = header.sectionSize(col)
+                    target = max(current, min_section_size)
+                    header.setSectionResizeMode(col, QHeaderView.Interactive)
+                    header.resizeSection(col, target)
+                continue
+
+            base_width = max(min_section_size, int(available_width / len(flexible_cols)))
+            for idx, col in enumerate(flexible_cols):
+                if idx == len(flexible_cols) - 1:
+                    header.setSectionResizeMode(col, QHeaderView.Stretch)
+                    if header.sectionSize(col) < base_width:
+                        header.resizeSection(col, base_width)
+                else:
+                    header.setSectionResizeMode(col, QHeaderView.Interactive)
+                    header.resizeSection(col, base_width)
 
     # endregion
 
@@ -3673,6 +3705,7 @@ def _populate_table(
             table.setItem(row_idx, col_idx, item)
 
     table.resizeRowsToContents()
+    table.setProperty("contentWidthColumns", sorted(money_idx))
     window = table.window()
     schedule_hook = getattr(window, "_schedule_responsive_update", None)
     if callable(schedule_hook):
