@@ -394,6 +394,9 @@ def _create_table_widget() -> QTableWidget:
     table.verticalHeader().setVisible(False)
     table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
     table.setObjectName("cardTable")
+    delegate = _CompactRowDelegate(table)
+    table.setItemDelegate(delegate)
+    table._compact_delegate = delegate  # type: ignore[attr-defined]
     _apply_compact_row_heights(table)
     return table
 
@@ -402,7 +405,31 @@ TOP_BORDER_ROLE = Qt.UserRole + 41
 BOTTOM_BORDER_ROLE = Qt.UserRole + 42
 
 
-class _AnalysisTableDelegate(QStyledItemDelegate):
+class _CompactRowDelegate(QStyledItemDelegate):
+    """Gir tabellrader som krymper rundt innholdet."""
+
+    def sizeHint(self, option, index):  # type: ignore[override]
+        hint = super().sizeHint(option, index)
+        metrics = option.fontMetrics
+        if metrics is None:
+            return hint
+
+        text = index.data(Qt.DisplayRole)
+        if isinstance(text, str) and text:
+            lines = text.splitlines() or [""]
+            content_height = metrics.height() * len(lines)
+        else:
+            content_height = metrics.height()
+
+        desired_height = max(12, content_height + 2)
+        if hint.height() > desired_height:
+            hint.setHeight(desired_height)
+        else:
+            hint.setHeight(max(hint.height(), desired_height))
+        return hint
+
+
+class _AnalysisTableDelegate(_CompactRowDelegate):
     """Tegner egendefinerte grenser for analysene."""
 
     def paint(self, painter, option, index) -> None:  # type: ignore[override]
