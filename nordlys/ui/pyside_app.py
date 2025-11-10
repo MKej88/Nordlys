@@ -303,9 +303,24 @@ def load_saft_file(file_path: str) -> SaftLoadResult:
 
             try:
                 brreg_json = brreg_future.result()
-                brreg_map = map_brreg_metrics(brreg_json)
             except Exception as exc:  # pragma: no cover - nettverksfeil vises i GUI
                 brreg_error = str(exc)
+            else:
+                if isinstance(brreg_json, dict) and 'error' in brreg_json:
+                    error_info = brreg_json.get('error')
+                    if isinstance(error_info, dict):
+                        message = error_info.get('message')
+                        if isinstance(message, str):
+                            brreg_error = message
+                        else:
+                            brreg_error = 'Klarte ikke å hente data fra Brønnøysundregistrene.'
+                    else:
+                        brreg_error = 'Klarte ikke å hente data fra Brønnøysundregistrene.'
+                else:
+                    try:
+                        brreg_map = map_brreg_metrics(brreg_json) if brreg_json else None
+                    except Exception as exc:  # pragma: no cover - uventet format
+                        brreg_error = str(exc)
 
             try:
                 industry = industry_future.result()

@@ -9,10 +9,25 @@ from .constants import BRREG_URL_TMPL
 
 
 def fetch_brreg(orgnr: str) -> Dict[str, object]:
-    """Henter JSON-data for angitt organisasjonsnummer."""
+    """Henter JSON-data for angitt organisasjonsnummer.
+
+    Ved nettverks- eller tjenestefeil returneres en strukturert feilmelding i stedet
+    for at unntaket bobler helt ut til brukergrensesnittet.
+    """
+
     url = BRREG_URL_TMPL.format(orgnr=orgnr)
-    response = requests.get(url, headers={'Accept': 'application/json'}, timeout=20)
-    response.raise_for_status()
+    try:
+        response = requests.get(url, headers={'Accept': 'application/json'}, timeout=20)
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        return {
+            'error': {
+                'message': (
+                    'Klarte ikke å hente data fra Brønnøysundregistrene. '
+                    f'Detaljer: {exc}'
+                )
+            }
+        }
     return response.json()
 
 
@@ -48,14 +63,14 @@ def _last_key(segment_path: str) -> str:
     return ''
 
 
-def find_first_by_exact_endkey(
-    data: object,
+def _find_first_by_exact_endkey_in_numbers(
+    numbers: Sequence[Tuple[str, float]],
     prefer_keys: Sequence[str],
     disallow_contains: Optional[Iterable[str]] = None,
 ) -> Optional[Tuple[str, float]]:
-    """Returnerer første tall der slutt-nøkkelen matcher en av preferansene."""
+    """Returnerer første tall fra en forhåndsskannet liste som matcher preferanse."""
+
     disallow_contains = disallow_contains or []
-    numbers = find_numbers(data)
     for key in prefer_keys:
         for path, value in numbers:
             last_key = _last_key(path).lower()
@@ -68,24 +83,47 @@ def find_first_by_exact_endkey(
     return None
 
 
+def find_first_by_exact_endkey(
+    data: object,
+    prefer_keys: Sequence[str],
+    disallow_contains: Optional[Iterable[str]] = None,
+) -> Optional[Tuple[str, float]]:
+    """Returnerer første tall der slutt-nøkkelen matcher en av preferansene."""
+
+    numbers = find_numbers(data)
+    return _find_first_by_exact_endkey_in_numbers(numbers, prefer_keys, disallow_contains)
+
+
 def map_brreg_metrics(json_obj: Dict[str, object]) -> Dict[str, Optional[float]]:
     """Mapper regnskapsverdier til kjente nøkkeltall."""
+    metric_keys = [
+        'eiendeler_UB',
+        'egenkapital_UB',
+        'gjeld_UB',
+        'driftsinntekter',
+        'ebit',
+        'arsresultat',
+    ]
+    if not isinstance(json_obj, dict) or 'error' in json_obj:
+        return {key: None for key in metric_keys}
+
+    numbers = find_numbers(json_obj)
     mapped: Dict[str, Optional[float]] = {}
-    hit_eiendeler = find_first_by_exact_endkey(json_obj, ['sumEiendeler'])
+    hit_eiendeler = _find_first_by_exact_endkey_in_numbers(numbers, ['sumEiendeler'])
     if not hit_eiendeler:
-        hit_eiendeler = find_first_by_exact_endkey(json_obj, ['sumEgenkapitalOgGjeld'])
+        hit_eiendeler = _find_first_by_exact_endkey_in_numbers(numbers, ['sumEgenkapitalOgGjeld'])
     mapped['eiendeler_UB'] = hit_eiendeler[1] if hit_eiendeler else None
 
-    hit_ek = find_first_by_exact_endkey(
-        json_obj,
+    hit_ek = _find_first_by_exact_endkey_in_numbers(
+        numbers,
         ['sumEgenkapital'],
         disallow_contains=['EgenkapitalOgGjeld', 'egenkapitalOgGjeld'],
     )
     if not hit_ek:
-        hit_ek = find_first_by_exact_endkey(json_obj, ['sumEgenkapital'])
+        hit_ek = _find_first_by_exact_endkey_in_numbers(numbers, ['sumEgenkapital'])
     mapped['egenkapital_UB'] = hit_ek[1] if hit_ek else None
 
-    hit_gjeld = find_first_by_exact_endkey(json_obj, ['sumGjeld'])
+    hit_gjeld = _find_first_by_exact_endkey_in_numbers(numbers, ['sumGjeld'])
     mapped['gjeld_UB'] = hit_gjeld[1] if hit_gjeld else None
 
     for key, hints in [
@@ -93,7 +131,7 @@ def map_brreg_metrics(json_obj: Dict[str, object]) -> Dict[str, Optional[float]]
         ('ebit', ['driftsresultat', 'ebit', 'driftsresultatFoerFinans']),
         ('arsresultat', ['arsresultat', 'resultat', 'resultatEtterSkatt']),
     ]:
-        hit = find_first_by_exact_endkey(json_obj, hints)
+        hit = _find_first_by_exact_endkey_in_numbers(numbers, hints)
         mapped[key] = hit[1] if hit else None
     return mapped
 
