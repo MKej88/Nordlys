@@ -394,6 +394,7 @@ def _create_table_widget() -> QTableWidget:
     table.verticalHeader().setVisible(False)
     table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
     table.setObjectName("cardTable")
+    _apply_compact_row_heights(table)
     return table
 
 
@@ -972,7 +973,7 @@ class RegnskapsanalysePage(QWidget):
         balance_layout.addWidget(self.balance_info)
         self.balance_table = _create_table_widget()
         self.balance_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self._configure_analysis_table(self.balance_table, font_point_size=8, row_height=18)
+        self._configure_analysis_table(self.balance_table, font_point_size=8)
         balance_layout.addWidget(self.balance_table, 1)
         self.balance_table.hide()
 
@@ -993,7 +994,7 @@ class RegnskapsanalysePage(QWidget):
         result_layout.addWidget(self.result_info)
         self.result_table = _create_table_widget()
         self.result_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
-        self._configure_analysis_table(self.result_table, font_point_size=8, row_height=18)
+        self._configure_analysis_table(self.result_table, font_point_size=8)
         result_layout.addWidget(self.result_table)
         result_layout.setAlignment(self.result_table, Qt.AlignTop)
         result_layout.addStretch(1)
@@ -1108,7 +1109,6 @@ class RegnskapsanalysePage(QWidget):
         table: QTableWidget,
         *,
         font_point_size: int,
-        row_height: int,
     ) -> None:
         font = table.font()
         font.setPointSize(font_point_size)
@@ -1123,9 +1123,8 @@ class RegnskapsanalysePage(QWidget):
         table.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
-        table.verticalHeader().setDefaultSectionSize(row_height)
-        table.verticalHeader().setMinimumSectionSize(row_height)
         table.setStyleSheet("QTableWidget::item { padding: 0px 6px; }")
+        _apply_compact_row_heights(table)
 
     def _lock_analysis_column_widths(self, table: QTableWidget) -> None:
         header = table.horizontalHeader()
@@ -3627,6 +3626,32 @@ class NordlysWindow(QMainWindow):
     # endregion
 
 
+def _compact_row_base_height(table: QTableWidget) -> int:
+    metrics = table.fontMetrics()
+    base_height = metrics.height() if metrics is not None else 0
+    # Litt ekstra klaring for å hindre at tekst klippes i høyden.
+    return max(12, base_height + 1)
+
+
+def _apply_compact_row_heights(table: QTableWidget) -> None:
+    header = table.verticalHeader()
+    if header is None:
+        return
+    minimum_height = _compact_row_base_height(table)
+    header.setMinimumSectionSize(minimum_height)
+    header.setDefaultSectionSize(minimum_height)
+
+    if table.rowCount() == 0:
+        return
+
+    table.resizeRowsToContents()
+    for row in range(table.rowCount()):
+        hint = table.sizeHintForRow(row)
+        if hint <= 0:
+            hint = minimum_height
+        table.setRowHeight(row, max(minimum_height, hint))
+
+
 def _populate_table(
     table: QTableWidget,
     columns: Sequence[str],
@@ -3654,9 +3679,9 @@ def _populate_table(
                 item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
             table.setItem(row_idx, col_idx, item)
 
-    table.resizeRowsToContents()
     table.resizeColumnsToContents()
     table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+    _apply_compact_row_heights(table)
     window = table.window()
     schedule_hook = getattr(window, "_schedule_responsive_update", None)
     if callable(schedule_hook):
