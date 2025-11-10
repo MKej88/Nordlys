@@ -9,7 +9,7 @@ import random
 from datetime import date, datetime
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple, TYPE_CHECKING, cast
+from typing import Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple, TYPE_CHECKING, cast
 from PySide6.QtCore import QObject, Qt, QThread, Signal, Slot, QTimer
 from PySide6.QtGui import QBrush, QColor, QFont, QIcon, QTextCursor, QPen
 from PySide6.QtWidgets import (
@@ -392,7 +392,12 @@ def _create_table_widget() -> QTableWidget:
     table.setFocusPolicy(Qt.NoFocus)
     table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
     table.verticalHeader().setVisible(False)
+    table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
     table.setObjectName("cardTable")
+    delegate = _CompactRowDelegate(table)
+    table.setItemDelegate(delegate)
+    table._compact_delegate = delegate  # type: ignore[attr-defined]
+    _apply_compact_row_heights(table)
     return table
 
 
@@ -400,7 +405,31 @@ TOP_BORDER_ROLE = Qt.UserRole + 41
 BOTTOM_BORDER_ROLE = Qt.UserRole + 42
 
 
-class _AnalysisTableDelegate(QStyledItemDelegate):
+class _CompactRowDelegate(QStyledItemDelegate):
+    """Gir tabellrader som krymper rundt innholdet."""
+
+    def sizeHint(self, option, index):  # type: ignore[override]
+        hint = super().sizeHint(option, index)
+        metrics = option.fontMetrics
+        if metrics is None:
+            return hint
+
+        text = index.data(Qt.DisplayRole)
+        if isinstance(text, str) and text:
+            lines = text.splitlines() or [""]
+            content_height = metrics.height() * len(lines)
+        else:
+            content_height = metrics.height()
+
+        desired_height = max(12, content_height + 2)
+        if hint.height() > desired_height:
+            hint.setHeight(desired_height)
+        else:
+            hint.setHeight(max(hint.height(), desired_height))
+        return hint
+
+
+class _AnalysisTableDelegate(_CompactRowDelegate):
     """Tegner egendefinerte grenser for analysene."""
 
     def paint(self, painter, option, index) -> None:  # type: ignore[override]
@@ -756,7 +785,7 @@ class DataFramePage(QWidget):
         *,
         frame_builder: Optional[Callable[[pd.DataFrame], pd.DataFrame]] = None,
         money_columns: Optional[Sequence[str]] = None,
-        header_mode: QHeaderView.ResizeMode = QHeaderView.Stretch,
+        header_mode: QHeaderView.ResizeMode = QHeaderView.ResizeToContents,
         full_window: bool = False,
     ) -> None:
         super().__init__()
@@ -971,7 +1000,7 @@ class RegnskapsanalysePage(QWidget):
         balance_layout.addWidget(self.balance_info)
         self.balance_table = _create_table_widget()
         self.balance_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self._configure_analysis_table(self.balance_table, font_point_size=8, row_height=18)
+        self._configure_analysis_table(self.balance_table, font_point_size=8)
         balance_layout.addWidget(self.balance_table, 1)
         self.balance_table.hide()
 
@@ -992,7 +1021,7 @@ class RegnskapsanalysePage(QWidget):
         result_layout.addWidget(self.result_info)
         self.result_table = _create_table_widget()
         self.result_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
-        self._configure_analysis_table(self.result_table, font_point_size=8, row_height=18)
+        self._configure_analysis_table(self.result_table, font_point_size=8)
         result_layout.addWidget(self.result_table)
         result_layout.setAlignment(self.result_table, Qt.AlignTop)
         result_layout.addStretch(1)
@@ -1107,7 +1136,6 @@ class RegnskapsanalysePage(QWidget):
         table: QTableWidget,
         *,
         font_point_size: int,
-        row_height: int,
     ) -> None:
         font = table.font()
         font.setPointSize(font_point_size)
@@ -1121,24 +1149,18 @@ class RegnskapsanalysePage(QWidget):
         header.setMinimumSectionSize(70)
         table.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        table.verticalHeader().setSectionResizeMode(QHeaderView.Fixed)
-        table.verticalHeader().setDefaultSectionSize(row_height)
-        table.setStyleSheet("QTableWidget::item { padding: 2px 6px; }")
+        table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        table.setStyleSheet("QTableWidget::item { padding: 0px 6px; }")
+        _apply_compact_row_heights(table)
 
     def _lock_analysis_column_widths(self, table: QTableWidget) -> None:
         header = table.horizontalHeader()
         column_count = table.columnCount()
         if column_count == 0:
             return
-        widths: List[int] = []
         for col in range(column_count):
             header.setSectionResizeMode(col, QHeaderView.ResizeToContents)
         table.resizeColumnsToContents()
-        for col in range(column_count):
-            widths.append(header.sectionSize(col))
-        for col, width in enumerate(widths):
-            header.setSectionResizeMode(col, QHeaderView.Interactive)
-            header.resizeSection(col, width)
 
     def _schedule_table_height_adjustment(self, table: QTableWidget) -> None:
         QTimer.singleShot(0, lambda tbl=table: self._set_analysis_table_height(tbl))
@@ -1557,10 +1579,10 @@ class CostVoucherReviewPage(QWidget):
             self.table_lines.setItem(row, 2, vat_item)
             self.table_lines.setItem(row, 3, QTableWidgetItem(line.description or ""))
             debit_item = QTableWidgetItem(self._format_amount(line.debit))
-            debit_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            debit_item.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
             self.table_lines.setItem(row, 4, debit_item)
             credit_item = QTableWidgetItem(self._format_amount(line.credit))
-            credit_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            credit_item.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
             self.table_lines.setItem(row, 5, credit_item)
 
         self.table_lines.resizeRowsToContents()
@@ -1700,7 +1722,7 @@ class CostVoucherReviewPage(QWidget):
                 supplier_text = f"{voucher.supplier_name} ({voucher.supplier_id})"
             self.summary_table.setItem(row, 2, QTableWidgetItem(supplier_text))
             amount_item = QTableWidgetItem(self._format_amount(voucher.amount))
-            amount_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            amount_item.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
             self.summary_table.setItem(row, 3, amount_item)
             result = self._results[row] if row < len(self._results) else None
             status_text = result.status if result else "Ikke vurdert"
@@ -2206,10 +2228,17 @@ class NordlysWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle(APP_TITLE)
-        self.resize(1460, 940)
+        screen = QApplication.primaryScreen()
+        if screen is not None:
+            available = screen.availableGeometry()
+            width = max(1100, int(available.width() * 0.82))
+            height = max(720, int(available.height() * 0.82))
+            self.resize(width, height)
+        else:
+            self.resize(1460, 940)
         # Sikrer at hovedvinduet kan maksimeres uten Qt-advarsler selv om enkelte
         # underliggende widgets har begrensende størrelseshint.
-        self.setMinimumSize(1100, 720)
+        self.setMinimumSize(1024, 680)
         self.setMaximumSize(16777215, 16777215)
 
         self._saft_df: Optional[pd.DataFrame] = None
@@ -2256,6 +2285,9 @@ class NordlysWindow(QMainWindow):
         self.cost_review_page: Optional['CostVoucherReviewPage'] = None
         self.regnskap_page: Optional['RegnskapsanalysePage'] = None
         self._navigation_initialized = False
+        self._content_layout: Optional[QVBoxLayout] = None
+        self._responsive_update_pending = False
+        self._layout_mode: Optional[str] = None
 
         self._setup_ui()
         self._apply_styles()
@@ -2277,6 +2309,7 @@ class NordlysWindow(QMainWindow):
         content_layout.setContentsMargins(32, 32, 32, 32)
         content_layout.setSpacing(24)
         root_layout.addWidget(content_wrapper, 1)
+        self._content_layout = content_layout
 
         header_layout = QHBoxLayout()
         header_layout.setSpacing(16)
@@ -2319,6 +2352,7 @@ class NordlysWindow(QMainWindow):
 
         self.stack = QStackedWidget()
         content_layout.addWidget(self.stack, 1)
+        self.stack.currentChanged.connect(lambda _: self._schedule_responsive_update())
 
         self._create_pages()
 
@@ -2499,6 +2533,7 @@ class NordlysWindow(QMainWindow):
             widget.set_vouchers(self._cost_vouchers)
         elif key in REVISION_TASKS and isinstance(widget, ChecklistPage):
             widget.set_items(REVISION_TASKS.get(key, []))
+        self._schedule_responsive_update()
 
     def _build_dashboard_page(self) -> 'DashboardPage':
         return DashboardPage()
@@ -2600,7 +2635,7 @@ class NordlysWindow(QMainWindow):
             #infoLabel { color: #475569; font-size: 14px; }
             #cardTable { border: none; gridline-color: rgba(148, 163, 184, 0.35); background-color: transparent; alternate-background-color: #f8fafc; }
             QTableWidget { background-color: transparent; alternate-background-color: #f8fafc; }
-            QTableWidget::item { padding: 10px 8px; }
+            QTableWidget::item { padding: 1px 8px; }
             QTableWidget::item:selected { background-color: rgba(37, 99, 235, 0.22); color: #0f172a; }
             QHeaderView::section { background-color: transparent; border: none; font-weight: 600; color: #1f2937; padding: 10px 6px; }
             QHeaderView::section:horizontal { border-bottom: 1px solid rgba(148, 163, 184, 0.45); }
@@ -2621,6 +2656,103 @@ class NordlysWindow(QMainWindow):
             QToolTip { background-color: #0f172a; color: #f8fafc; border: none; padding: 8px 10px; border-radius: 8px; }
             """
         )
+
+    def showEvent(self, event) -> None:  # type: ignore[override]
+        super().showEvent(event)
+        self._schedule_responsive_update()
+
+    def resizeEvent(self, event) -> None:  # type: ignore[override]
+        super().resizeEvent(event)
+        self._schedule_responsive_update()
+
+    def _schedule_responsive_update(self) -> None:
+        if self._responsive_update_pending:
+            return
+        self._responsive_update_pending = True
+        QTimer.singleShot(0, self._run_responsive_update)
+
+    def _run_responsive_update(self) -> None:
+        self._responsive_update_pending = False
+        self._update_responsive_layout()
+
+    def _update_responsive_layout(self) -> None:
+        if self._content_layout is None:
+            return
+        available_width = self.centralWidget().width() if self.centralWidget() else self.width()
+        width = max(self.width(), available_width)
+        if width <= 0:
+            return
+
+        if width < 1400:
+            mode = "compact"
+            nav_width = 210
+            margin = 16
+            spacing = 16
+            card_margin = 18
+            card_spacing = 12
+            nav_spacing = 18
+            header_min = 80
+        elif width < 2000:
+            mode = "medium"
+            nav_width = 250
+            margin = 28
+            spacing = 22
+            card_margin = 24
+            card_spacing = 14
+            nav_spacing = 22
+            header_min = 100
+        else:
+            mode = "wide"
+            nav_width = 300
+            margin = 36
+            spacing = 28
+            card_margin = 28
+            card_spacing = 16
+            nav_spacing = 24
+            header_min = 120
+
+        self._layout_mode = mode
+        self.nav_panel.setMinimumWidth(nav_width)
+        self.nav_panel.setMaximumWidth(nav_width)
+        self._content_layout.setContentsMargins(margin, margin, margin, margin)
+        self._content_layout.setSpacing(spacing)
+
+        nav_layout = self.nav_panel.layout()
+        if isinstance(nav_layout, QVBoxLayout):
+            nav_padding = max(12, margin - 4)
+            nav_layout.setContentsMargins(nav_padding, margin, nav_padding, margin)
+            nav_layout.setSpacing(nav_spacing)
+
+        for card in self.findChildren(CardFrame):
+            layout = card.layout()
+            if isinstance(layout, QVBoxLayout):
+                layout.setContentsMargins(card_margin, card_margin, card_margin, card_margin)
+                layout.setSpacing(max(card_spacing, 10))
+            body_layout = getattr(card, "body_layout", None)
+            if isinstance(body_layout, QVBoxLayout):
+                body_layout.setSpacing(max(card_spacing - 4, 8))
+
+        self._apply_table_sizing(header_min)
+
+    def _apply_table_sizing(self, min_section_size: int) -> None:
+        tables = self.findChildren(QTableWidget)
+        if not tables:
+            return
+
+        for table in tables:
+            header = table.horizontalHeader()
+            if header is None:
+                continue
+            column_count = header.count()
+            if column_count <= 0:
+                continue
+
+            header.setStretchLastSection(False)
+            header.setMinimumSectionSize(min_section_size)
+
+            for col in range(column_count):
+                header.setSectionResizeMode(col, QHeaderView.ResizeToContents)
+            table.resizeColumnsToContents()
 
     # endregion
 
@@ -3505,6 +3637,7 @@ class NordlysWindow(QMainWindow):
         self.title_label.setText(current.text(0))
         if hasattr(self, "info_card"):
             self.info_card.setVisible(key in {"dashboard", "import"})
+        self._schedule_responsive_update()
 
     # endregion
 
@@ -3518,6 +3651,32 @@ class NordlysWindow(QMainWindow):
         self.lbl_period.setText(f"Periode: {per}")
 
     # endregion
+
+
+def _compact_row_base_height(table: QTableWidget) -> int:
+    metrics = table.fontMetrics()
+    base_height = metrics.height() if metrics is not None else 0
+    # Litt ekstra klaring for å hindre at tekst klippes i høyden.
+    return max(12, base_height + 1)
+
+
+def _apply_compact_row_heights(table: QTableWidget) -> None:
+    header = table.verticalHeader()
+    if header is None:
+        return
+    minimum_height = _compact_row_base_height(table)
+    header.setMinimumSectionSize(minimum_height)
+    header.setDefaultSectionSize(minimum_height)
+
+    if table.rowCount() == 0:
+        return
+
+    table.resizeRowsToContents()
+    for row in range(table.rowCount()):
+        hint = table.sizeHintForRow(row)
+        if hint <= 0:
+            hint = minimum_height
+        table.setRowHeight(row, max(minimum_height, hint))
 
 
 def _populate_table(
@@ -3541,13 +3700,19 @@ def _populate_table(
                 item.setData(Qt.UserRole, float(value))
             else:
                 item.setData(Qt.UserRole, None)
-            if col_idx in money_idx:
-                item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            if col_idx in money_idx or isinstance(value, (int, float)):
+                item.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
             else:
                 item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
             table.setItem(row_idx, col_idx, item)
 
-    table.resizeRowsToContents()
+    table.resizeColumnsToContents()
+    table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+    _apply_compact_row_heights(table)
+    window = table.window()
+    schedule_hook = getattr(window, "_schedule_responsive_update", None)
+    if callable(schedule_hook):
+        schedule_hook()
 
 
 def _format_value(value: object, money: bool) -> str:
