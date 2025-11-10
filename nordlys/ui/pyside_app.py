@@ -2613,7 +2613,7 @@ class NordlysWindow(QMainWindow):
             #infoLabel { color: #475569; font-size: 14px; }
             #cardTable { border: none; gridline-color: rgba(148, 163, 184, 0.35); background-color: transparent; alternate-background-color: #f8fafc; }
             QTableWidget { background-color: transparent; alternate-background-color: #f8fafc; }
-            QTableWidget::item { padding: 10px 8px; }
+            QTableWidget::item { padding: 4px 8px; }
             QTableWidget::item:selected { background-color: rgba(37, 99, 235, 0.22); color: #0f172a; }
             QHeaderView::section { background-color: transparent; border: none; font-weight: 600; color: #1f2937; padding: 10px 6px; }
             QHeaderView::section:horizontal { border-bottom: 1px solid rgba(148, 163, 184, 0.45); }
