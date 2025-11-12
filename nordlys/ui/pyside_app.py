@@ -1296,7 +1296,7 @@ class SammenstillingsanalysePage(QWidget):
             "Sammenligning av kostnadskonti",
             "Viser endringene mellom inneværende år og fjoråret for konti 4xxx–8xxx.",
         )
-        self.cost_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
+        self.cost_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         self.cost_info = QLabel(
             "Importer en SAF-T saldobalanse for å analysere kostnadskonti."
@@ -1377,8 +1377,7 @@ class SammenstillingsanalysePage(QWidget):
         self.cost_table.hide()
         self.cost_card.add_widget(self.cost_table)
 
-        layout.addWidget(self.cost_card)
-        layout.addStretch(1)
+        layout.addWidget(self.cost_card, 1)
 
         self._prepared_df: Optional[pd.DataFrame] = None
         self._fiscal_year: Optional[str] = None
