@@ -1324,6 +1324,31 @@ class SammenstillingsanalysePage(QWidget):
 
         self.cost_table = _create_table_widget()
         self.cost_table.setColumnCount(7)
+        self.cost_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.cost_table.setMinimumHeight(360)
+        self.cost_table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+        self.cost_table.verticalScrollBar().setStyleSheet(
+            "QScrollBar:vertical {"
+            " background: #E2E8F0;"
+            " width: 18px;"
+            " margin: 6px 4px;"
+            " border-radius: 9px;"
+            "}"
+            "QScrollBar::handle:vertical {"
+            " background: #1D4ED8;"
+            " border-radius: 9px;"
+            " min-height: 32px;"
+            "}"
+            "QScrollBar::handle:vertical:hover {"
+            " background: #1E3A8A;"
+            "}"
+            "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {"
+            " height: 0;"
+            "}"
+            "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {"
+            " background: transparent;"
+            "}"
+        )
         self.cost_table.setHorizontalHeaderLabels(
             [
                 "Konto",
@@ -1385,7 +1410,6 @@ class SammenstillingsanalysePage(QWidget):
         self.cost_info.setText("Importer en SAF-T saldobalanse for å analysere kostnadskonti.")
         self.cost_info.show()
         self._cost_highlight_widget.hide()
-        self._reset_table_height(self.cost_table)
         with SignalBlocker(self.cost_threshold):
             self.cost_threshold.setValue(0.0)
 
@@ -1406,7 +1430,6 @@ class SammenstillingsanalysePage(QWidget):
             )
             self.cost_info.show()
             self._cost_highlight_widget.hide()
-            self._reset_table_height(self.cost_table)
             return
 
         cost_df.sort_values(
@@ -1498,7 +1521,7 @@ class SammenstillingsanalysePage(QWidget):
         self.cost_table.show()
         self._cost_highlight_widget.show()
         self._apply_cost_highlighting()
-        self._schedule_table_height_adjustment(self.cost_table)
+        self.cost_table.scrollToTop()
 
     @staticmethod
     def _format_percent(value: Optional[float]) -> str:
@@ -1553,33 +1576,6 @@ class SammenstillingsanalysePage(QWidget):
         else:
             self._cost_comments.pop(str(key), None)
 
-    def _schedule_table_height_adjustment(self, table: QTableWidget) -> None:
-        QTimer.singleShot(0, lambda tbl=table: self._set_table_height(tbl))
-
-    def _set_table_height(self, table: QTableWidget) -> None:
-        if table.rowCount() == 0:
-            self._reset_table_height(table)
-            return
-        table.resizeRowsToContents()
-        header_height = table.horizontalHeader().height()
-        rows_height = sum(table.rowHeight(row) for row in range(table.rowCount()))
-        if rows_height <= 0:
-            rows_height = sum(table.sizeHintForRow(row) for row in range(table.rowCount()))
-        if rows_height <= 0:
-            default_row = table.verticalHeader().defaultSectionSize() or 18
-            rows_height = default_row * table.rowCount()
-        grid_extra = max(0, table.rowCount() - 1)
-        rows_height += grid_extra
-        buffer = max(16, table.verticalHeader().defaultSectionSize() // 2)
-        frame = table.frameWidth() * 2
-        margins = table.contentsMargins()
-        total = header_height + rows_height + buffer + frame + margins.top() + margins.bottom()
-        table.setMinimumHeight(total)
-        table.setMaximumHeight(total)
-
-    def _reset_table_height(self, table: QTableWidget) -> None:
-        table.setMinimumHeight(0)
-        table.setMaximumHeight(QWIDGETSIZE_MAX)
 
 class SignalBlocker:
     """Hjelpeklasse som midlertidig skrur av signaler for en QObject."""
