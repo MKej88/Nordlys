@@ -3285,10 +3285,18 @@ class NordlysWindow(QMainWindow):
             self.brreg_page.update_mapping(None)
             self.brreg_page.update_json(None)
 
-        if result.brreg_json is None:
+        error_text: Optional[str] = None
+        if result.brreg_error:
+            error_text = str(result.brreg_error).strip()
+        elif isinstance(result.brreg_json, dict) and "error" in result.brreg_json:
+            error_info = result.brreg_json.get("error")
+            if isinstance(error_info, dict):
+                message = error_info.get("message")
+                if isinstance(message, str):
+                    error_text = message.strip()
+        if result.brreg_json is None or error_text:
             self._update_comparison_tables(None)
-            if result.brreg_error:
-                error_text = str(result.brreg_error).strip()
+            if error_text:
                 if "\n" in error_text:
                     error_text = error_text.splitlines()[0]
                 message = f"Regnskapsregister: import feilet ({error_text})."
