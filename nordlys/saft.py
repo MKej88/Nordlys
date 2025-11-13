@@ -43,6 +43,9 @@ class XMLSchemaException(Exception):
 XMLSchema = None  # type: ignore[assignment]
 
 
+_SCHEMA_CACHE: Dict[Path, object] = {}
+
+
 def _ensure_xmlschema_loaded() -> bool:
     """Prøver å importere ``xmlschema`` først når det trengs.
 
@@ -69,6 +72,23 @@ def _ensure_xmlschema_loaded() -> bool:
     XMLSchema = xmlschema_module.XMLSchema  # type: ignore[attr-defined,assignment]
     XMLSchemaException = xmlschema_module.XMLSchemaException  # type: ignore[attr-defined]
     return True
+
+
+def _get_compiled_schema(schema_path: Path) -> object:
+    """Returnerer en ferdig kompilert XMLSchema-instans med caching."""
+
+    try:
+        cache_key = schema_path.resolve()
+    except OSError:
+        cache_key = schema_path
+
+    cached = _SCHEMA_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
+    schema = XMLSchema(str(schema_path))  # type: ignore[call-arg]
+    _SCHEMA_CACHE[cache_key] = schema
+    return schema
 
 
 @dataclass
@@ -188,7 +208,7 @@ def validate_saft_against_xsd(xml_source: Path | str, version: Optional[str] = N
         )
 
     try:
-        schema = XMLSchema(schema_path)
+        schema = _get_compiled_schema(schema_path)
         schema.validate(str(xml_path))
         return SaftValidationResult(
             audit_file_version=audit_version,

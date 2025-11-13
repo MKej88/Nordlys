@@ -209,6 +209,49 @@ def test_validate_saft_handles_missing_file(tmp_path):
     assert result.details is not None and result.details.strip() != ''
 
 
+def test_validate_saft_reuses_compiled_schema(monkeypatch, tmp_path):
+    xml = """
+    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <Header>
+        <AuditFileVersion>1.30</AuditFileVersion>
+      </Header>
+    </AuditFile>
+    """
+    xml_path = tmp_path / 'auditfile.xml'
+    xml_path.write_text(xml, encoding='utf-8')
+
+    schema_path = tmp_path / 'schema.xsd'
+    schema_path.write_text('<schema />', encoding='utf-8')
+
+    import nordlys.saft as saft
+
+    saft._SCHEMA_CACHE.clear()
+
+    creation_count = 0
+
+    class DummySchema:
+        def __init__(self, path: object) -> None:
+            nonlocal creation_count
+            creation_count += 1
+
+        def validate(self, _: str) -> None:
+            return None
+
+    monkeypatch.setattr(saft, '_ensure_xmlschema_loaded', lambda: True)
+    monkeypatch.setattr(saft, 'XMLSCHEMA_AVAILABLE', True, raising=False)
+    monkeypatch.setattr(saft, 'XMLSchema', lambda path: DummySchema(path))
+    monkeypatch.setattr(saft, 'XMLSchemaException', Exception)
+    monkeypatch.setattr(saft, '_schema_info_for_family', lambda family: (schema_path, 'dummy'))
+    monkeypatch.setattr(saft, '_extract_version_from_file', lambda path: '1.30')
+
+    first = validate_saft_against_xsd(xml_path)
+    second = validate_saft_against_xsd(xml_path)
+
+    assert creation_count == 1
+    assert first.is_valid is True
+    assert second.is_valid is True
+
+
 def test_get_amount_handles_nested_amount():
     line_xml = """
     <Line xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
