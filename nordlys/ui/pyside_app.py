@@ -154,6 +154,9 @@ NAV_ICON_FILENAMES: Dict[str, str] = {
 _ICON_CACHE: Dict[str, Optional[QIcon]] = {}
 
 
+PRIMARY_UI_FONT_FAMILY = "Roboto"
+
+
 def _icon_for_navigation(key: str) -> Optional[QIcon]:
     """Returnerer ikon for navigasjonsnøkkelen dersom tilgjengelig."""
 
@@ -2476,6 +2479,9 @@ class NavigationPanel(QFrame):
 
         self.logo_label = QLabel("Nordlys")
         self.logo_label.setObjectName("logoLabel")
+        logo_font = self.logo_label.font()
+        logo_font.setFamily(PRIMARY_UI_FONT_FAMILY)
+        self.logo_label.setFont(logo_font)
         layout.addWidget(self.logo_label)
 
         self.tree = QTreeWidget()
@@ -2496,6 +2502,7 @@ class NavigationPanel(QFrame):
         if key:
             item.setData(0, Qt.UserRole, key)
             font = item.font(0)
+            font.setFamily(PRIMARY_UI_FONT_FAMILY)
             font.setPointSize(font.pointSize() + 1)
             font.setWeight(QFont.DemiBold)
             item.setFont(0, font)
@@ -2505,6 +2512,7 @@ class NavigationPanel(QFrame):
                 item.setIcon(0, icon)
         else:
             font = item.font(0)
+            font.setFamily(PRIMARY_UI_FONT_FAMILY)
             font.setPointSize(max(font.pointSize() - 1, 9))
             font.setWeight(QFont.DemiBold)
             font.setCapitalization(QFont.AllUppercase)
@@ -2525,6 +2533,7 @@ class NavigationPanel(QFrame):
         item = QTreeWidgetItem([title])
         item.setData(0, Qt.UserRole, key)
         font = item.font(0)
+        font.setFamily(PRIMARY_UI_FONT_FAMILY)
         font.setWeight(QFont.Medium)
         item.setFont(0, font)
         item.setForeground(0, QBrush(QColor("#e2e8f0")))
@@ -2911,8 +2920,8 @@ class NordlysWindow(QMainWindow):
     def _apply_styles(self) -> None:
         self.setStyleSheet(
             """
-            QWidget { font-family: 'Inter', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; font-size: 14px; color: #0f172a; }
-            QMainWindow { background-color: #edf1f7; }
+            QWidget { font-family: 'Roboto', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; font-size: 14px; color: #0f172a; }
+            QMainWindow { background-color: #e9effb; }
             #navPanel { background-color: #0b1120; color: #e2e8f0; border-right: 1px solid rgba(148, 163, 184, 0.18); }
             #logoLabel { font-size: 26px; font-weight: 700; letter-spacing: 0.6px; color: #f8fafc; }
             #navTree { background: transparent; border: none; color: #dbeafe; font-size: 14px; }
@@ -2921,7 +2930,7 @@ class NordlysWindow(QMainWindow):
             #navTree::item { height: 34px; padding: 6px 10px; border-radius: 10px; margin: 2px 0; }
             #navTree::item:selected { background-color: rgba(59, 130, 246, 0.35); color: #f8fafc; font-weight: 600; }
             #navTree::item:hover { background-color: rgba(59, 130, 246, 0.18); }
-            QPushButton { background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 #2563eb, stop:1 #1d4ed8); color: white; border-radius: 10px; padding: 10px 20px; font-weight: 600; letter-spacing: 0.2px; }
+            QPushButton { background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 #2563eb, stop:1 #1d4ed8); color: #f8fafc; border-radius: 10px; padding: 10px 20px; font-weight: 600; letter-spacing: 0.2px; }
             QPushButton:focus { outline: none; }
             QPushButton:disabled { background-color: #94a3b8; color: #e5e7eb; }
             QPushButton:hover:!disabled { background-color: #1e40af; }
@@ -2938,12 +2947,13 @@ class NordlysWindow(QMainWindow):
             QPushButton#exportPdfButton { background-color: #f97316; }
             QPushButton#exportPdfButton:hover:!disabled { background-color: #ea580c; }
             QPushButton#exportPdfButton:pressed { background-color: #c2410c; }
-            #card { background-color: #ffffff; border-radius: 18px; border: 1px solid rgba(148, 163, 184, 0.28); }
-            #cardTitle { font-size: 20px; font-weight: 600; color: #0f172a; letter-spacing: 0.2px; }
-            #cardSubtitle { color: #64748b; font-size: 13px; line-height: 1.4; }
-            #analysisSectionTitle { font-size: 16px; font-weight: 600; color: #0f172a; letter-spacing: 0.2px; }
-            #pageTitle { font-size: 28px; font-weight: 700; color: #020617; letter-spacing: 0.4px; }
-            #statusLabel { color: #1f2937; font-size: 14px; line-height: 1.5; }
+            #card { background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 #ffffff, stop:1 #f8fbff); border-radius: 20px; border: 1px solid rgba(148, 163, 184, 0.32); }
+            #cardTitle { font-size: 20px; font-weight: 700; color: #0f172a; letter-spacing: 0.2px; }
+            #cardSubtitle { color: #475569; font-size: 13px; line-height: 1.5; }
+            #analysisSectionTitle { font-size: 16px; font-weight: 700; color: #0f172a; letter-spacing: 0.2px; border-bottom: 2px solid rgba(37, 99, 235, 0.35); padding-bottom: 6px; }
+            #pageTitle { font-size: 30px; font-weight: 800; color: #0f172a; letter-spacing: 0.6px; }
+            QLabel#pageSubtitle { color: #1e293b; font-size: 15px; }
+            #statusLabel { color: #1f2937; font-size: 14px; line-height: 1.6; }
             QLabel[statusState='approved'] { color: #166534; font-weight: 600; }
             QLabel[statusState='rejected'] { color: #b91c1c; font-weight: 600; }
             QLabel[statusState='pending'] { color: #64748b; font-weight: 500; }
@@ -2952,23 +2962,39 @@ class NordlysWindow(QMainWindow):
             QTableWidget { background-color: transparent; alternate-background-color: #f8fafc; }
             QTableWidget::item { padding: 1px 8px; }
             QTableWidget::item:selected { background-color: rgba(37, 99, 235, 0.22); color: #0f172a; }
-            QHeaderView::section { background-color: transparent; border: none; font-weight: 600; color: #1f2937; padding: 10px 6px; }
-            QHeaderView::section:horizontal { border-bottom: 1px solid rgba(148, 163, 184, 0.45); }
+            QHeaderView::section { background-color: rgba(148, 163, 184, 0.12); border: none; font-weight: 700; color: #0f172a; padding: 10px 6px; text-transform: uppercase; letter-spacing: 0.8px; }
+            QHeaderView::section:horizontal { border-bottom: 2px solid rgba(37, 99, 235, 0.35); }
             QListWidget#checklist { border: none; }
-            QListWidget#checklist::item { padding: 12px 14px; margin: 4px 0; border-radius: 10px; }
-            QListWidget#checklist::item:selected { background-color: rgba(37, 99, 235, 0.16); color: #0f172a; font-weight: 600; }
-            QListWidget#checklist::item:hover { background-color: rgba(15, 23, 42, 0.05); }
+            QListWidget#checklist::item { padding: 12px 16px; margin: 6px 0; border-radius: 12px; }
+            QListWidget#checklist::item:selected { background-color: rgba(37, 99, 235, 0.18); color: #0f172a; font-weight: 600; }
+            QListWidget#checklist::item:hover { background-color: rgba(15, 23, 42, 0.08); }
             #statBadge { background-color: #f8fafc; border: 1px solid rgba(148, 163, 184, 0.35); border-radius: 16px; }
             #statTitle { font-size: 12px; font-weight: 600; color: #475569; text-transform: uppercase; letter-spacing: 1.2px; }
             #statValue { font-size: 26px; font-weight: 700; color: #0f172a; }
             #statDescription { font-size: 12px; color: #64748b; }
             QStatusBar { background: transparent; color: #475569; padding-right: 24px; border-top: 1px solid rgba(148, 163, 184, 0.3); }
-            QComboBox, QSpinBox { background-color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.5); border-radius: 8px; padding: 6px 10px; min-height: 32px; }
+            QComboBox, QSpinBox { background-color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.5); border-radius: 10px; padding: 8px 12px; min-height: 32px; }
             QComboBox QAbstractItemView { border-radius: 8px; padding: 6px; }
             QComboBox::drop-down { border: none; width: 24px; }
             QComboBox::down-arrow { image: none; }
             QSpinBox::up-button, QSpinBox::down-button { border: none; background: transparent; width: 20px; }
             QToolTip { background-color: #0f172a; color: #f8fafc; border: none; padding: 8px 10px; border-radius: 8px; }
+            QTabWidget::pane { border: 1px solid rgba(148, 163, 184, 0.32); border-radius: 14px; background: #f4f7ff; margin-top: 12px; padding: 12px; }
+            QTabWidget::tab-bar { left: 12px; }
+            QTabBar::tab { background: rgba(148, 163, 184, 0.18); color: #0f172a; padding: 10px 20px; border-radius: 10px; margin-right: 8px; font-weight: 600; }
+            QTabBar::tab:selected { background: #2563eb; color: #f8fafc; }
+            QTabBar::tab:hover { background: rgba(37, 99, 235, 0.35); color: #0f172a; }
+            QTabBar::tab:!selected { border: 1px solid rgba(148, 163, 184, 0.35); }
+            QSplitter::handle { background-color: rgba(148, 163, 184, 0.45); width: 4px; margin: 4px 0; border-radius: 2px; }
+            QSplitter::handle:pressed { background-color: rgba(37, 99, 235, 0.6); }
+            QScrollBar:vertical { background: rgba(148, 163, 184, 0.18); width: 12px; margin: 8px 2px 8px 0; border-radius: 6px; }
+            QScrollBar::handle:vertical { background: #2563eb; min-height: 24px; border-radius: 6px; }
+            QScrollBar::handle:vertical:hover { background: #1d4ed8; }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+            QScrollBar:horizontal { background: rgba(148, 163, 184, 0.18); height: 12px; margin: 0 8px 2px 8px; border-radius: 6px; }
+            QScrollBar::handle:horizontal { background: #2563eb; min-width: 24px; border-radius: 6px; }
+            QScrollBar::handle:horizontal:hover { background: #1d4ed8; }
+            QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
             """
         )
 
