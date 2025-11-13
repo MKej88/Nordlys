@@ -5,23 +5,35 @@ import importlib
 import importlib.util
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple, TYPE_CHECKING
+from typing import Dict, Iterable, List, Optional, Tuple, TYPE_CHECKING, cast
 import xml.etree.ElementTree as ET
 import re
-
-import numpy as np
 
 from .constants import NS
 from .utils import lazy_pandas, text_or_none, to_float
 
 if TYPE_CHECKING:  # pragma: no cover - kun for typekontroll
     import pandas as pd
+    import numpy as np
 
 pd = lazy_pandas()
 
 
 _XMLSCHEMA_SPEC = importlib.util.find_spec("xmlschema")
 XMLSCHEMA_AVAILABLE: bool = _XMLSCHEMA_SPEC is not None
+
+_NUMPY: Optional["np"] = None
+
+
+def _lazy_numpy() -> "np":
+    """Laster ``numpy`` først når funksjoner som trenger det kjøres."""
+
+    global _NUMPY
+    if _NUMPY is None:
+        import numpy as _np  # type: ignore[import-not-found]
+
+        _NUMPY = cast("np", _np)
+    return _NUMPY
 
 
 class XMLSchemaException(Exception):
@@ -346,6 +358,8 @@ def ns4102_summary_from_tb(df: pd.DataFrame) -> Dict[str, float]:
         }
 
     subset = df.loc[mask]
+    np = _lazy_numpy()
+
     konto_values = subset['Konto_int'].astype(int).to_numpy()
     order = np.argsort(konto_values)
     konto_sorted = konto_values[order]
@@ -365,7 +379,7 @@ def ns4102_summary_from_tb(df: pd.DataFrame) -> Dict[str, float]:
     end_prefix = np.cumsum(end_sorted)
     ub_prefix = np.cumsum(ub_sorted)
 
-    def _sum_with_prefix(prefix: np.ndarray, start: int, stop: int) -> float:
+    def _sum_with_prefix(prefix: "np.ndarray", start: int, stop: int) -> float:
         left = int(np.searchsorted(konto_sorted, start, side='left'))
         right = int(np.searchsorted(konto_sorted, stop, side='right')) - 1
         if left > right:
