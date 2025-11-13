@@ -518,11 +518,36 @@ class CardFrame(QFrame):
         self.body_layout.setSizeConstraint(QLayout.SetMinimumSize)
         layout.addLayout(self.body_layout)
 
+        # Stretch keeps cards flexible but must stay after user content.
+        self._has_body_stretch = True
+        self.body_layout.addStretch(1)
+
+    def _body_insert_index(self) -> int:
+        if self._has_body_stretch and self.body_layout.count() > 0:
+            return self.body_layout.count() - 1
+        return self.body_layout.count()
+
+    def _maybe_mark_expanding_widget(self, widget: QWidget) -> None:
+        policy = widget.sizePolicy()
+        vertical_policy = policy.verticalPolicy()
+        if isinstance(widget, QLabel):
+            return
+        if vertical_policy in (QSizePolicy.Expanding, QSizePolicy.MinimumExpanding, QSizePolicy.Ignored):
+            self.body_layout.setStretchFactor(widget, 100)
+
+    def _maybe_mark_expanding_layout(self, sub_layout: QHBoxLayout | QVBoxLayout | QGridLayout) -> None:
+        if sub_layout.sizeConstraint() == QLayout.SetFixedSize:
+            return
+        if sub_layout.expandingDirections() & Qt.Vertical:
+            self.body_layout.setStretchFactor(sub_layout, 100)
+
     def add_widget(self, widget: QWidget) -> None:
-        self.body_layout.addWidget(widget)
+        self.body_layout.insertWidget(self._body_insert_index(), widget)
+        self._maybe_mark_expanding_widget(widget)
 
     def add_layout(self, sub_layout: QHBoxLayout | QVBoxLayout | QGridLayout) -> None:
-        self.body_layout.addLayout(sub_layout)
+        self.body_layout.insertLayout(self._body_insert_index(), sub_layout)
+        self._maybe_mark_expanding_layout(sub_layout)
 
 
 class StatBadge(QFrame):
