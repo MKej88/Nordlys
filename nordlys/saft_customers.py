@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+import re
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
@@ -97,13 +98,11 @@ def _et_namespace(ns: Dict[str, str]) -> Dict[str, str]:
     return namespace
 
 
-def _normalize_path(path: str, ns: Dict[str, str]) -> str:
-    if _has_namespace(ns):
-        # Når vi har namespace må vi rydde opp i ET-mappingen før vi returnerer
-        # stien. Dette gjør at _et_namespace kan hente en ferdig cachet mapping
-        # i stedet for å bygge den på nytt ved hvert kall.
-        _et_namespace(ns)
-        return path
+_PREFIX_PATTERN = re.compile(r"([A-Za-z_][\w.-]*):")
+
+
+def _normalize_path(path: str, ns: Dict[str, str]) -> Tuple[str, bool]:
+    """Returnerer normalisert sti og flagg for om namespace-mapping trengs."""
 
     cache = ns.get(_NS_CACHE_KEY)
     if isinstance(cache, dict):
@@ -111,25 +110,63 @@ def _normalize_path(path: str, ns: Dict[str, str]) -> str:
         if cached is not None:
             return cached
 
-    normalized = path.replace("n1:", "")
+    has_namespace = _has_namespace(ns)
+
+    if not has_namespace:
+        normalized = path.replace("n1:", "")
+        result = (normalized, False)
+    else:
+        replacements: List[Tuple[str, str]] = []
+        known_prefixes = set()
+        for key, value in ns.items():
+            if key in {_NS_FLAG_KEY, _NS_CACHE_KEY, _NS_ET_KEY}:
+                continue
+            if isinstance(key, str) and isinstance(value, str) and value:
+                replacements.append((f"{key}:", f"{{{value}}}"))
+                known_prefixes.add(key)
+
+        if not replacements:
+            # Fallback: bruk standard namespace-mapping dersom vi ikke har
+            # noen gyldige erstatninger.
+            result = (path, True)
+        else:
+            normalized = path
+            needs_mapping = False
+            for prefix, replacement in replacements:
+                if prefix in normalized:
+                    normalized = normalized.replace(prefix, replacement)
+            # Dersom vi fortsatt har prefiks igjen må vi bruke mapping.
+            for prefix, _ in replacements:
+                if prefix in normalized:
+                    needs_mapping = True
+                    break
+
+            if not needs_mapping:
+                for match in _PREFIX_PATTERN.finditer(path):
+                    candidate = match.group(1)
+                    if candidate not in known_prefixes:
+                        needs_mapping = True
+                        break
+            result = (normalized, needs_mapping)
 
     if isinstance(cache, dict):
-        cache[path] = normalized
+        cache[path] = result
     else:
-        ns[_NS_CACHE_KEY] = {path: normalized}
-    return normalized
+        ns[_NS_CACHE_KEY] = {path: result}
+
+    return result
 
 
 def _find(element: ET.Element, path: str, ns: Dict[str, str]) -> Optional[ET.Element]:
-    normalized = _normalize_path(path, ns)
-    if _has_namespace(ns):
+    normalized, needs_mapping = _normalize_path(path, ns)
+    if needs_mapping:
         return element.find(normalized, _et_namespace(ns))
     return element.find(normalized)
 
 
 def _findall(element: ET.Element, path: str, ns: Dict[str, str]) -> Iterable[ET.Element]:
-    normalized = _normalize_path(path, ns)
-    if _has_namespace(ns):
+    normalized, needs_mapping = _normalize_path(path, ns)
+    if needs_mapping:
         return element.findall(normalized, _et_namespace(ns))
     return element.findall(normalized)
 
