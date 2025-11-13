@@ -3047,14 +3047,24 @@ class NordlysWindow(QMainWindow):
             if isinstance(body_layout, QVBoxLayout):
                 body_layout.setSpacing(max(card_spacing - 4, 8))
 
-        self._apply_table_sizing(header_min)
+        self._apply_table_sizing(header_min, width)
 
-    def _apply_table_sizing(self, min_section_size: int) -> None:
-        tables = self.findChildren(QTableWidget)
+    def _apply_table_sizing(self, min_section_size: int, available_width: int) -> None:
+        current_widget = getattr(self, "stack", None)
+        if isinstance(current_widget, QStackedWidget):
+            active = current_widget.currentWidget()
+            tables = active.findChildren(QTableWidget) if active is not None else []
+        else:
+            tables = []
+
+        if not tables:
+            tables = self.findChildren(QTableWidget)
         if not tables:
             return
 
         for table in tables:
+            if not table.isVisibleTo(self):
+                continue
             header = table.horizontalHeader()
             if header is None:
                 continue
@@ -3062,12 +3072,25 @@ class NordlysWindow(QMainWindow):
             if column_count <= 0:
                 continue
 
+            sizing_signature = (
+                self._layout_mode,
+                min_section_size,
+                available_width,
+                table.rowCount(),
+                table.columnCount(),
+            )
+            if table.property("_responsive_signature") == sizing_signature:
+                continue
+
             header.setStretchLastSection(False)
             header.setMinimumSectionSize(min_section_size)
 
             for col in range(column_count):
-                header.setSectionResizeMode(col, QHeaderView.ResizeToContents)
-            table.resizeColumnsToContents()
+                if header.sectionResizeMode(col) != QHeaderView.ResizeToContents:
+                    header.setSectionResizeMode(col, QHeaderView.ResizeToContents)
+            if table.rowCount() and table.columnCount():
+                table.resizeColumnsToContents()
+            table.setProperty("_responsive_signature", sizing_signature)
 
     # endregion
 
