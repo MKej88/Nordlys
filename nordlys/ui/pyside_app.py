@@ -154,6 +154,9 @@ NAV_ICON_FILENAMES: Dict[str, str] = {
 _ICON_CACHE: Dict[str, Optional[QIcon]] = {}
 
 
+PRIMARY_UI_FONT_FAMILY = "Roboto"
+
+
 def _icon_for_navigation(key: str) -> Optional[QIcon]:
     """Returnerer ikon for navigasjonsnøkkelen dersom tilgjengelig."""
 
@@ -2476,6 +2479,9 @@ class NavigationPanel(QFrame):
 
         self.logo_label = QLabel("Nordlys")
         self.logo_label.setObjectName("logoLabel")
+        logo_font = self.logo_label.font()
+        logo_font.setFamily(PRIMARY_UI_FONT_FAMILY)
+        self.logo_label.setFont(logo_font)
         layout.addWidget(self.logo_label)
 
         self.tree = QTreeWidget()
@@ -2496,6 +2502,7 @@ class NavigationPanel(QFrame):
         if key:
             item.setData(0, Qt.UserRole, key)
             font = item.font(0)
+            font.setFamily(PRIMARY_UI_FONT_FAMILY)
             font.setPointSize(font.pointSize() + 1)
             font.setWeight(QFont.DemiBold)
             item.setFont(0, font)
@@ -2505,6 +2512,7 @@ class NavigationPanel(QFrame):
                 item.setIcon(0, icon)
         else:
             font = item.font(0)
+            font.setFamily(PRIMARY_UI_FONT_FAMILY)
             font.setPointSize(max(font.pointSize() - 1, 9))
             font.setWeight(QFont.DemiBold)
             font.setCapitalization(QFont.AllUppercase)
@@ -2525,6 +2533,7 @@ class NavigationPanel(QFrame):
         item = QTreeWidgetItem([title])
         item.setData(0, Qt.UserRole, key)
         font = item.font(0)
+        font.setFamily(PRIMARY_UI_FONT_FAMILY)
         font.setWeight(QFont.Medium)
         item.setFont(0, font)
         item.setForeground(0, QBrush(QColor("#e2e8f0")))
@@ -2911,7 +2920,7 @@ class NordlysWindow(QMainWindow):
     def _apply_styles(self) -> None:
         self.setStyleSheet(
             """
-            QWidget { font-family: 'Inter', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; font-size: 14px; color: #0f172a; }
+            QWidget { font-family: 'Roboto', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; font-size: 14px; color: #0f172a; }
             QMainWindow { background-color: #e9effb; }
             #navPanel { background-color: #0b1120; color: #e2e8f0; border-right: 1px solid rgba(148, 163, 184, 0.18); }
             #logoLabel { font-size: 26px; font-weight: 700; letter-spacing: 0.6px; color: #f8fafc; }
