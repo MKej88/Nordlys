@@ -1386,6 +1386,7 @@ class SammenstillingsanalysePage(QWidget):
 
     def set_dataframe(self, df: Optional[pd.DataFrame], fiscal_year: Optional[str] = None) -> None:
         self._fiscal_year = fiscal_year.strip() if fiscal_year and fiscal_year.strip() else None
+        self._cost_comments.clear()
         if df is None or df.empty:
             self._prepared_df = None
             self._clear_cost_table()
@@ -1409,6 +1410,7 @@ class SammenstillingsanalysePage(QWidget):
         self.cost_info.setText("Importer en SAF-T saldobalanse for å analysere kostnadskonti.")
         self.cost_info.show()
         self._cost_highlight_widget.hide()
+        self._cost_comments.clear()
         with SignalBlocker(self.cost_threshold):
             self.cost_threshold.setValue(0.0)
 
