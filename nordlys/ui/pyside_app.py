@@ -1943,7 +1943,7 @@ class CostVoucherReviewPage(QWidget):
         self.detail_card.setEnabled(False)
         self.btn_start_sample.setText("Start bilagskontroll")
         self._clear_current_display()
-        self._refresh_summary_table()
+        self._refresh_summary_table(force_rebuild=True)
         self.tab_widget.setCurrentIndex(0)
         self.tab_widget.setTabEnabled(1, False)
         self.tab_widget.setTabEnabled(2, False)
@@ -1985,7 +1985,7 @@ class CostVoucherReviewPage(QWidget):
         self.tab_widget.setTabEnabled(2, False)
         self.tab_widget.setCurrentIndex(1)
         self._update_status_display(None)
-        self._refresh_summary_table()
+        self._refresh_summary_table(force_rebuild=True)
         self._show_current_voucher()
 
     def _show_current_voucher(self) -> None:
@@ -2075,7 +2075,7 @@ class CostVoucherReviewPage(QWidget):
             comment=comment,
         )
         self._update_status_display(status)
-        self._refresh_summary_table()
+        self._refresh_summary_table(changed_row=self._current_index)
         next_index = self._current_index + 1
         if next_index < len(self._sample):
             self._current_index = next_index
@@ -2114,7 +2114,7 @@ class CostVoucherReviewPage(QWidget):
             self._update_status_display(current_result.status)
         else:
             self._update_status_display(None)
-        self._refresh_summary_table()
+        self._refresh_summary_table(force_rebuild=True)
         self.lbl_summary.setText(
             f"Resultat: {approved} godkjent / {rejected} ikke godkjent av {len(self._sample)} bilag."
         )
@@ -2124,7 +2124,12 @@ class CostVoucherReviewPage(QWidget):
         self.tab_widget.setCurrentIndex(2)
         self._update_navigation_state()
 
-    def _refresh_summary_table(self) -> None:
+    def _refresh_summary_table(
+        self,
+        changed_row: Optional[int] = None,
+        *,
+        force_rebuild: bool = False,
+    ) -> None:
         if not self._sample:
             self.summary_table.setRowCount(0)
             self.summary_table.setVisible(False)
@@ -2133,44 +2138,70 @@ class CostVoucherReviewPage(QWidget):
             self.tab_widget.setTabEnabled(2, False)
             return
 
-        self.summary_table.setVisible(True)
-        self.summary_table.setRowCount(len(self._sample))
+        table = self.summary_table
+        table.setVisible(True)
+        row_count = len(self._sample)
+        needs_rebuild = force_rebuild or table.rowCount() != row_count
+        if needs_rebuild:
+            table.setRowCount(row_count)
+
         completed_count = sum(1 for result in self._results if result is not None)
         if completed_count == 0:
             self.lbl_summary.setText("Ingen bilag kontrollert ennå.")
-        elif completed_count < len(self._sample):
-            self.lbl_summary.setText(
-                f"{completed_count} av {len(self._sample)} bilag vurdert."
-            )
+        elif completed_count < row_count:
+            self.lbl_summary.setText(f"{completed_count} av {row_count} bilag vurdert.")
         else:
-            self.lbl_summary.setText(f"Alle {len(self._sample)} bilag er kontrollert.")
+            self.lbl_summary.setText(f"Alle {row_count} bilag er kontrollert.")
         self.tab_widget.setTabEnabled(2, True)
 
-        for row, voucher in enumerate(self._sample):
-            bilag_text = voucher.document_number or voucher.transaction_id or "Bilag"
-            self.summary_table.setItem(row, 0, QTableWidgetItem(bilag_text))
-            self.summary_table.setItem(
-                row,
-                1,
-                QTableWidgetItem(self._format_date(voucher.transaction_date)),
-            )
-            supplier_text = voucher.supplier_name or voucher.supplier_id or "–"
-            if voucher.supplier_name and voucher.supplier_id:
-                supplier_text = f"{voucher.supplier_name} ({voucher.supplier_id})"
-            self.summary_table.setItem(row, 2, QTableWidgetItem(supplier_text))
-            amount_item = QTableWidgetItem(self._format_amount(voucher.amount))
-            amount_item.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
-            self.summary_table.setItem(row, 3, amount_item)
+        if needs_rebuild or changed_row is None:
+            rows_to_update: Iterable[int] = range(row_count)
+        else:
+            rows_to_update = [changed_row]
+
+        for row in rows_to_update:
+            voucher = self._sample[row]
+            if needs_rebuild:
+                bilag_text = voucher.document_number or voucher.transaction_id or "Bilag"
+                table.setItem(row, 0, QTableWidgetItem(bilag_text))
+                table.setItem(
+                    row,
+                    1,
+                    QTableWidgetItem(self._format_date(voucher.transaction_date)),
+                )
+                supplier_text = voucher.supplier_name or voucher.supplier_id or "–"
+                if voucher.supplier_name and voucher.supplier_id:
+                    supplier_text = f"{voucher.supplier_name} ({voucher.supplier_id})"
+                table.setItem(row, 2, QTableWidgetItem(supplier_text))
+                amount_item = QTableWidgetItem(self._format_amount(voucher.amount))
+                amount_item.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
+                table.setItem(row, 3, amount_item)
+
             result = self._results[row] if row < len(self._results) else None
             status_text = result.status if result else "Ikke vurdert"
             comment_text = result.comment if result and result.comment else ""
-            self.summary_table.setItem(row, 4, QTableWidgetItem(status_text))
-            self.summary_table.setItem(row, 5, QTableWidgetItem(comment_text))
+
+            status_item = table.item(row, 4)
+            if status_item is None:
+                status_item = QTableWidgetItem()
+                table.setItem(row, 4, status_item)
+            status_item.setText(status_text)
+
+            comment_item = table.item(row, 5)
+            if comment_item is None:
+                comment_item = QTableWidgetItem()
+                table.setItem(row, 5, comment_item)
+            comment_item.setText(comment_text)
 
         self.btn_export_pdf.setEnabled(
-            completed_count == len(self._sample) and completed_count > 0
+            completed_count == row_count and completed_count > 0
         )
-        self.summary_table.resizeRowsToContents()
+
+        if needs_rebuild:
+            table.resizeRowsToContents()
+        else:
+            for row in rows_to_update:
+                table.resizeRowToContents(row)
 
     def _get_current_result(self) -> Optional[VoucherReviewResult]:
         if 0 <= self._current_index < len(self._results):
@@ -2191,7 +2222,7 @@ class CostVoucherReviewPage(QWidget):
             status=current.status,
             comment=comment,
         )
-        self._refresh_summary_table()
+        self._refresh_summary_table(changed_row=self._current_index)
 
     def _update_status_display(self, status: Optional[str]) -> None:
         if status == "Godkjent":
@@ -2732,6 +2763,7 @@ class NordlysWindow(QMainWindow):
         self._content_layout: Optional[QVBoxLayout] = None
         self._responsive_update_pending = False
         self._layout_mode: Optional[str] = None
+        self._layout_signature: Optional[Tuple[str, int, int, int, int, int, int]] = None
 
         self._setup_ui()
         self._apply_styles()
@@ -3172,26 +3204,33 @@ class NordlysWindow(QMainWindow):
             nav_spacing = 24
             header_min = 120
 
+        layout_signature = (mode, nav_width, margin, spacing, card_margin, card_spacing, nav_spacing)
+        signature_changed = layout_signature != self._layout_signature
+
         self._layout_mode = mode
-        self.nav_panel.setMinimumWidth(nav_width)
-        self.nav_panel.setMaximumWidth(nav_width)
-        self._content_layout.setContentsMargins(margin, margin, margin, margin)
-        self._content_layout.setSpacing(spacing)
 
-        nav_layout = self.nav_panel.layout()
-        if isinstance(nav_layout, QVBoxLayout):
-            nav_padding = max(12, margin - 4)
-            nav_layout.setContentsMargins(nav_padding, margin, nav_padding, margin)
-            nav_layout.setSpacing(nav_spacing)
+        if signature_changed:
+            self.nav_panel.setMinimumWidth(nav_width)
+            self.nav_panel.setMaximumWidth(nav_width)
+            self._content_layout.setContentsMargins(margin, margin, margin, margin)
+            self._content_layout.setSpacing(spacing)
 
-        for card in self.findChildren(CardFrame):
-            layout = card.layout()
-            if isinstance(layout, QVBoxLayout):
-                layout.setContentsMargins(card_margin, card_margin, card_margin, card_margin)
-                layout.setSpacing(max(card_spacing, 10))
-            body_layout = getattr(card, "body_layout", None)
-            if isinstance(body_layout, QVBoxLayout):
-                body_layout.setSpacing(max(card_spacing - 4, 8))
+            nav_layout = self.nav_panel.layout()
+            if isinstance(nav_layout, QVBoxLayout):
+                nav_padding = max(12, margin - 4)
+                nav_layout.setContentsMargins(nav_padding, margin, nav_padding, margin)
+                nav_layout.setSpacing(nav_spacing)
+
+            for card in self.findChildren(CardFrame):
+                layout = card.layout()
+                if isinstance(layout, QVBoxLayout):
+                    layout.setContentsMargins(card_margin, card_margin, card_margin, card_margin)
+                    layout.setSpacing(max(card_spacing, 10))
+                body_layout = getattr(card, "body_layout", None)
+                if isinstance(body_layout, QVBoxLayout):
+                    body_layout.setSpacing(max(card_spacing - 4, 8))
+
+            self._layout_signature = layout_signature
 
         self._apply_table_sizing(header_min, width)
 
