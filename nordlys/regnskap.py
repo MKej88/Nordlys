@@ -84,15 +84,21 @@ class _CachedColumn:
 class _PrefixSumHelper:
     """Håndterer caching av summeringer for kontoprefikser."""
 
-    __slots__ = ("_konto_text", "_column_cache", "_index")
+    __slots__ = ("_konto_text", "_column_cache", "_index", "_zero_series")
 
     def __init__(self, konto_text: pd.Series):
         self._konto_text = konto_text
         self._column_cache: dict[str, _CachedColumn] = {}
         self._index = konto_text.index
+        self._zero_series: Optional[pd.Series] = None
 
     def is_compatible(self, prepared: pd.DataFrame) -> bool:
         return prepared.index.equals(self._index)
+
+    def zero_series(self) -> pd.Series:
+        if self._zero_series is None or not self._zero_series.index.equals(self._index):
+            self._zero_series = pd.Series(0.0, index=self._index, dtype=float)
+        return self._zero_series
 
     def sum(
         self,
@@ -130,12 +136,10 @@ def _sum_column(prepared: pd.DataFrame, column: str, prefixes: Iterable[str]) ->
         helper = _PrefixSumHelper(konto_series.astype(str).str.strip())
         prepared.attrs["_prefix_sum_helper"] = helper
 
-    zero_series = pd.Series(0.0, index=prepared.index, dtype=float)
-
     def _provider(col: str) -> pd.Series:
         if col in prepared.columns:
             return prepared[col]
-        return zero_series
+        return helper.zero_series()
 
     return helper.sum(column, prefixes, _provider)
 

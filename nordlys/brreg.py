@@ -8,12 +8,17 @@ import requests
 from .constants import BRREG_URL_TMPL
 
 
-def fetch_brreg(orgnr: str) -> Dict[str, object]:
+def fetch_brreg(orgnr: str) -> Tuple[Optional[Dict[str, object]], Optional[str]]:
     """Henter JSON-data for angitt organisasjonsnummer."""
     url = BRREG_URL_TMPL.format(orgnr=orgnr)
-    response = requests.get(url, headers={'Accept': 'application/json'}, timeout=20)
-    response.raise_for_status()
-    return response.json()
+    try:
+        response = requests.get(url, headers={'Accept': 'application/json'}, timeout=20)
+        response.raise_for_status()
+        return response.json(), None
+    except requests.RequestException as exc:
+        return None, str(exc)
+    except ValueError as exc:
+        return None, f'Ugyldig svar fra Brønnøysundregistrene: {exc}'
 
 
 def find_numbers(data: object, path: str = '') -> List[Tuple[str, float]]:
@@ -52,17 +57,18 @@ def find_first_by_exact_endkey(
     data: object,
     prefer_keys: Sequence[str],
     disallow_contains: Optional[Iterable[str]] = None,
+    numbers: Optional[Sequence[Tuple[str, float]]] = None,
 ) -> Optional[Tuple[str, float]]:
     """Returnerer første tall der slutt-nøkkelen matcher en av preferansene."""
     disallow_contains = disallow_contains or []
-    numbers = find_numbers(data)
+    numbers_list = list(numbers) if numbers is not None else find_numbers(data)
     for key in prefer_keys:
-        for path, value in numbers:
+        for path, value in numbers_list:
             last_key = _last_key(path).lower()
             if last_key == key.lower() and not any(bad.lower() in path.lower() for bad in disallow_contains):
                 return (path, value)
     for key in prefer_keys:
-        for path, value in numbers:
+        for path, value in numbers_list:
             if key.lower() in path.lower() and not any(bad.lower() in path.lower() for bad in disallow_contains):
                 return (path, value)
     return None
@@ -71,21 +77,27 @@ def find_first_by_exact_endkey(
 def map_brreg_metrics(json_obj: Dict[str, object]) -> Dict[str, Optional[float]]:
     """Mapper regnskapsverdier til kjente nøkkeltall."""
     mapped: Dict[str, Optional[float]] = {}
-    hit_eiendeler = find_first_by_exact_endkey(json_obj, ['sumEiendeler'])
+    numbers = find_numbers(json_obj)
+    hit_eiendeler = find_first_by_exact_endkey(json_obj, ['sumEiendeler'], numbers=numbers)
     if not hit_eiendeler:
-        hit_eiendeler = find_first_by_exact_endkey(json_obj, ['sumEgenkapitalOgGjeld'])
+        hit_eiendeler = find_first_by_exact_endkey(
+            json_obj,
+            ['sumEgenkapitalOgGjeld'],
+            numbers=numbers,
+        )
     mapped['eiendeler_UB'] = hit_eiendeler[1] if hit_eiendeler else None
 
     hit_ek = find_first_by_exact_endkey(
         json_obj,
         ['sumEgenkapital'],
         disallow_contains=['EgenkapitalOgGjeld', 'egenkapitalOgGjeld'],
+        numbers=numbers,
     )
     if not hit_ek:
-        hit_ek = find_first_by_exact_endkey(json_obj, ['sumEgenkapital'])
+        hit_ek = find_first_by_exact_endkey(json_obj, ['sumEgenkapital'], numbers=numbers)
     mapped['egenkapital_UB'] = hit_ek[1] if hit_ek else None
 
-    hit_gjeld = find_first_by_exact_endkey(json_obj, ['sumGjeld'])
+    hit_gjeld = find_first_by_exact_endkey(json_obj, ['sumGjeld'], numbers=numbers)
     mapped['gjeld_UB'] = hit_gjeld[1] if hit_gjeld else None
 
     for key, hints in [
@@ -93,7 +105,7 @@ def map_brreg_metrics(json_obj: Dict[str, object]) -> Dict[str, Optional[float]]
         ('ebit', ['driftsresultat', 'ebit', 'driftsresultatFoerFinans']),
         ('arsresultat', ['arsresultat', 'resultat', 'resultatEtterSkatt']),
     ]:
-        hit = find_first_by_exact_endkey(json_obj, hints)
+        hit = find_first_by_exact_endkey(json_obj, hints, numbers=numbers)
         mapped[key] = hit[1] if hit else None
     return mapped
 

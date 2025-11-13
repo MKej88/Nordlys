@@ -303,8 +303,15 @@ def load_saft_file(file_path: str) -> SaftLoadResult:
             )
 
             try:
-                brreg_json = brreg_future.result()
-                brreg_map = map_brreg_metrics(brreg_json)
+                fetched_json, fetch_error = brreg_future.result()
+                if fetch_error:
+                    brreg_error = fetch_error
+                else:
+                    brreg_json = fetched_json
+                    if brreg_json is not None:
+                        brreg_map = map_brreg_metrics(brreg_json)
+                    else:
+                        brreg_error = 'Fikk ikke noe data fra Brønnøysundregistrene.'
             except Exception as exc:  # pragma: no cover - nettverksfeil vises i GUI
                 brreg_error = str(exc)
 
