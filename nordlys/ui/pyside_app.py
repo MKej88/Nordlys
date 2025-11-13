@@ -1,6 +1,7 @@
 """PySide6-basert GUI for Nordlys."""
 from __future__ import annotations
 
+import html
 import math
 import sys
 import textwrap
@@ -492,22 +493,28 @@ class CardFrame(QFrame):
         shadow.setColor(QColor(15, 23, 42, 32))
         self.setGraphicsEffect(shadow)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 24, 24, 24)
-        layout.setSpacing(16)
+        layout.setContentsMargins(18, 14, 18, 14)
+        layout.setSpacing(0)
         layout.setSizeConstraint(QLayout.SetMinimumSize)
 
         self.title_label = QLabel(title)
         self.title_label.setObjectName("cardTitle")
+        self.title_label.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.title_label)
 
         if subtitle:
             subtitle_label = QLabel(subtitle)
             subtitle_label.setObjectName("cardSubtitle")
             subtitle_label.setWordWrap(True)
+            subtitle_label.setContentsMargins(0, 4, 0, 0)
             layout.addWidget(subtitle_label)
+            layout.addSpacing(8)
+        else:
+            layout.addSpacing(6)
 
         self.body_layout = QVBoxLayout()
-        self.body_layout.setSpacing(12)
+        self.body_layout.setContentsMargins(0, 0, 0, 0)
+        self.body_layout.setSpacing(3)
         self.body_layout.setSizeConstraint(QLayout.SetMinimumSize)
         layout.addLayout(self.body_layout)
 
@@ -555,10 +562,19 @@ class ImportPage(QWidget):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(24)
+        layout.setSpacing(16)
+
+        grid = QGridLayout()
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(16)
+        grid.setVerticalSpacing(16)
+        layout.addLayout(grid)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
+        grid.setColumnStretch(2, 1)
 
         self.status_card = CardFrame("Status", "Hurtigoversikt over siste import og anbefalinger.")
-        self.status_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.MinimumExpanding)
+        self.status_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.status_label = QLabel("Ingen SAF-T fil er lastet inn ennå.")
         self.status_label.setObjectName("statusLabel")
         self.status_label.setWordWrap(True)
@@ -579,7 +595,7 @@ class ImportPage(QWidget):
         self.brreg_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
         self.brreg_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.MinimumExpanding)
         self.status_card.add_widget(self.brreg_label)
-        layout.addWidget(self.status_card)
+        grid.addWidget(self.status_card, 0, 0)
 
         self.industry_card = CardFrame(
             "Bransjeinnsikt",
@@ -592,19 +608,56 @@ class ImportPage(QWidget):
         self.industry_label.setWordWrap(True)
         self.industry_label.setTextFormat(Qt.RichText)
         self.industry_card.add_widget(self.industry_label)
-        layout.addWidget(self.industry_card)
+        grid.addWidget(self.industry_card, 0, 1)
+
+        self.error_card = CardFrame(
+            "Feilmeldinger",
+            "Viser de siste avvikene fra import, validering og Regnskapsregisteret.",
+        )
+        self.error_label = QLabel("Ingen feilmeldinger registrert.")
+        self.error_label.setObjectName("statusLabel")
+        self.error_label.setWordWrap(True)
+        self.error_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        self.error_label.setTextFormat(Qt.RichText)
+        self.error_card.add_widget(self.error_label)
+        grid.addWidget(self.error_card, 0, 2)
 
         self.log_card = CardFrame(
             "Importlogg",
             "Siste hendelser under import og validering.",
         )
-        self.log_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.log_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.log_output = QPlainTextEdit()
         self.log_output.setReadOnly(True)
         self.log_output.setObjectName("logField")
         self.log_output.setMinimumHeight(260)
         self.log_card.add_widget(self.log_output)
-        layout.addWidget(self.log_card, 1)
+        grid.addWidget(self.log_card, 1, 0)
+
+        self.invoice_card = CardFrame(
+            "Antall inngående faktura",
+            "Tilgjengelige kostnadsbilag klare for stikkprøver.",
+        )
+        self.invoice_label = QLabel("Ingen SAF-T fil er lastet inn ennå.")
+        self.invoice_label.setObjectName("statusLabel")
+        self.invoice_label.setWordWrap(True)
+        self.invoice_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        self.invoice_card.add_widget(self.invoice_label)
+        grid.addWidget(self.invoice_card, 1, 1)
+
+        self.misc_card = CardFrame(
+            "Annet",
+            "Tilleggsinformasjon knyttet til valgt datasett.",
+        )
+        self.misc_label = QLabel("Ingen tilleggsinformasjon tilgjengelig ennå.")
+        self.misc_label.setObjectName("statusLabel")
+        self.misc_label.setWordWrap(True)
+        self.misc_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        self.misc_label.setTextFormat(Qt.RichText)
+        self.misc_card.add_widget(self.misc_label)
+        grid.addWidget(self.misc_card, 1, 2)
+
+        self._error_entries: List[str] = []
 
         layout.addStretch(1)
 
@@ -688,6 +741,48 @@ class ImportPage(QWidget):
             """
         ).strip()
         self.industry_label.setText(text)
+
+    def update_invoice_count(self, count: Optional[int]) -> None:
+        if count is None:
+            self.invoice_label.setText("Ingen SAF-T fil er lastet inn ennå.")
+            return
+        if count == 0:
+            self.invoice_label.setText("Ingen inngående fakturaer tilgjengelig i valgt datasett.")
+            return
+        if count == 1:
+            message = "1 inngående faktura klar for kontroll."
+        else:
+            message = f"{count} inngående fakturaer klare for kontroll."
+        self.invoice_label.setText(message)
+
+    def reset_errors(self) -> None:
+        self._error_entries.clear()
+        self.error_label.setText("Ingen feilmeldinger registrert.")
+
+    def record_error(self, message: str) -> None:
+        cleaned = (message or "").strip() or "Ukjent feil"
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        entry = f"[{timestamp}] {cleaned}"
+        self._error_entries.append(entry)
+        self._error_entries = self._error_entries[-6:]
+        bullets = "".join(f"<li>{html.escape(item)}</li>" for item in self._error_entries)
+        self.error_label.setText(f"<ul>{bullets}</ul>")
+
+    def update_misc_info(self, entries: Optional[Sequence[Tuple[str, str]]] = None) -> None:
+        if not entries:
+            self.misc_label.setText("Ingen tilleggsinformasjon tilgjengelig ennå.")
+            return
+        bullet_items = []
+        for title, value in entries:
+            if not value:
+                continue
+            bullet_items.append(
+                f"<li><strong>{html.escape(title)}:</strong> {html.escape(value)}</li>"
+            )
+        if not bullet_items:
+            self.misc_label.setText("Ingen tilleggsinformasjon tilgjengelig ennå.")
+            return
+        self.misc_label.setText(f"<ul>{''.join(bullet_items)}</ul>")
 
     def reset_log(self) -> None:
         self.log_output.clear()
@@ -3248,6 +3343,7 @@ class NordlysWindow(QMainWindow):
             return
         if reset:
             self.import_page.reset_log()
+            self.import_page.reset_errors()
         self.import_page.append_log(message)
 
     def _finalize_loading(self, status_message: Optional[str] = None) -> None:
@@ -3276,6 +3372,9 @@ class NordlysWindow(QMainWindow):
             self._dataset_positions = {}
             self._current_dataset_key = None
             self._update_dataset_selector()
+            if getattr(self, "import_page", None):
+                self.import_page.update_invoice_count(None)
+                self.import_page.update_misc_info(None)
             return
 
         self._dataset_results = {res.file_path: res for res in results}
@@ -3487,6 +3586,8 @@ class NordlysWindow(QMainWindow):
             else None
         )
         self._cost_vouchers = list(result.cost_vouchers)
+        if getattr(self, "import_page", None):
+            self.import_page.update_invoice_count(len(self._cost_vouchers))
 
         if self._customer_sales is not None and not self._customer_sales.empty:
             if "Kundenavn" in self._customer_sales.columns:
@@ -3564,6 +3665,21 @@ class NordlysWindow(QMainWindow):
             status_bits.append(f"Datasett: {dataset_label}")
         status_message = " · ".join(bit for bit in status_bits if bit)
         if getattr(self, "import_page", None):
+            misc_entries: List[Tuple[str, str]] = [
+                ("Datasett", dataset_label or Path(result.file_path).name),
+                ("Filnavn", Path(result.file_path).name),
+                ("Konti analysert", str(account_count)),
+            ]
+            if company:
+                misc_entries.append(("Selskap", company))
+            if orgnr:
+                misc_entries.append(("Org.nr", str(orgnr)))
+            if period:
+                misc_entries.append(("Periode", period))
+            if revenue_txt and revenue_txt != "—":
+                misc_entries.append(("Driftsinntekter", revenue_txt))
+            misc_entries.append(("Oppdatert", datetime.now().strftime("%d.%m.%Y %H:%M")))
+            self.import_page.update_misc_info(misc_entries)
             self.import_page.update_status(status_message)
         if log_event:
             self._log_import_event(
@@ -3581,6 +3697,13 @@ class NordlysWindow(QMainWindow):
             elif validation.is_valid is None and validation.details:
                 self._log_import_event("XSD-validering: detaljer tilgjengelig, se importstatus.")
         if validation.is_valid is False:
+            if getattr(self, "import_page", None):
+                detail = (
+                    validation.details.strip().splitlines()[0]
+                    if validation.details and validation.details.strip()
+                    else "Valideringen mot XSD feilet."
+                )
+                self.import_page.record_error(f"XSD-validering: {detail}")
             QMessageBox.warning(
                 self,
                 "XSD-validering feilet",
@@ -3651,6 +3774,7 @@ class NordlysWindow(QMainWindow):
                 message = "Regnskapsregister: ikke tilgjengelig (mangler org.nr.)."
             if getattr(self, "import_page", None):
                 self.import_page.update_brreg_status(message)
+                self.import_page.record_error(message)
             self._log_import_event(message)
             return message
 
@@ -3735,6 +3859,8 @@ class NordlysWindow(QMainWindow):
     def _on_load_error(self, message: str) -> None:
         self._finalize_loading("Feil ved lesing av SAF-T.")
         self._log_import_event(f"Feil ved lesing av SAF-T: {message}")
+        if getattr(self, "import_page", None):
+            self.import_page.record_error(f"Lesing av SAF-T: {message}")
         QMessageBox.critical(self, "Feil ved lesing av SAF-T", message)
 
     @Slot()
