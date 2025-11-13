@@ -1,10 +1,12 @@
 """Generelle hjelpefunksjoner for konvertering og formatering."""
 from __future__ import annotations
 
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from importlib import import_module
 from types import ModuleType
 from typing import Any, List, Optional, TYPE_CHECKING, cast
 
+import math
 import xml.etree.ElementTree as ET
 
 if TYPE_CHECKING:  # pragma: no cover - kun for typekontroll
@@ -127,18 +129,46 @@ def findall_any_namespace(inv: ET.Element, localname: str) -> List[ET.Element]:
 
 def format_currency(value: Optional[float]) -> str:
     """Formatterer beløp til heltall med tusenskilletegn."""
-    try:
-        return f"{round(float(value)):,.0f}"
-    except Exception:
+    rounded = _round_half_up(value)
+    if rounded is None:
         return "—"
+    return f"{rounded:,.0f}"
 
 
 def format_difference(a: Optional[float], b: Optional[float]) -> str:
     """Formatterer differansen mellom to beløp."""
     try:
-        return f"{round(float(a) - float(b)):,.0f}"
+        difference = float(a) - float(b)
     except Exception:
         return "—"
+
+    rounded = _round_half_up(difference)
+    if rounded is None:
+        return "—"
+    return f"{rounded:,.0f}"
+
+
+def _round_half_up(value: Optional[float]) -> Optional[int]:
+    """Runder til nærmeste heltall med kommersielt avrunding (0.5 -> 1)."""
+
+    if value is None:
+        return None
+
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return None
+
+    if not math.isfinite(numeric):
+        return None
+
+    try:
+        decimal_value = Decimal(str(numeric))
+        quantized = decimal_value.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    except InvalidOperation:
+        return None
+
+    return int(quantized)
 
 
 __all__ = [
