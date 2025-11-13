@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+import re
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
@@ -97,6 +98,9 @@ def _et_namespace(ns: Dict[str, str]) -> Dict[str, str]:
     return namespace
 
 
+_PREFIX_PATTERN = re.compile(r"([A-Za-z_][\w.-]*):")
+
+
 def _normalize_path(path: str, ns: Dict[str, str]) -> Tuple[str, bool]:
     """Returnerer normalisert sti og flagg for om namespace-mapping trengs."""
 
@@ -113,11 +117,13 @@ def _normalize_path(path: str, ns: Dict[str, str]) -> Tuple[str, bool]:
         result = (normalized, False)
     else:
         replacements: List[Tuple[str, str]] = []
+        known_prefixes = set()
         for key, value in ns.items():
             if key in {_NS_FLAG_KEY, _NS_CACHE_KEY, _NS_ET_KEY}:
                 continue
             if isinstance(key, str) and isinstance(value, str) and value:
                 replacements.append((f"{key}:", f"{{{value}}}"))
+                known_prefixes.add(key)
 
         if not replacements:
             # Fallback: bruk standard namespace-mapping dersom vi ikke har
@@ -134,6 +140,13 @@ def _normalize_path(path: str, ns: Dict[str, str]) -> Tuple[str, bool]:
                 if prefix in normalized:
                     needs_mapping = True
                     break
+
+            if not needs_mapping:
+                for match in _PREFIX_PATTERN.finditer(path):
+                    candidate = match.group(1)
+                    if candidate not in known_prefixes:
+                        needs_mapping = True
+                        break
             result = (normalized, needs_mapping)
 
     if isinstance(cache, dict):
