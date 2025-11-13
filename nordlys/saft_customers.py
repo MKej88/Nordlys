@@ -22,6 +22,7 @@ pd = lazy_pandas()
 
 _NS_FLAG_KEY = "__has_namespace__"
 _NS_CACHE_KEY = "__plain_cache__"
+_NS_ET_KEY = "__etree_namespace__"
 
 
 @dataclass
@@ -81,17 +82,27 @@ def _has_namespace(ns: Dict[str, str]) -> bool:
 def _et_namespace(ns: Dict[str, str]) -> Dict[str, str]:
     """Returnerer bare oppslagstabellen for ElementTree med strenger."""
 
+    cached = ns.get(_NS_ET_KEY)
+    if isinstance(cached, dict):
+        return cached
+
     namespace: Dict[str, str] = {}
     for key, value in ns.items():
-        if key in {_NS_FLAG_KEY, _NS_CACHE_KEY}:
+        if key in {_NS_FLAG_KEY, _NS_CACHE_KEY, _NS_ET_KEY}:
             continue
         if isinstance(key, str) and isinstance(value, str):
             namespace[key] = value
+
+    ns[_NS_ET_KEY] = namespace
     return namespace
 
 
 def _normalize_path(path: str, ns: Dict[str, str]) -> str:
     if _has_namespace(ns):
+        # Når vi har namespace må vi rydde opp i ET-mappingen før vi returnerer
+        # stien. Dette gjør at _et_namespace kan hente en ferdig cachet mapping
+        # i stedet for å bygge den på nytt ved hvert kall.
+        _et_namespace(ns)
         return path
 
     cache = ns.get(_NS_CACHE_KEY)
