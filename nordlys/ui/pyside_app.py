@@ -550,6 +550,47 @@ class CardFrame(QFrame):
         self._maybe_mark_expanding_layout(sub_layout)
 
 
+class EmptyStateWidget(QFrame):
+    """En vennlig tomtilstand som forklarer hva brukeren kan gjøre."""
+
+    def __init__(self, title: str, description: str = "", icon: str = "🗂️") -> None:
+        super().__init__()
+        self.setObjectName("emptyState")
+        self.setFrameShape(QFrame.StyledPanel)
+        self.setFrameShadow(QFrame.Plain)
+        self.setAttribute(Qt.WA_StyledBackground, True)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 28, 24, 28)
+        layout.setSpacing(10)
+        layout.setAlignment(Qt.AlignCenter)
+
+        self.icon_label = QLabel(icon)
+        self.icon_label.setObjectName("emptyStateIcon")
+        self.icon_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.icon_label)
+
+        self.title_label = QLabel(title)
+        self.title_label.setObjectName("emptyStateTitle")
+        self.title_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.title_label)
+
+        self.description_label = QLabel(description)
+        self.description_label.setObjectName("emptyStateDescription")
+        self.description_label.setWordWrap(True)
+        self.description_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.description_label)
+
+    def set_title(self, title: str) -> None:
+        self.title_label.setText(title)
+
+    def set_description(self, description: str) -> None:
+        self.description_label.setText(description)
+
+    def set_icon(self, icon: str) -> None:
+        self.icon_label.setText(icon)
+
+
 class StatBadge(QFrame):
     """Kompakt komponent for presentasjon av et nøkkeltall."""
 
@@ -938,13 +979,15 @@ class DataFramePage(QWidget):
         layout.setSpacing(24)
 
         self.card: Optional[CardFrame] = None
-        self.info_label = QLabel("Last inn en SAF-T fil for å vise data.")
-        self.info_label.setObjectName("infoLabel")
-
+        self.empty_state = EmptyStateWidget(
+            "Ingen data å vise ennå",
+            "Importer en SAF-T-fil eller velg et annet datasett for å fylle tabellen.",
+        )
         self.table = _create_table_widget()
         self.table.horizontalHeader().setSectionResizeMode(header_mode)
         self.table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.table.hide()
+        self.empty_state.show()
 
         if full_window:
             title_label = QLabel(title)
@@ -957,12 +1000,12 @@ class DataFramePage(QWidget):
                 subtitle_label.setWordWrap(True)
                 layout.addWidget(subtitle_label)
 
-            layout.addWidget(self.info_label)
+            layout.addWidget(self.empty_state)
             layout.addWidget(self.table, 1)
         else:
             self.card = CardFrame(title, subtitle)
             self.card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-            self.card.add_widget(self.info_label)
+            self.card.add_widget(self.empty_state)
             self.card.add_widget(self.table)
             layout.addWidget(self.card)
             layout.addStretch(1)
@@ -974,7 +1017,7 @@ class DataFramePage(QWidget):
     def set_dataframe(self, df: Optional[pd.DataFrame]) -> None:
         if df is None or df.empty:
             self.table.hide()
-            self.info_label.show()
+            self.empty_state.show()
             self.table.setRowCount(0)
             return
 
@@ -989,7 +1032,7 @@ class DataFramePage(QWidget):
         if self._auto_resize_columns:
             self.table.resizeColumnsToContents()
         self.table.show()
-        self.info_label.hide()
+        self.empty_state.hide()
 
 
 def _standard_tb_frame(df: pd.DataFrame) -> pd.DataFrame:
@@ -2498,6 +2541,13 @@ class SalesArPage(QWidget):
         controls.addWidget(self.calc_button)
         self.top_card.add_layout(controls)
 
+        self.empty_state = EmptyStateWidget(
+            "Ingen kundedata ennå",
+            "Importer en SAF-T-fil og velg datasettet for å se hvilke kunder som skiller seg ut.",
+            icon="👥",
+        )
+        self.empty_state.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.MinimumExpanding)
+
         self.top_table = _create_table_widget()
         self.top_table.setColumnCount(4)
         self.top_table.setHorizontalHeaderLabels([
@@ -2507,6 +2557,9 @@ class SalesArPage(QWidget):
             "Omsetning (eks. mva)",
         ])
         self.top_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.top_table.hide()
+
+        self.top_card.add_widget(self.empty_state)
         self.top_card.add_widget(self.top_table)
         self.top_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         layout.addWidget(self.top_card, 1)
@@ -2529,9 +2582,13 @@ class SalesArPage(QWidget):
             rows,
             money_cols={3},
         )
+        self.empty_state.hide()
+        self.top_table.show()
 
     def clear_top_customers(self) -> None:
         self.top_table.setRowCount(0)
+        self.top_table.hide()
+        self.empty_state.show()
 
     def set_controls_enabled(self, enabled: bool) -> None:
         self.calc_button.setEnabled(enabled)
@@ -2571,6 +2628,13 @@ class PurchasesApPage(QWidget):
         controls.addWidget(self.calc_button)
         self.top_card.add_layout(controls)
 
+        self.empty_state = EmptyStateWidget(
+            "Ingen leverandørdata ennå",
+            "Importer en SAF-T-fil og velg datasettet for å se hvilke leverandører som dominerer.",
+            icon="🏷️",
+        )
+        self.empty_state.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.MinimumExpanding)
+
         self.top_table = _create_table_widget()
         self.top_table.setColumnCount(4)
         self.top_table.setHorizontalHeaderLabels(
@@ -2584,6 +2648,9 @@ class PurchasesApPage(QWidget):
         header = self.top_table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeToContents)
         self.top_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.top_table.hide()
+
+        self.top_card.add_widget(self.empty_state)
         self.top_card.add_widget(self.top_table)
         self.top_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         layout.addWidget(self.top_card, 1)
@@ -2602,9 +2669,13 @@ class PurchasesApPage(QWidget):
             rows,
             money_cols={3},
         )
+        self.empty_state.hide()
+        self.top_table.show()
 
     def clear_top_suppliers(self) -> None:
         self.top_table.setRowCount(0)
+        self.top_table.hide()
+        self.empty_state.show()
 
     def set_controls_enabled(self, enabled: bool) -> None:
         self.calc_button.setEnabled(enabled)
@@ -2797,6 +2868,10 @@ class NordlysWindow(QMainWindow):
         self.dataset_combo = QComboBox()
         self.dataset_combo.setObjectName("datasetCombo")
         self.dataset_combo.setSizeAdjustPolicy(QComboBox.AdjustToContents)
+        self.dataset_combo.setPlaceholderText("Velg datasett")
+        self.dataset_combo.setToolTip(
+            "Når du har importert flere SAF-T-filer kan du raskt bytte aktive data her."
+        )
         self.dataset_combo.setVisible(False)
         self.dataset_combo.currentIndexChanged.connect(self._on_dataset_changed)
         header_layout.addWidget(self.dataset_combo)
@@ -3109,7 +3184,10 @@ class NordlysWindow(QMainWindow):
             QLabel[statusState='approved'] { color: #166534; font-weight: 600; }
             QLabel[statusState='rejected'] { color: #b91c1c; font-weight: 600; }
             QLabel[statusState='pending'] { color: #64748b; font-weight: 500; }
-            #infoLabel { color: #475569; font-size: 14px; }
+            #emptyState { background-color: rgba(148, 163, 184, 0.12); border-radius: 18px; border: 1px dashed rgba(148, 163, 184, 0.4); }
+            #emptyStateIcon { font-size: 32px; }
+            #emptyStateTitle { font-size: 17px; font-weight: 600; color: #0f172a; }
+            #emptyStateDescription { color: #475569; font-size: 13px; max-width: 420px; }
             #cardTable { border: none; gridline-color: rgba(148, 163, 184, 0.35); background-color: transparent; alternate-background-color: #f8fafc; }
             QTableWidget { background-color: transparent; alternate-background-color: #f8fafc; }
             QTableWidget::item { padding: 1px 8px; }
