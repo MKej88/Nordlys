@@ -3049,6 +3049,20 @@ class NordlysWindow(QMainWindow):
 
         self._apply_table_sizing(header_min, width)
 
+    def _ensure_visibility_update_hook(self, table: QTableWidget) -> None:
+        widget = table.parentWidget()
+        while widget is not None:
+            if isinstance(widget, (QTabWidget, QStackedWidget)):
+                hooks: Set[int] = getattr(widget, "_responsive_update_hooks", set())
+                if id(self) not in hooks:
+                    widget.currentChanged.connect(
+                        lambda *_args, _self=self: _self._schedule_responsive_update()
+                    )
+                    hooks = set(hooks)
+                    hooks.add(id(self))
+                    setattr(widget, "_responsive_update_hooks", hooks)
+            widget = widget.parentWidget()
+
     def _apply_table_sizing(self, min_section_size: int, available_width: int) -> None:
         current_widget = getattr(self, "stack", None)
         if isinstance(current_widget, QStackedWidget):
@@ -3064,6 +3078,7 @@ class NordlysWindow(QMainWindow):
 
         for table in tables:
             if not table.isVisibleTo(self):
+                self._ensure_visibility_update_hook(table)
                 continue
             header = table.horizontalHeader()
             if header is None:
