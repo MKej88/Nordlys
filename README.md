@@ -36,6 +36,8 @@ Nordlys bruker et utvalg veletablerte Python-bibliotek. Alle er listet i
 - `openpyxl>=3.1` – standardmotor når analyser eksporteres til Excel (XLSX).
 - `xlsxwriter>=3.0` – trer inn automatisk hvis `openpyxl` mangler, slik at
   eksporten alltid fungerer.
+- `reportlab>=3.6` – lager PDF-rapporter med samme utseende som i
+  skrivebordsappen.
 - `pytest>=7.4` – sikrer at parsing, beregninger og eksport holder seg stabile
   gjennom automatiserte tester.
 - `xmlschema>=2.2` – valgfri validering av SAF-T-filer mot XSD-skjema for mer
