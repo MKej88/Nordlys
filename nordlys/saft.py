@@ -9,6 +9,8 @@ from typing import Dict, Iterable, List, Optional, Tuple, TYPE_CHECKING
 import xml.etree.ElementTree as ET
 import re
 
+import numpy as np
+
 from .constants import NS
 from .utils import lazy_pandas, text_or_none, to_float
 
@@ -345,6 +347,9 @@ def ns4102_summary_from_tb(df: pd.DataFrame) -> Dict[str, float]:
 
     subset = df.loc[mask]
     konto_values = subset['Konto_int'].astype(int).to_numpy()
+    order = np.argsort(konto_values)
+    konto_sorted = konto_values[order]
+
     ib_debet = subset['IB Debet'].fillna(0.0).to_numpy()
     ib_kredit = subset['IB Kredit'].fillna(0.0).to_numpy()
     ub_debet = subset['UB Debet'].fillna(0.0).to_numpy()
@@ -354,25 +359,43 @@ def ns4102_summary_from_tb(df: pd.DataFrame) -> Dict[str, float]:
     ub_values = ub_debet - ub_kredit
     end_values = ub_values - ib_values
 
-    def sum_in_range(values, start: int, stop: int) -> float:
-        mask = (konto_values >= start) & (konto_values <= stop)
-        return float(values[mask].sum())
+    end_sorted = end_values[order]
+    ub_sorted = ub_values[order]
 
-    driftsinntekter = -sum_in_range(end_values, 3000, 3999)
-    varekostnad = sum_in_range(end_values, 4000, 4999)
-    lonn = sum_in_range(end_values, 5000, 5999)
-    avskr = sum_in_range(end_values, 6000, 6099) + sum_in_range(end_values, 7800, 7899)
-    andre_drift = sum_in_range(end_values, 6100, 7999) - sum_in_range(end_values, 7800, 7899)
+    end_prefix = np.cumsum(end_sorted)
+    ub_prefix = np.cumsum(ub_sorted)
+
+    def _sum_with_prefix(prefix: np.ndarray, start: int, stop: int) -> float:
+        left = int(np.searchsorted(konto_sorted, start, side='left'))
+        right = int(np.searchsorted(konto_sorted, stop, side='right')) - 1
+        if left > right:
+            return 0.0
+        total = prefix[right]
+        if left > 0:
+            total -= prefix[left - 1]
+        return float(total)
+
+    def sum_end(start: int, stop: int) -> float:
+        return _sum_with_prefix(end_prefix, start, stop)
+
+    def sum_ub(start: int, stop: int) -> float:
+        return _sum_with_prefix(ub_prefix, start, stop)
+
+    driftsinntekter = -sum_end(3000, 3999)
+    varekostnad = sum_end(4000, 4999)
+    lonn = sum_end(5000, 5999)
+    avskr = sum_end(6000, 6099) + sum_end(7800, 7899)
+    andre_drift = sum_end(6100, 7999) - sum_end(7800, 7899)
     ebitda = driftsinntekter - (varekostnad + lonn + andre_drift)
     ebit = ebitda - avskr
-    finans = -(sum_in_range(end_values, 8000, 8299) + sum_in_range(end_values, 8400, 8899))
-    skatt = sum_in_range(end_values, 8300, 8399)
+    finans = -(sum_end(8000, 8299) + sum_end(8400, 8899))
+    skatt = sum_end(8300, 8399)
     ebt = ebit + finans
     arsresultat = ebt - skatt
-    anlegg_UB = sum_in_range(ub_values, 1000, 1399)
-    omlop_UB = sum_in_range(ub_values, 1400, 1999)
+    anlegg_UB = sum_ub(1000, 1399)
+    omlop_UB = sum_ub(1400, 1999)
     eiendeler_netto = anlegg_UB + omlop_UB
-    egenkap_UB = -sum_in_range(ub_values, 2000, 2099)
+    egenkap_UB = -sum_ub(2000, 2099)
     liab_mask = (konto_values >= 2100) & (konto_values <= 2999)
     liab_values = ub_values[liab_mask]
     liab_kreditt = float(-liab_values[liab_values < 0].sum())
