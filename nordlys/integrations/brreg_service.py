@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import os
+import tempfile
 import time
 from dataclasses import dataclass, replace
 from enum import Enum
@@ -27,7 +29,10 @@ _LOGGER = logging.getLogger(__name__)
 
 _DEFAULT_TIMEOUT = 15
 _CACHE_TTL_SECONDS = 6 * 60 * 60  # 6 timer
-_CACHE_PATH = Path(__file__).resolve().parent / "brreg_http_cache"
+_CACHE_BASENAME = "brreg_http_cache"
+_CACHE_DIR: Optional[Path] = None
+_CACHE_DIR_INITIALIZED = False
+_MEMORY_CACHE_WARNING_EMITTED = False
 
 
 JSONMapping = Dict[str, Any]
@@ -74,20 +79,80 @@ def _normalize_orgnr(orgnr: str) -> str:
     return digits
 
 
-def _ensure_cache_dir() -> None:
-    _CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+def _candidate_cache_dirs() -> Tuple[Path, ...]:
+    candidates = []
+    env_cache_dir = os.environ.get("NORDLYS_CACHE_DIR")
+    if env_cache_dir:
+        candidates.append(Path(env_cache_dir).expanduser())
+    xdg_cache_home = os.environ.get("XDG_CACHE_HOME")
+    if xdg_cache_home:
+        candidates.append(Path(xdg_cache_home).expanduser() / "nordlys")
+    try:
+        home_cache = Path.home() / ".cache" / "nordlys"
+    except RuntimeError:  # pragma: no cover - Path.home kan feile på enkelte plattformer
+        home_cache = None
+    else:
+        candidates.append(home_cache)
+    candidates.append(Path(tempfile.gettempdir()) / "nordlys_cache")
+    # Filtrer bort duplikater samtidig som vi bevarer rekkefølgen
+    unique_candidates = []
+    seen = set()
+    for candidate in candidates:
+        if candidate is None:
+            continue
+        resolved = candidate.expanduser().resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        unique_candidates.append(resolved)
+    return tuple(unique_candidates)
+
+
+def _get_cache_path() -> Optional[Path]:
+    global _CACHE_DIR_INITIALIZED, _CACHE_DIR
+    if not _CACHE_DIR_INITIALIZED:
+        for candidate in _candidate_cache_dirs():
+            try:
+                candidate.mkdir(parents=True, exist_ok=True)
+            except OSError:
+                continue
+            if os.access(candidate, os.W_OK):
+                _CACHE_DIR = candidate
+                break
+        _CACHE_DIR_INITIALIZED = True
+    if _CACHE_DIR is None:
+        return None
+    return _CACHE_DIR / _CACHE_BASENAME
 
 
 def _get_session() -> requests.Session:
-    global _SESSION, _FALLBACK_WARNING_EMITTED
+    global _SESSION, _FALLBACK_WARNING_EMITTED, _MEMORY_CACHE_WARNING_EMITTED
     if _SESSION is None:
         if _REQUESTS_CACHE_AVAILABLE and requests_cache is not None:
-            _ensure_cache_dir()
-            session = requests_cache.CachedSession(
-                cache_name=str(_CACHE_PATH),
-                backend="sqlite",
-                expire_after=_CACHE_TTL_SECONDS,
-            )
+            cache_kwargs: Dict[str, Any] = {
+                "backend": "sqlite",
+                "expire_after": _CACHE_TTL_SECONDS,
+            }
+            cache_path = _get_cache_path()
+            if cache_path is not None:
+                cache_kwargs["cache_name"] = str(cache_path)
+            else:
+                cache_kwargs["backend"] = "memory"
+                if not _MEMORY_CACHE_WARNING_EMITTED:
+                    _LOGGER.warning(
+                        "Fant ingen skrivbar katalog for Brønnøysund-cache. Bruker minne-cache."
+                    )
+                    _MEMORY_CACHE_WARNING_EMITTED = True
+            try:
+                session = requests_cache.CachedSession(**cache_kwargs)
+            except OSError:
+                _LOGGER.warning(
+                    "Kunne ikke initialisere disk-cache for Brønnøysund-oppslag. "
+                    "Faller tilbake til minne-cache."
+                )
+                session = requests_cache.CachedSession(
+                    backend="memory", expire_after=_CACHE_TTL_SECONDS
+                )
             retry = Retry(
                 total=3,
                 connect=3,
