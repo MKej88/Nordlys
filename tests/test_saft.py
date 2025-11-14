@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import sys
-import zipfile
 import xml.etree.ElementTree as ET
+import zipfile
 
 import pandas as pd
 import pytest
@@ -10,8 +10,8 @@ import pytest
 from nordlys.saft import (
     ns4102_summary_from_tb,
     parse_customers,
-    parse_saldobalanse,
     parse_saft_header,
+    parse_saldobalanse,
     parse_suppliers,
     validate_saft_against_xsd,
 )
@@ -152,12 +152,12 @@ def test_parse_header_and_customers():
 def test_parse_saldobalanse_and_summary():
     root = build_sample_root()
     df = parse_saldobalanse(root)
-    assert set(['Konto', 'UB Debet', 'UB Kredit']).issubset(df.columns)
+    assert set(["Konto", "UB Debet", "UB Kredit"]).issubset(df.columns)
     summary = ns4102_summary_from_tb(df)
     # Salg 1000 -> driftsinntekter, varekost 600 -> varekostnad
-    assert summary['driftsinntekter'] == 1000
-    assert summary['varekostnad'] == 600
-    assert summary['ebitda'] == 400
+    assert summary["driftsinntekter"] == 1000
+    assert summary["varekostnad"] == 600
+    assert summary["ebitda"] == 400
 
 
 @pytest.mark.parametrize(
@@ -182,31 +182,33 @@ def test_parse_header_registration_number_fallbacks(company_block: str):
     """
     root = ET.fromstring(xml)
     header = parse_saft_header(root)
-    expected = ''.join(
-        ch for ch in ET.fromstring(f"<root>{company_block}</root>").itertext() if ch.strip()
+    expected = "".join(
+        ch
+        for ch in ET.fromstring(f"<root>{company_block}</root>").itertext()
+        if ch.strip()
     )
     assert header.orgnr == expected
 
 
 def test_parse_saft_detects_namespace(tmp_path):
-    xml_path = tmp_path / 'simple.xml'
+    xml_path = tmp_path / "simple.xml"
     xml_path.write_text(
         '<AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">'
-        '  <Header><AuditFileVersion>1.0</AuditFileVersion></Header>'
-        '</AuditFile>',
-        encoding='utf-8',
+        "  <Header><AuditFileVersion>1.0</AuditFileVersion></Header>"
+        "</AuditFile>",
+        encoding="utf-8",
     )
     tree, ns = parse_saft(xml_path)
-    assert tree.getroot().tag.endswith('AuditFile')
-    assert ns['n1'] == 'urn:StandardAuditFile-Taxation-Financial:NO'
+    assert tree.getroot().tag.endswith("AuditFile")
+    assert ns["n1"] == "urn:StandardAuditFile-Taxation-Financial:NO"
 
 
 def test_validate_saft_handles_missing_file(tmp_path):
-    missing_path = tmp_path / 'finnes_ikke.xml'
+    missing_path = tmp_path / "finnes_ikke.xml"
     result = validate_saft_against_xsd(missing_path)
 
     assert result.is_valid in (None, False)
-    assert result.details is not None and result.details.strip() != ''
+    assert result.details is not None and result.details.strip() != ""
 
 
 def test_get_amount_handles_nested_amount():
@@ -217,15 +219,15 @@ def test_get_amount_handles_nested_amount():
     </Line>
     """
     line = ET.fromstring(line_xml)
-    ns = {'n1': 'urn:StandardAuditFile-Taxation-Financial:NO'}
-    credit = get_amount(line, 'CreditAmount', ns)
-    debit = get_amount(line, 'DebitAmount', ns)
+    ns = {"n1": "urn:StandardAuditFile-Taxation-Financial:NO"}
+    credit = get_amount(line, "CreditAmount", ns)
+    debit = get_amount(line, "DebitAmount", ns)
     assert float(credit) == pytest.approx(123.45)
     assert float(debit) == pytest.approx(10.0)
 
 
 def test_get_tx_customer_id_priority():
-    ns = {'n1': 'urn:StandardAuditFile-Taxation-Financial:NO'}
+    ns = {"n1": "urn:StandardAuditFile-Taxation-Financial:NO"}
     xml_ar = """
     <Transaction xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
       <Line>
@@ -239,7 +241,7 @@ def test_get_tx_customer_id_priority():
     </Transaction>
     """
     transaction_ar = ET.fromstring(xml_ar)
-    assert get_tx_customer_id(transaction_ar, ns) == 'AR-CUST'
+    assert get_tx_customer_id(transaction_ar, ns) == "AR-CUST"
 
     xml_dimensions = """
     <Transaction xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
@@ -256,7 +258,7 @@ def test_get_tx_customer_id_priority():
     </Transaction>
     """
     transaction_dim = ET.fromstring(xml_dimensions)
-    assert get_tx_customer_id(transaction_dim, ns) == 'DIM-CUST'
+    assert get_tx_customer_id(transaction_dim, ns) == "DIM-CUST"
 
     xml_analysis = """
     <Transaction xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
@@ -272,54 +274,58 @@ def test_get_tx_customer_id_priority():
     </Transaction>
     """
     transaction_analysis = ET.fromstring(xml_analysis)
-    assert get_tx_customer_id(transaction_analysis, ns) == 'ANAL-CUST'
+    assert get_tx_customer_id(transaction_analysis, ns) == "ANAL-CUST"
 
 
 def test_compute_sales_per_customer():
     root = build_sample_root()
-    ns = {'n1': root.tag.split('}')[0][1:]}
+    ns = {"n1": root.tag.split("}")[0][1:]}
     df = compute_sales_per_customer(root, ns, year=2023)
     assert not df.empty
     row = df.iloc[0]
-    assert row['Kundenr'] == 'K1'
-    assert row['Kundenavn'] == 'Kunde 1'
-    assert row['Omsetning eks mva'] == pytest.approx(1000.0)
-    assert row['Transaksjoner'] == 1
+    assert row["Kundenr"] == "K1"
+    assert row["Kundenavn"] == "Kunde 1"
+    assert row["Omsetning eks mva"] == pytest.approx(1000.0)
+    assert row["Transaksjoner"] == 1
 
 
 def test_compute_sales_per_customer_date_filter():
     root = build_sample_root()
-    ns = {'n1': root.tag.split('}')[0][1:]}
-    df = compute_sales_per_customer(root, ns, date_from='2023-06-01', date_to='2023-12-31')
+    ns = {"n1": root.tag.split("}")[0][1:]}
+    df = compute_sales_per_customer(
+        root, ns, date_from="2023-06-01", date_to="2023-12-31"
+    )
     assert df.empty
 
 
 def test_parse_suppliers_and_compute_purchases():
     root = build_sample_root()
     suppliers = parse_suppliers(root)
-    assert 'S1' in suppliers
-    assert suppliers['S1'].supplier_number == '2001'
+    assert "S1" in suppliers
+    assert suppliers["S1"].supplier_number == "2001"
 
-    ns = {'n1': root.tag.split('}')[0][1:]}
+    ns = {"n1": root.tag.split("}")[0][1:]}
     df = compute_purchases_per_supplier(root, ns, year=2023)
     assert not df.empty
     row = df.iloc[0]
-    assert row['Leverandørnr'] == 'S1'
-    assert row['Leverandørnavn'] == 'Leverandør 1'
-    assert row['Innkjøp eks mva'] == pytest.approx(600.0)
-    assert row['Transaksjoner'] == 1
+    assert row["Leverandørnr"] == "S1"
+    assert row["Leverandørnavn"] == "Leverandør 1"
+    assert row["Innkjøp eks mva"] == pytest.approx(600.0)
+    assert row["Transaksjoner"] == 1
 
 
 def test_compute_purchases_per_supplier_date_filter():
     root = build_sample_root()
-    ns = {'n1': root.tag.split('}')[0][1:]}
-    df = compute_purchases_per_supplier(root, ns, date_from='2023-07-01', date_to='2023-12-31')
+    ns = {"n1": root.tag.split("}")[0][1:]}
+    df = compute_purchases_per_supplier(
+        root, ns, date_from="2023-07-01", date_to="2023-12-31"
+    )
     assert df.empty
 
 
 def test_compute_customer_supplier_totals_matches_individual():
     root = build_sample_root()
-    ns = {'n1': root.tag.split('}')[0][1:]}
+    ns = {"n1": root.tag.split("}")[0][1:]}
     expected_sales = compute_sales_per_customer(root, ns, year=2023)
     expected_purchases = compute_purchases_per_supplier(root, ns, year=2023)
 
@@ -363,12 +369,16 @@ def test_compute_customer_supplier_totals_empty_results_and_export(tmp_path):
     </AuditFile>
     """
     root = ET.fromstring(xml)
-    ns = {'n1': root.tag.split('}')[0][1:]}
+    ns = {"n1": root.tag.split("}")[0][1:]}
 
     customer_df, supplier_df = compute_customer_supplier_totals(root, ns, year=2023)
 
     assert list(customer_df.columns) == ["Kundenr", "Kundenavn", "Omsetning eks mva"]
-    assert list(supplier_df.columns) == ["Leverandørnr", "Leverandørnavn", "Innkjøp eks mva"]
+    assert list(supplier_df.columns) == [
+        "Leverandørnr",
+        "Leverandørnavn",
+        "Innkjøp eks mva",
+    ]
     assert customer_df.empty
     assert supplier_df.empty
 
@@ -435,17 +445,17 @@ def test_compute_purchases_includes_all_cost_accounts():
     </AuditFile>
     """
     root = ET.fromstring(xml)
-    ns = {'n1': root.tag.split('}')[0][1:]}
+    ns = {"n1": root.tag.split("}")[0][1:]}
     df = compute_purchases_per_supplier(root, ns, year=2023)
-    assert set(df['Leverandørnr']) == {'SUP-55', 'SUP-63', 'SUP-78'}
-    totals = dict(zip(df['Leverandørnr'], df['Innkjøp eks mva']))
-    assert totals['SUP-55'] == pytest.approx(250.0)
-    assert totals['SUP-63'] == pytest.approx(400.0)
-    assert totals['SUP-78'] == pytest.approx(150.0)
+    assert set(df["Leverandørnr"]) == {"SUP-55", "SUP-63", "SUP-78"}
+    totals = dict(zip(df["Leverandørnr"], df["Innkjøp eks mva"]))
+    assert totals["SUP-55"] == pytest.approx(250.0)
+    assert totals["SUP-63"] == pytest.approx(400.0)
+    assert totals["SUP-78"] == pytest.approx(150.0)
 
 
 def test_get_tx_supplier_id_priority():
-    ns = {'n1': 'urn:StandardAuditFile-Taxation-Financial:NO'}
+    ns = {"n1": "urn:StandardAuditFile-Taxation-Financial:NO"}
     xml_ap = """
     <Transaction xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
       <Line>
@@ -459,7 +469,7 @@ def test_get_tx_supplier_id_priority():
     </Transaction>
     """
     transaction_ap = ET.fromstring(xml_ap)
-    assert get_tx_supplier_id(transaction_ap, ns) == 'AP-SUP'
+    assert get_tx_supplier_id(transaction_ap, ns) == "AP-SUP"
 
     xml_dim = """
     <Transaction xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
@@ -472,7 +482,7 @@ def test_get_tx_supplier_id_priority():
     </Transaction>
     """
     transaction_dim = ET.fromstring(xml_dim)
-    assert get_tx_supplier_id(transaction_dim, ns) == 'DIM-SUP'
+    assert get_tx_supplier_id(transaction_dim, ns) == "DIM-SUP"
 
     xml_analysis = """
     <Transaction xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
@@ -488,7 +498,7 @@ def test_get_tx_supplier_id_priority():
     </Transaction>
     """
     transaction_analysis = ET.fromstring(xml_analysis)
-    assert get_tx_supplier_id(transaction_analysis, ns) == 'ANAL-SUP'
+    assert get_tx_supplier_id(transaction_analysis, ns) == "ANAL-SUP"
 
 
 def test_build_supplier_name_map_fallback():
@@ -511,9 +521,9 @@ def test_build_supplier_name_map_fallback():
     </AuditFile>
     """
     root = ET.fromstring(xml)
-    ns = {'n1': root.tag.split('}')[0][1:]}
+    ns = {"n1": root.tag.split("}")[0][1:]}
     names = build_supplier_name_map(root, ns)
-    assert names['SUP1'] == 'Fallback Leverandør'
+    assert names["SUP1"] == "Fallback Leverandør"
 
 
 def test_build_customer_name_map_fallback():
@@ -536,26 +546,26 @@ def test_build_customer_name_map_fallback():
     </AuditFile>
     """
     root = ET.fromstring(xml)
-    ns = {'n1': root.tag.split('}')[0][1:]}
+    ns = {"n1": root.tag.split("}")[0][1:]}
     names = build_customer_name_map(root, ns)
-    assert names['CU1'] == 'Fallback Navn'
+    assert names["CU1"] == "Fallback Navn"
 
 
 def test_save_outputs(tmp_path):
     root = build_sample_root()
-    ns = {'n1': root.tag.split('}')[0][1:]}
+    ns = {"n1": root.tag.split("}")[0][1:]}
     df = compute_sales_per_customer(root, ns, year=2023)
     csv_path, xlsx_path = save_outputs(df, tmp_path, 2023)
     assert csv_path.exists()
     assert xlsx_path.exists()
-    assert xlsx_path.suffix in {'.xlsx', '.csv'}
+    assert xlsx_path.suffix in {".xlsx", ".csv"}
     saved = pd.read_csv(csv_path)
-    assert 'Kundenr' in saved.columns
+    assert "Kundenr" in saved.columns
 
 
 def test_save_outputs_faller_til_xlsxwriter(tmp_path, monkeypatch):
     root = build_sample_root()
-    ns = {'n1': root.tag.split('}')[0][1:]}
+    ns = {"n1": root.tag.split("}")[0][1:]}
     df = compute_sales_per_customer(root, ns, year=2023)
 
     original_to_excel = pd.DataFrame.to_excel
@@ -565,75 +575,76 @@ def test_save_outputs_faller_til_xlsxwriter(tmp_path, monkeypatch):
             return original_to_excel(self, *args, **kwargs)
         raise ModuleNotFoundError("No module named 'openpyxl'")
 
-    monkeypatch.setattr(pd.DataFrame, 'to_excel', fake_to_excel, raising=False)
+    monkeypatch.setattr(pd.DataFrame, "to_excel", fake_to_excel, raising=False)
 
     csv_path, xlsx_path = save_outputs(df, tmp_path, 2023)
 
     assert csv_path.exists()
     assert xlsx_path.exists()
-    assert xlsx_path.suffix == '.xlsx'
+    assert xlsx_path.suffix == ".xlsx"
 
     with zipfile.ZipFile(xlsx_path) as archive:
         contents = set(archive.namelist())
-        assert 'xl/workbook.xml' in contents
-        assert any(name.startswith('xl/worksheets/sheet') for name in contents)
+        assert "xl/workbook.xml" in contents
+        assert any(name.startswith("xl/worksheets/sheet") for name in contents)
+
 
 def test_format_helpers():
-    assert format_currency(1234.5) == '1,235'
-    assert format_difference(2000, 1500) == '500'
+    assert format_currency(1234.5) == "1,235"
+    assert format_difference(2000, 1500) == "500"
 
 
 def test_validate_saft_against_xsd_unknown_version(tmp_path):
-    xml_path = tmp_path / 'saft_unknown.xml'
+    xml_path = tmp_path / "saft_unknown.xml"
     xml_path.write_text(
         '<AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">'
-        '  <Header>'
-        '    <AuditFileVersion>9.9</AuditFileVersion>'
-        '  </Header>'
-        '</AuditFile>',
-        encoding='utf-8',
+        "  <Header>"
+        "    <AuditFileVersion>9.9</AuditFileVersion>"
+        "  </Header>"
+        "</AuditFile>",
+        encoding="utf-8",
     )
-    result = validate_saft_against_xsd(xml_path, '9.9')
+    result = validate_saft_against_xsd(xml_path, "9.9")
     assert result.is_valid is None
     assert result.version_family is None
-    assert 'Ingen XSD' in (result.details or '')
+    assert "Ingen XSD" in (result.details or "")
 
 
 def test_validate_saft_against_xsd_known_version(tmp_path):
-    xml_path = tmp_path / 'saft_13.xml'
+    xml_path = tmp_path / "saft_13.xml"
     xml_path.write_text(
         '<AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">'
-        '  <Header>'
-        '    <AuditFileVersion>1.30</AuditFileVersion>'
-        '  </Header>'
-        '</AuditFile>',
-        encoding='utf-8',
+        "  <Header>"
+        "    <AuditFileVersion>1.30</AuditFileVersion>"
+        "  </Header>"
+        "</AuditFile>",
+        encoding="utf-8",
     )
     result = validate_saft_against_xsd(xml_path)
-    assert result.version_family == '1.3'
-    assert result.schema_version == '1.30'
-    saft_module = sys.modules['nordlys.saft']
+    assert result.version_family == "1.3"
+    assert result.schema_version == "1.30"
+    saft_module = sys.modules["nordlys.saft"]
     if saft_module.XMLSCHEMA_AVAILABLE:
         assert result.is_valid is False
     else:
         assert result.is_valid is None
-        assert 'xmlschema' in (result.details or '').lower()
+        assert "xmlschema" in (result.details or "").lower()
 
 
 def test_validate_saft_against_xsd_without_dependency(monkeypatch, tmp_path):
-    saft_module = sys.modules['nordlys.saft']
-    monkeypatch.setattr(saft_module, 'XMLSCHEMA_AVAILABLE', False, raising=False)
-    monkeypatch.setattr(saft_module, 'XMLSchema', None, raising=False)
-    xml_path = tmp_path / 'saft_12.xml'
+    saft_module = sys.modules["nordlys.saft"]
+    monkeypatch.setattr(saft_module, "XMLSCHEMA_AVAILABLE", False, raising=False)
+    monkeypatch.setattr(saft_module, "XMLSchema", None, raising=False)
+    xml_path = tmp_path / "saft_12.xml"
     xml_path.write_text(
         '<AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">'
-        '  <Header>'
-        '    <AuditFileVersion>1.20</AuditFileVersion>'
-        '  </Header>'
-        '</AuditFile>',
-        encoding='utf-8',
+        "  <Header>"
+        "    <AuditFileVersion>1.20</AuditFileVersion>"
+        "  </Header>"
+        "</AuditFile>",
+        encoding="utf-8",
     )
     result = validate_saft_against_xsd(xml_path)
-    assert result.version_family == '1.2'
+    assert result.version_family == "1.2"
     assert result.is_valid is None
-    assert 'xmlschema' in (result.details or '').lower()
+    assert "xmlschema" in (result.details or "").lower()

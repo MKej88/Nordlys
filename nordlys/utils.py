@@ -1,13 +1,13 @@
 """Generelle hjelpefunksjoner for konvertering og formatering."""
-from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
-from importlib import import_module
-from types import ModuleType
-from typing import Any, List, Optional, TYPE_CHECKING, cast
+from __future__ import annotations
 
 import math
 import xml.etree.ElementTree as ET
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from importlib import import_module
+from types import ModuleType
+from typing import TYPE_CHECKING, Any, List, Optional, cast
 
 if TYPE_CHECKING:  # pragma: no cover - kun for typekontroll
     import pandas as pd
@@ -130,7 +130,7 @@ def findall_any_namespace(inv: ET.Element, localname: str) -> List[ET.Element]:
     """Returnerer alle under-elementer med gitt lokale navn uansett namespace."""
     matches: List[ET.Element] = []
     for elem in inv.iter():
-        if elem.tag.split('}')[-1].lower() == localname.lower():
+        if elem.tag.split("}")[-1].lower() == localname.lower():
             matches.append(elem)
     return matches
 
@@ -145,10 +145,17 @@ def format_currency(value: Optional[float]) -> str:
 
 def format_difference(a: Optional[float], b: Optional[float]) -> str:
     """Formatterer differansen mellom to beløp."""
-    try:
-        difference = float(a) - float(b)
-    except Exception:
+
+    if a is None or b is None:
         return "—"
+
+    try:
+        value_a = float(a)
+        value_b = float(b)
+    except (TypeError, ValueError):
+        return "—"
+
+    difference = value_a - value_b
 
     rounded = _round_half_up(difference)
     if rounded is None:

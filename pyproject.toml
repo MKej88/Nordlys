@@ -1,0 +1,44 @@
+[tool.black]
+line-length = 88
+target-version = ["py311"]
+extend-exclude = "nordlys/ui/pyside_app.py"
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+exclude = [
+    "nordlys/resources",
+]
+
+[tool.ruff.lint]
+select = ["E", "F"]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["nordlys"]
+combine-as-imports = true
+
+[tool.mypy]
+python_version = "3.11"
+warn_unused_configs = true
+ignore_missing_imports = true
+strict = false
+follow_imports = "skip"
+exclude = ["^tests/"]
+
+[[tool.mypy.overrides]]
+module = [
+    "nordlys.ui.*",
+    "nordlys.saft",
+    "nordlys.saft_customers",
+    "nordlys.brreg",
+    "nordlys.industry_groups",
+]
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = [
+    "tests",
+    "tests.*",
+]
+ignore_errors = true

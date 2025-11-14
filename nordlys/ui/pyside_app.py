@@ -3018,7 +3018,7 @@ class NordlysWindow(QMainWindow):
         self._navigation_initialized = True
         nav = self.nav_panel
         import_item = nav.add_root("Import", "import")
-        dashboard_item = nav.add_root("Dashboard", "dashboard")
+        nav.add_root("Dashboard", "dashboard")
 
         planning_root = nav.add_root("Planlegging")
         nav.add_child(planning_root, "Saldobalanse", "plan.saldobalanse")
