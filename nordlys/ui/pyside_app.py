@@ -4316,16 +4316,13 @@ def _apply_compact_row_heights(table: QTableWidget) -> None:
     minimum_height = _compact_row_base_height(table)
     header.setMinimumSectionSize(minimum_height)
     header.setDefaultSectionSize(minimum_height)
+    header.setSectionResizeMode(QHeaderView.Fixed)
 
     if table.rowCount() == 0:
         return
 
-    table.resizeRowsToContents()
     for row in range(table.rowCount()):
-        hint = table.sizeHintForRow(row)
-        if hint <= 0:
-            hint = minimum_height
-        table.setRowHeight(row, max(minimum_height, hint))
+        table.setRowHeight(row, minimum_height)
 
 
 def _populate_table(
@@ -4336,27 +4333,42 @@ def _populate_table(
     money_cols: Optional[Iterable[int]] = None,
 ) -> None:
     money_idx = set(money_cols or [])
+    row_buffer = list(rows)
+
     table.setRowCount(0)
     table.setColumnCount(len(columns))
     table.setHorizontalHeaderLabels(columns)
 
-    for row_idx, row in enumerate(rows):
-        table.insertRow(row_idx)
-        for col_idx, value in enumerate(row):
-            display = _format_value(value, col_idx in money_idx)
-            item = QTableWidgetItem(display)
-            if isinstance(value, (int, float)):
-                item.setData(Qt.UserRole, float(value))
-            else:
-                item.setData(Qt.UserRole, None)
-            if col_idx in money_idx or isinstance(value, (int, float)):
-                item.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
-            else:
-                item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-            table.setItem(row_idx, col_idx, item)
+    if not row_buffer:
+        table.clearContents()
+        _apply_compact_row_heights(table)
+        return
+
+    sorting_enabled = table.isSortingEnabled()
+    table.setSortingEnabled(False)
+    table.setUpdatesEnabled(False)
+
+    try:
+        table.setRowCount(len(row_buffer))
+
+        for row_idx, row in enumerate(row_buffer):
+            for col_idx, value in enumerate(row):
+                display = _format_value(value, col_idx in money_idx)
+                item = QTableWidgetItem(display)
+                if isinstance(value, (int, float)):
+                    item.setData(Qt.UserRole, float(value))
+                else:
+                    item.setData(Qt.UserRole, None)
+                if col_idx in money_idx or isinstance(value, (int, float)):
+                    item.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
+                else:
+                    item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+                table.setItem(row_idx, col_idx, item)
+    finally:
+        table.setUpdatesEnabled(True)
+        table.setSortingEnabled(sorting_enabled)
 
     table.resizeColumnsToContents()
-    table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
     _apply_compact_row_heights(table)
     window = table.window()
     schedule_hook = getattr(window, "_schedule_responsive_update", None)
