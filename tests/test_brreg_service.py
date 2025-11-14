@@ -50,3 +50,36 @@ def test_get_company_status_maps_flags(monkeypatch):
     assert status.avvikling is True
     assert status.mva_reg is True
     assert status.source == "Brønnøysundregistrene"
+
+
+def test_fetch_enhetsregister_uses_fallback_cache(monkeypatch):
+    monkeypatch.setattr(brreg_service, "_REQUESTS_CACHE_AVAILABLE", False, raising=False)
+    monkeypatch.setattr(brreg_service, "_SESSION", None, raising=False)
+    brreg_service._FALLBACK_CACHE.clear()
+
+    call_count = {"value": 0}
+
+    class DummyResponse:
+        status_code = 200
+        from_cache = False
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, bool]:
+            return {"konkurs": False}
+
+    class DummySession:
+        def get(self, url: str, headers: dict[str, str], timeout: int) -> DummyResponse:
+            call_count["value"] += 1
+            return DummyResponse()
+
+    dummy_session = DummySession()
+    monkeypatch.setattr(brreg_service, "_get_session", lambda: dummy_session)
+
+    result_first = brreg_service.fetch_enhetsregister("123456789")
+    result_second = brreg_service.fetch_enhetsregister("123456789")
+
+    assert call_count["value"] == 1
+    assert result_first.from_cache is False
+    assert result_second.from_cache is True

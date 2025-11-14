@@ -3,16 +3,24 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import requests
-import requests_cache
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 from ..constants import BRREG_URL_TMPL, ENHETSREGISTER_URL_TMPL
+
+try:  # pragma: no cover - selve importen testes indirekte
+    import requests_cache  # type: ignore
+except ModuleNotFoundError:  # pragma: no cover - miljø uten requests-cache
+    requests_cache = None  # type: ignore[assignment]
+    _REQUESTS_CACHE_AVAILABLE = False
+else:
+    _REQUESTS_CACHE_AVAILABLE = True
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -45,7 +53,7 @@ class CompanyStatus:
     source: Optional[str]
 
 
-_SESSION: Optional[requests_cache.CachedSession] = None
+_SESSION: Optional[requests.Session] = None
 _NETWORK_ERROR_CODES = {
     "timeout",
     "connection_error",
@@ -54,6 +62,8 @@ _NETWORK_ERROR_CODES = {
     "http_error",
     "request_error",
 }
+_FALLBACK_CACHE: Dict[str, Tuple[float, "BrregServiceResult"]] = {}
+_FALLBACK_WARNING_EMITTED = False
 
 
 def _normalize_orgnr(orgnr: str) -> str:
@@ -67,30 +77,68 @@ def _ensure_cache_dir() -> None:
     _CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 
-def _get_session() -> requests_cache.CachedSession:
-    global _SESSION
+def _get_session() -> requests.Session:
+    global _SESSION, _FALLBACK_WARNING_EMITTED
     if _SESSION is None:
-        _ensure_cache_dir()
-        session = requests_cache.CachedSession(
-            cache_name=str(_CACHE_PATH),
-            backend="sqlite",
-            expire_after=_CACHE_TTL_SECONDS,
-        )
-        retry = Retry(
-            total=3,
-            connect=3,
-            read=3,
-            status=3,
-            backoff_factor=1.0,
-            status_forcelist=(429, 500, 502, 503, 504),
-            allowed_methods=("GET",),
-        )
-        adapter = HTTPAdapter(max_retries=retry)
-        session.mount("https://", adapter)
-        session.mount("http://", adapter)
-        _SESSION = session
+        if _REQUESTS_CACHE_AVAILABLE and requests_cache is not None:
+            _ensure_cache_dir()
+            session = requests_cache.CachedSession(
+                cache_name=str(_CACHE_PATH),
+                backend="sqlite",
+                expire_after=_CACHE_TTL_SECONDS,
+            )
+            retry = Retry(
+                total=3,
+                connect=3,
+                read=3,
+                status=3,
+                backoff_factor=1.0,
+                status_forcelist=(429, 500, 502, 503, 504),
+                allowed_methods=("GET",),
+            )
+            adapter = HTTPAdapter(max_retries=retry)
+            session.mount("https://", adapter)
+            session.mount("http://", adapter)
+            _SESSION = session
+        else:
+            _SESSION = requests.Session()
+            if not _FALLBACK_WARNING_EMITTED:
+                _LOGGER.warning(
+                    "requests-cache er ikke installert. Nordlys kjører videre uten "
+                    "HTTP-cache, men vi anbefaler å installere pakken for bedre ytelse."
+                )
+                _FALLBACK_WARNING_EMITTED = True
     assert _SESSION is not None
     return _SESSION
+
+
+def _make_cache_key(url: str, allow_list: bool) -> str:
+    return f"{url}::allow_list={allow_list}"
+
+
+def _fallback_cache_get(cache_key: str) -> Optional[BrregServiceResult]:
+    entry = _FALLBACK_CACHE.get(cache_key)
+    if not entry:
+        return None
+    timestamp, result = entry
+    if time.monotonic() - timestamp > _CACHE_TTL_SECONDS:
+        _FALLBACK_CACHE.pop(cache_key, None)
+        return None
+    return replace(result, from_cache=True)
+
+
+def _should_cache_result(result: BrregServiceResult) -> bool:
+    if result.error_code is None:
+        return True
+    if result.error_code in _NETWORK_ERROR_CODES:
+        return False
+    return True
+
+
+def _fallback_cache_set(cache_key: str, result: BrregServiceResult) -> None:
+    if not _should_cache_result(result):
+        return
+    _FALLBACK_CACHE[cache_key] = (time.monotonic(), replace(result, from_cache=False))
 
 
 def _interpret_bool(value: Any) -> Optional[bool]:
@@ -114,6 +162,12 @@ def _fetch_json(
     *,
     allow_list: bool = False,
 ) -> BrregServiceResult:
+    cache_key = _make_cache_key(url, allow_list)
+    if not _REQUESTS_CACHE_AVAILABLE:
+        cached_result = _fallback_cache_get(cache_key)
+        if cached_result is not None:
+            return cached_result
+
     session = _get_session()
     try:
         response = session.get(
@@ -141,66 +195,93 @@ def _fetch_json(
     from_cache = bool(getattr(response, "from_cache", False))
 
     if response.status_code == 404:
-        return BrregServiceResult(
+        result = BrregServiceResult(
             None,
             "not_found",
             f"{source_label}: ingen treff for organisasjonsnummeret.",
             from_cache,
         )
+        if not _REQUESTS_CACHE_AVAILABLE:
+            _fallback_cache_set(cache_key, result)
+        return result
     if response.status_code == 429:
-        return BrregServiceResult(
+        result = BrregServiceResult(
             None,
             "rate_limited",
             f"{source_label}: for mange forespørsler (429).",
             from_cache,
         )
+        if not _REQUESTS_CACHE_AVAILABLE:
+            _fallback_cache_set(cache_key, result)
+        return result
     if response.status_code >= 500:
-        return BrregServiceResult(
+        result = BrregServiceResult(
             None,
             "server_error",
             f"{source_label}: tjenesten svarte med {response.status_code}.",
             from_cache,
         )
+        if not _REQUESTS_CACHE_AVAILABLE:
+            _fallback_cache_set(cache_key, result)
+        return result
     try:
         response.raise_for_status()
     except requests.HTTPError:
-        return BrregServiceResult(
+        result = BrregServiceResult(
             None,
             "http_error",
             f"{source_label}: tjenesten svarte med {response.status_code}.",
             from_cache,
         )
+        if not _REQUESTS_CACHE_AVAILABLE:
+            _fallback_cache_set(cache_key, result)
+        return result
 
     try:
         payload = response.json()
     except ValueError as exc:
-        return BrregServiceResult(
+        result = BrregServiceResult(
             None,
             "invalid_json",
             f"{source_label}: ugyldig JSON ({exc}).",
             from_cache,
         )
+        if not _REQUESTS_CACHE_AVAILABLE:
+            _fallback_cache_set(cache_key, result)
+        return result
 
     if allow_list and isinstance(payload, list):
         for element in payload:
             if isinstance(element, dict):
-                return BrregServiceResult(element, None, None, from_cache)
-        return BrregServiceResult(
+                result = BrregServiceResult(element, None, None, from_cache)
+                if not _REQUESTS_CACHE_AVAILABLE:
+                    _fallback_cache_set(cache_key, result)
+                return result
+        result = BrregServiceResult(
             None,
             "invalid_json",
             f"{source_label}: uventet svarformat (liste).",
             from_cache,
         )
+        if not _REQUESTS_CACHE_AVAILABLE:
+            _fallback_cache_set(cache_key, result)
+        return result
 
     if not isinstance(payload, dict):
-        return BrregServiceResult(
+        result = BrregServiceResult(
             None,
             "invalid_json",
             f"{source_label}: uventet svarformat.",
             from_cache,
         )
+        if not _REQUESTS_CACHE_AVAILABLE:
+            _fallback_cache_set(cache_key, result)
+        return result
 
-    return BrregServiceResult(payload, None, None, from_cache)
+    result = BrregServiceResult(payload, None, None, from_cache)
+    if not _REQUESTS_CACHE_AVAILABLE:
+        _fallback_cache_set(cache_key, result)
+    return result
 
 
 def fetch_regnskapsregister(orgnr: str) -> BrregServiceResult:
