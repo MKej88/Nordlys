@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass, replace
+from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
@@ -112,8 +113,14 @@ def _get_session() -> requests.Session:
     return _SESSION
 
 
-def _make_cache_key(url: str, allow_list: bool) -> str:
-    return f"{url}::allow_list={allow_list}"
+class _ListPolicy(str, Enum):
+    DISALLOW = "disallow"
+    FIRST_DICT = "first_dict"
+    PASSTHROUGH = "passthrough"
+
+
+def _make_cache_key(url: str, list_policy: _ListPolicy) -> str:
+    return f"{url}::list_policy={list_policy.value}"
 
 
 def _fallback_cache_get(cache_key: str) -> Optional[BrregServiceResult]:
@@ -160,9 +167,9 @@ def _fetch_json(
     url: str,
     source_label: str,
     *,
-    allow_list: bool = False,
+    list_policy: _ListPolicy = _ListPolicy.DISALLOW,
 ) -> BrregServiceResult:
-    cache_key = _make_cache_key(url, allow_list)
+    cache_key = _make_cache_key(url, list_policy)
     if not _REQUESTS_CACHE_AVAILABLE:
         cached_result = _fallback_cache_get(cache_key)
         if cached_result is not None:
@@ -250,22 +257,28 @@ def _fetch_json(
             _fallback_cache_set(cache_key, result)
         return result
 
-    if allow_list and isinstance(payload, list):
-        for element in payload:
-            if isinstance(element, dict):
-                result = BrregServiceResult(element, None, None, from_cache)
-                if not _REQUESTS_CACHE_AVAILABLE:
-                    _fallback_cache_set(cache_key, result)
-                return result
-        result = BrregServiceResult(
-            None,
-            "invalid_json",
-            f"{source_label}: uventet svarformat (liste).",
-            from_cache,
-        )
-        if not _REQUESTS_CACHE_AVAILABLE:
-            _fallback_cache_set(cache_key, result)
-        return result
+    if isinstance(payload, list):
+        if list_policy is _ListPolicy.FIRST_DICT:
+            for element in payload:
+                if isinstance(element, dict):
+                    result = BrregServiceResult(element, None, None, from_cache)
+                    if not _REQUESTS_CACHE_AVAILABLE:
+                        _fallback_cache_set(cache_key, result)
+                    return result
+            result = BrregServiceResult(
+                None,
+                "invalid_json",
+                f"{source_label}: uventet svarformat (liste).",
+                from_cache,
+            )
+            if not _REQUESTS_CACHE_AVAILABLE:
+                _fallback_cache_set(cache_key, result)
+            return result
+        if list_policy is _ListPolicy.PASSTHROUGH:
+            result = BrregServiceResult(payload, None, None, from_cache)
+            if not _REQUESTS_CACHE_AVAILABLE:
+                _fallback_cache_set(cache_key, result)
+            return result
 
     if not isinstance(payload, dict):
         result = BrregServiceResult(
@@ -289,7 +302,7 @@ def fetch_regnskapsregister(orgnr: str) -> BrregServiceResult:
 
     normalized = _normalize_orgnr(orgnr)
     url = BRREG_URL_TMPL.format(orgnr=normalized)
-    return _fetch_json(url, "Regnskapsregisteret")
+    return _fetch_json(url, "Regnskapsregisteret", list_policy=_ListPolicy.PASSTHROUGH)
 
 
 def fetch_enhetsregister(orgnr: str) -> BrregServiceResult:
@@ -297,7 +310,7 @@ def fetch_enhetsregister(orgnr: str) -> BrregServiceResult:
 
     normalized = _normalize_orgnr(orgnr)
     url = ENHETSREGISTER_URL_TMPL.format(orgnr=normalized)
-    return _fetch_json(url, "Enhetsregisteret", allow_list=True)
+    return _fetch_json(url, "Enhetsregisteret", list_policy=_ListPolicy.FIRST_DICT)
 
 
 def get_company_status(orgnr: str) -> CompanyStatus:

@@ -83,3 +83,30 @@ def test_fetch_enhetsregister_uses_fallback_cache(monkeypatch):
     assert call_count["value"] == 1
     assert result_first.from_cache is False
     assert result_second.from_cache is True
+
+
+def test_fetch_regnskapsregister_accepts_list_payload(monkeypatch):
+    monkeypatch.setattr(brreg_service, "_REQUESTS_CACHE_AVAILABLE", False, raising=False)
+    monkeypatch.setattr(brreg_service, "_SESSION", None, raising=False)
+    brreg_service._FALLBACK_CACHE.clear()
+
+    class DummyResponse:
+        status_code = 200
+        from_cache = False
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> list[dict[str, int]]:
+            return [{"sumDriftsinntekter": 123}]
+
+    class DummySession:
+        def get(self, url: str, headers: dict[str, str], timeout: int) -> DummyResponse:
+            return DummyResponse()
+
+    monkeypatch.setattr(brreg_service, "_get_session", lambda: DummySession())
+
+    result = brreg_service.fetch_regnskapsregister("123456789")
+
+    assert isinstance(result.data, list)
+    assert result.error_code is None
