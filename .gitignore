@@ -2,3 +2,4 @@ __pycache__/
 *.pyc
 .pytest_cache/
 nordlys/brreg_cache.json
+nordlys/integrations/brreg_http_cache.sqlite
