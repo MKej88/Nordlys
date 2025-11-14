@@ -961,10 +961,18 @@ class DashboardPage(QWidget):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(24)
+        layout.setSpacing(16)
+
+        grid = QGridLayout()
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(16)
+        grid.setVerticalSpacing(16)
+        for col in range(3):
+            grid.setColumnStretch(col, 1)
+        layout.addLayout(grid)
 
         self.kpi_card = CardFrame(
-            "Nøkkeltallsanalyse",
+            "Lønnsomhet",
             "Marginer og balanseindikatorer basert på innlastet SAF-T.",
         )
         self.kpi_grid = QGridLayout()
@@ -987,14 +995,61 @@ class DashboardPage(QWidget):
             self.kpi_grid.addWidget(badge, row, col)
             self.kpi_badges[key] = badge
 
-        layout.addWidget(self.kpi_card)
+        grid.addWidget(self.kpi_card, 0, 0)
 
-        self.summary_card = CardFrame("Finansiell oversikt", "Oppsummerte nøkkeltall fra SAF-T.")
+        self.liquidity_card = CardFrame(
+            "Likviditet",
+            "Kontantstrøm- og arbeidskapitalindikatorer på vei.",
+        )
+        self.liquidity_label = QLabel("Ingen likviditetsanalyse er tilgjengelig ennå.")
+        self.liquidity_label.setObjectName("statusLabel")
+        self.liquidity_label.setWordWrap(True)
+        self.liquidity_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        self.liquidity_card.add_widget(self.liquidity_label)
+        grid.addWidget(self.liquidity_card, 0, 1)
+
+        self.soliditet_card = CardFrame(
+            "Soliditet",
+            "Viser egenkapitalandel og gearing når data foreligger.",
+        )
+        self.soliditet_label = QLabel("Importer SAF-T for å analysere soliditet.")
+        self.soliditet_label.setObjectName("statusLabel")
+        self.soliditet_label.setWordWrap(True)
+        self.soliditet_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        self.soliditet_card.add_widget(self.soliditet_label)
+        grid.addWidget(self.soliditet_card, 0, 2)
+
+        self.bransje_card = CardFrame(
+            "Bransjespesifikk",
+            "Tilpassede perspektiver basert på bransjeidentifisering.",
+        )
+        self.bransje_label = QLabel("Importer en SAF-T-fil for å se bransjespesifikke nøkkeltall.")
+        self.bransje_label.setObjectName("statusLabel")
+        self.bransje_label.setWordWrap(True)
+        self.bransje_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        self.bransje_card.add_widget(self.bransje_label)
+        grid.addWidget(self.bransje_card, 1, 0)
+
+        self.trend_card = CardFrame(
+            "Uvanlige trender",
+            "Flagger uvanlige endringer i perioden når data er tilgjengelig.",
+        )
+        self.trend_label = QLabel("Ingen uvanlige trender er analysert ennå.")
+        self.trend_label.setObjectName("statusLabel")
+        self.trend_label.setWordWrap(True)
+        self.trend_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        self.trend_card.add_widget(self.trend_label)
+        grid.addWidget(self.trend_card, 1, 1)
+
+        self.summary_card = CardFrame(
+            "Fokus for revisjonen",
+            "Oppsummerte nøkkeltall fra SAF-T som peker ut fokusområder.",
+        )
         self.summary_table = _create_table_widget()
         self.summary_table.setColumnCount(2)
         self.summary_table.setHorizontalHeaderLabels(["Nøkkel", "Beløp"])
         self.summary_card.add_widget(self.summary_table)
-        layout.addWidget(self.summary_card)
+        grid.addWidget(self.summary_card, 1, 2)
 
         layout.addStretch(1)
 
