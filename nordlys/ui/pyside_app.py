@@ -7,6 +7,7 @@ import sys
 import textwrap
 from concurrent.futures import ThreadPoolExecutor
 import random
+from contextlib import contextmanager
 from datetime import date, datetime
 from dataclasses import dataclass
 from pathlib import Path
@@ -1336,7 +1337,9 @@ class RegnskapsanalysePage(QWidget):
         header.setMinimumSectionSize(70)
         table.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        vertical_header = table.verticalHeader()
+        vertical_header.setSectionResizeMode(QHeaderView.Fixed)
+        table.setUniformRowHeights(True)
         table.setStyleSheet("QTableWidget::item { padding: 0px 6px; }")
         _apply_compact_row_heights(table)
 
@@ -1356,17 +1359,12 @@ class RegnskapsanalysePage(QWidget):
         if table.rowCount() == 0:
             self._reset_analysis_table_height(table)
             return
-        table.resizeRowsToContents()
         header_height = table.horizontalHeader().height()
-        rows_height = sum(table.rowHeight(row) for row in range(table.rowCount()))
-        if rows_height <= 0:
-            rows_height = sum(table.sizeHintForRow(row) for row in range(table.rowCount()))
-        if rows_height <= 0:
-            default_row = table.verticalHeader().defaultSectionSize() or 18
-            rows_height = default_row * table.rowCount()
+        default_row = table.verticalHeader().defaultSectionSize() or _compact_row_base_height(table)
+        rows_height = default_row * table.rowCount()
         grid_extra = max(0, table.rowCount() - 1)
         rows_height += grid_extra
-        buffer = max(16, table.verticalHeader().defaultSectionSize() // 2)
+        buffer = max(16, default_row // 2)
         frame = table.frameWidth() * 2
         margins = table.contentsMargins()
         total = header_height + rows_height + buffer + frame + margins.top() + margins.bottom()
@@ -1395,60 +1393,64 @@ class RegnskapsanalysePage(QWidget):
             "Sum egenkapital og gjeld",
         }
         top_border_labels = {"Eiendeler", "Sum eiendeler", "Sum egenkapital og gjeld"}
-        labels: List[str] = []
-        for row_idx in range(self.balance_table.rowCount()):
-            label_item = self.balance_table.item(row_idx, 0)
-            labels.append(label_item.text().strip() if label_item else "")
-        for row_idx in range(self.balance_table.rowCount()):
-            label_text = labels[row_idx]
-            if not label_text:
-                continue
-            is_bold = label_text in bold_labels
-            has_bottom_border = label_text in bottom_border_labels
-            has_top_border = label_text in top_border_labels
-            next_label = labels[row_idx + 1] if row_idx + 1 < len(labels) else ""
-            if has_bottom_border and next_label in top_border_labels and next_label:
-                has_bottom_border = False
-            for col_idx in range(self.balance_table.columnCount()):
-                item = self.balance_table.item(row_idx, col_idx)
-                if item is None:
+        table = self.balance_table
+        with _suspend_table_updates(table):
+            labels: List[str] = []
+            for row_idx in range(table.rowCount()):
+                label_item = table.item(row_idx, 0)
+                labels.append(label_item.text().strip() if label_item else "")
+            for row_idx in range(table.rowCount()):
+                label_text = labels[row_idx]
+                if not label_text:
                     continue
-                font = item.font()
-                font.setBold(is_bold)
-                item.setFont(font)
-                item.setData(BOTTOM_BORDER_ROLE, has_bottom_border)
-                item.setData(TOP_BORDER_ROLE, has_top_border)
-        self.balance_table.viewport().update()
+                is_bold = label_text in bold_labels
+                has_bottom_border = label_text in bottom_border_labels
+                has_top_border = label_text in top_border_labels
+                next_label = labels[row_idx + 1] if row_idx + 1 < len(labels) else ""
+                if has_bottom_border and next_label in top_border_labels and next_label:
+                    has_bottom_border = False
+                for col_idx in range(table.columnCount()):
+                    item = table.item(row_idx, col_idx)
+                    if item is None:
+                        continue
+                    font = item.font()
+                    font.setBold(is_bold)
+                    item.setFont(font)
+                    item.setData(BOTTOM_BORDER_ROLE, has_bottom_border)
+                    item.setData(TOP_BORDER_ROLE, has_top_border)
+        table.viewport().update()
 
     def _apply_change_coloring(self, table: QTableWidget) -> None:
         change_col = 3
         green = QBrush(QColor(21, 128, 61))
         red = QBrush(QColor(220, 38, 38))
         default_brush = QBrush(QColor(15, 23, 42))
-        for row_idx in range(table.rowCount()):
-            item = table.item(row_idx, change_col)
-            if item is None:
-                continue
-            label_item = table.item(row_idx, 0)
-            label_text = label_item.text().strip().lower() if label_item else ""
-            if label_text != "avvik":
-                item.setForeground(default_brush)
-                continue
-            value = item.data(Qt.UserRole)
-            if value is None:
-                item.setForeground(default_brush)
-                continue
-            try:
-                numeric = float(value)
-            except (TypeError, ValueError):
-                item.setForeground(default_brush)
-                continue
-            if abs(numeric) < 1e-6:
-                item.setForeground(green)
-            elif numeric < 0:
-                item.setForeground(red)
-            else:
-                item.setForeground(green)
+        with _suspend_table_updates(table):
+            for row_idx in range(table.rowCount()):
+                item = table.item(row_idx, change_col)
+                if item is None:
+                    continue
+                label_item = table.item(row_idx, 0)
+                label_text = label_item.text().strip().lower() if label_item else ""
+                if label_text != "avvik":
+                    item.setForeground(default_brush)
+                    continue
+                value = item.data(Qt.UserRole)
+                if value is None:
+                    item.setForeground(default_brush)
+                    continue
+                try:
+                    numeric = float(value)
+                except (TypeError, ValueError):
+                    item.setForeground(default_brush)
+                    continue
+                if abs(numeric) < 1e-6:
+                    item.setForeground(green)
+                elif numeric < 0:
+                    item.setForeground(red)
+                else:
+                    item.setForeground(green)
+        table.viewport().update()
 
     def update_comparison(
         self,
@@ -1546,6 +1548,10 @@ class SammenstillingsanalysePage(QWidget):
         header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(5, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(6, QHeaderView.Stretch)
+        cost_vertical_header = self.cost_table.verticalHeader()
+        cost_vertical_header.setSectionResizeMode(QHeaderView.Fixed)
+        self.cost_table.setUniformRowHeights(True)
+        _apply_compact_row_heights(self.cost_table)
         self.cost_table.itemChanged.connect(self._on_cost_item_changed)
         self.cost_table.hide()
         self.cost_card.add_widget(self.cost_table)
@@ -1580,6 +1586,7 @@ class SammenstillingsanalysePage(QWidget):
     def _clear_cost_table(self) -> None:
         self.cost_table.hide()
         self.cost_table.setRowCount(0)
+        _apply_compact_row_heights(self.cost_table)
         self.cost_info.setText("Importer en SAF-T saldobalanse for å analysere kostnadskonti.")
         self.cost_info.show()
         self._cost_highlight_widget.hide()
@@ -1645,57 +1652,60 @@ class SammenstillingsanalysePage(QWidget):
                 change_percent = 0.0
             rows.append((konto or "", navn or "", float(current), float(previous), change_value, change_percent))
 
+        table = self.cost_table
         self._updating_cost_table = True
         try:
-            self.cost_table.setRowCount(len(rows))
-            for row_idx, (konto, navn, current, previous, change_value, change_percent) in enumerate(rows):
-                konto_item = QTableWidgetItem(konto or "—")
-                konto_item.setData(Qt.UserRole, konto)
-                konto_item.setFlags(konto_item.flags() & ~Qt.ItemIsEditable)
-                self.cost_table.setItem(row_idx, 0, konto_item)
+            with _suspend_table_updates(table):
+                table.setRowCount(len(rows))
+                for row_idx, (konto, navn, current, previous, change_value, change_percent) in enumerate(rows):
+                    konto_item = QTableWidgetItem(konto or "—")
+                    konto_item.setData(Qt.UserRole, konto)
+                    konto_item.setFlags(konto_item.flags() & ~Qt.ItemIsEditable)
+                    table.setItem(row_idx, 0, konto_item)
 
-                navn_item = QTableWidgetItem(navn or "—")
-                navn_item.setFlags(navn_item.flags() & ~Qt.ItemIsEditable)
-                self.cost_table.setItem(row_idx, 1, navn_item)
+                    navn_item = QTableWidgetItem(navn or "—")
+                    navn_item.setFlags(navn_item.flags() & ~Qt.ItemIsEditable)
+                    table.setItem(row_idx, 1, navn_item)
 
-                current_item = QTableWidgetItem(format_currency(current))
-                current_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-                current_item.setData(Qt.UserRole, current)
-                current_item.setFlags(current_item.flags() & ~Qt.ItemIsEditable)
-                self.cost_table.setItem(row_idx, 2, current_item)
+                    current_item = QTableWidgetItem(format_currency(current))
+                    current_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                    current_item.setData(Qt.UserRole, current)
+                    current_item.setFlags(current_item.flags() & ~Qt.ItemIsEditable)
+                    table.setItem(row_idx, 2, current_item)
 
-                previous_item = QTableWidgetItem(format_currency(previous))
-                previous_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-                previous_item.setData(Qt.UserRole, previous)
-                previous_item.setFlags(previous_item.flags() & ~Qt.ItemIsEditable)
-                self.cost_table.setItem(row_idx, 3, previous_item)
+                    previous_item = QTableWidgetItem(format_currency(previous))
+                    previous_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                    previous_item.setData(Qt.UserRole, previous)
+                    previous_item.setFlags(previous_item.flags() & ~Qt.ItemIsEditable)
+                    table.setItem(row_idx, 3, previous_item)
 
-                change_item = QTableWidgetItem(format_currency(change_value))
-                change_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-                change_item.setData(Qt.UserRole, change_value)
-                change_item.setFlags(change_item.flags() & ~Qt.ItemIsEditable)
-                self.cost_table.setItem(row_idx, 4, change_item)
+                    change_item = QTableWidgetItem(format_currency(change_value))
+                    change_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                    change_item.setData(Qt.UserRole, change_value)
+                    change_item.setFlags(change_item.flags() & ~Qt.ItemIsEditable)
+                    table.setItem(row_idx, 4, change_item)
 
-                percent_text = self._format_percent(change_percent)
-                percent_item = QTableWidgetItem(percent_text)
-                percent_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-                percent_item.setData(Qt.UserRole, change_percent)
-                percent_item.setFlags(percent_item.flags() & ~Qt.ItemIsEditable)
-                self.cost_table.setItem(row_idx, 5, percent_item)
+                    percent_text = self._format_percent(change_percent)
+                    percent_item = QTableWidgetItem(percent_text)
+                    percent_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                    percent_item.setData(Qt.UserRole, change_percent)
+                    percent_item.setFlags(percent_item.flags() & ~Qt.ItemIsEditable)
+                    table.setItem(row_idx, 5, percent_item)
 
-                comment_key = konto or f"row-{row_idx}"
-                comment_text = self._cost_comments.get(comment_key, "")
-                comment_item = QTableWidgetItem(comment_text)
-                comment_item.setData(Qt.UserRole, comment_key)
-                self.cost_table.setItem(row_idx, 6, comment_item)
+                    comment_key = konto or f"row-{row_idx}"
+                    comment_text = self._cost_comments.get(comment_key, "")
+                    comment_item = QTableWidgetItem(comment_text)
+                    comment_item.setData(Qt.UserRole, comment_key)
+                    table.setItem(row_idx, 6, comment_item)
+                _apply_compact_row_heights(table)
         finally:
             self._updating_cost_table = False
 
         self.cost_info.hide()
-        self.cost_table.show()
+        table.show()
         self._cost_highlight_widget.show()
         self._apply_cost_highlighting()
-        self.cost_table.scrollToTop()
+        table.scrollToTop()
 
     @staticmethod
     def _format_percent(value: Optional[float]) -> str:
@@ -1713,21 +1723,26 @@ class SammenstillingsanalysePage(QWidget):
         threshold = float(self.cost_threshold.value())
         highlight_brush = QBrush(QColor(254, 243, 199))
         default_brush = QBrush()
-        for row_idx in range(self.cost_table.rowCount()):
-            change_item = self.cost_table.item(row_idx, 4)
-            if change_item is None:
-                continue
-            value = change_item.data(Qt.UserRole)
-            try:
-                numeric = abs(float(value))
-            except (TypeError, ValueError):
-                numeric = 0.0
-            highlight = threshold > 0.0 and numeric >= threshold
-            brush = highlight_brush if highlight else default_brush
-            for col_idx in range(self.cost_table.columnCount()):
-                item = self.cost_table.item(row_idx, col_idx)
-                if item is not None and col_idx != 6:
-                    item.setBackground(brush)
+        table = self.cost_table
+        with _suspend_table_updates(table):
+            for row_idx in range(table.rowCount()):
+                change_item = table.item(row_idx, 4)
+                if change_item is None:
+                    continue
+                value = change_item.data(Qt.UserRole)
+                try:
+                    numeric = abs(float(value))
+                except (TypeError, ValueError):
+                    numeric = 0.0
+                highlight = threshold > 0.0 and numeric >= threshold
+                brush = highlight_brush if highlight else default_brush
+                for col_idx in range(table.columnCount()):
+                    if col_idx == 6:
+                        continue
+                    item = table.item(row_idx, col_idx)
+                    if item is not None:
+                        item.setBackground(brush)
+        table.viewport().update()
 
     def _on_cost_threshold_changed(self, _value: float) -> None:
         if self.cost_table.isVisible():
@@ -4309,6 +4324,21 @@ def _compact_row_base_height(table: QTableWidget) -> int:
     return max(12, base_height + 1)
 
 
+@contextmanager
+def _suspend_table_updates(table: QTableWidget):
+    """Slår av oppdateringer midlertidig for å gjøre masseendringer raskere."""
+
+    sorting_enabled = table.isSortingEnabled()
+    updates_enabled = table.updatesEnabled()
+    try:
+        table.setSortingEnabled(False)
+        table.setUpdatesEnabled(False)
+        yield
+    finally:
+        table.setUpdatesEnabled(updates_enabled)
+        table.setSortingEnabled(sorting_enabled)
+
+
 def _apply_compact_row_heights(table: QTableWidget) -> None:
     header = table.verticalHeader()
     if header is None:
@@ -4316,16 +4346,13 @@ def _apply_compact_row_heights(table: QTableWidget) -> None:
     minimum_height = _compact_row_base_height(table)
     header.setMinimumSectionSize(minimum_height)
     header.setDefaultSectionSize(minimum_height)
+    header.setSectionResizeMode(QHeaderView.Fixed)
 
     if table.rowCount() == 0:
         return
 
-    table.resizeRowsToContents()
     for row in range(table.rowCount()):
-        hint = table.sizeHintForRow(row)
-        if hint <= 0:
-            hint = minimum_height
-        table.setRowHeight(row, max(minimum_height, hint))
+        table.setRowHeight(row, minimum_height)
 
 
 def _populate_table(
@@ -4336,27 +4363,42 @@ def _populate_table(
     money_cols: Optional[Iterable[int]] = None,
 ) -> None:
     money_idx = set(money_cols or [])
+    row_buffer = list(rows)
+
     table.setRowCount(0)
     table.setColumnCount(len(columns))
     table.setHorizontalHeaderLabels(columns)
 
-    for row_idx, row in enumerate(rows):
-        table.insertRow(row_idx)
-        for col_idx, value in enumerate(row):
-            display = _format_value(value, col_idx in money_idx)
-            item = QTableWidgetItem(display)
-            if isinstance(value, (int, float)):
-                item.setData(Qt.UserRole, float(value))
-            else:
-                item.setData(Qt.UserRole, None)
-            if col_idx in money_idx or isinstance(value, (int, float)):
-                item.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
-            else:
-                item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-            table.setItem(row_idx, col_idx, item)
+    if not row_buffer:
+        table.clearContents()
+        _apply_compact_row_heights(table)
+        return
+
+    sorting_enabled = table.isSortingEnabled()
+    table.setSortingEnabled(False)
+    table.setUpdatesEnabled(False)
+
+    try:
+        table.setRowCount(len(row_buffer))
+
+        for row_idx, row in enumerate(row_buffer):
+            for col_idx, value in enumerate(row):
+                display = _format_value(value, col_idx in money_idx)
+                item = QTableWidgetItem(display)
+                if isinstance(value, (int, float)):
+                    item.setData(Qt.UserRole, float(value))
+                else:
+                    item.setData(Qt.UserRole, None)
+                if col_idx in money_idx or isinstance(value, (int, float)):
+                    item.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
+                else:
+                    item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+                table.setItem(row_idx, col_idx, item)
+    finally:
+        table.setUpdatesEnabled(True)
+        table.setSortingEnabled(sorting_enabled)
 
     table.resizeColumnsToContents()
-    table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
     _apply_compact_row_heights(table)
     window = table.window()
     schedule_hook = getattr(window, "_schedule_responsive_update", None)
