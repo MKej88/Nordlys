@@ -157,7 +157,11 @@ class SaftTableModel(QAbstractTableModel):
             return int(cell.alignment)
         if role == Qt.BackgroundRole:
             return cell.background
-        if role == Qt.ToolTipRole and isinstance(cell.value, str) and "\n" in cell.value:
+        if (
+            role == Qt.ToolTipRole
+            and isinstance(cell.value, str)
+            and "\n" in cell.value
+        ):
             return cell.value
         return None
 
@@ -252,9 +256,18 @@ class SaftTableModel(QAbstractTableModel):
     ) -> tuple[list[SaftTableCell], list[str]]:
         from collections.abc import Sequence as SeqABC
 
-        if isinstance(raw_row, list) and raw_row and isinstance(raw_row[0], SaftTableCell):
-            cells = [cell if isinstance(cell, SaftTableCell) else self._coerce_cell(cell) for cell in raw_row]
-            columns = list(columns_hint) or [f"Kolonne {idx + 1}" for idx in range(len(cells))]
+        if (
+            isinstance(raw_row, list)
+            and raw_row
+            and isinstance(raw_row[0], SaftTableCell)
+        ):
+            cells = [
+                cell if isinstance(cell, SaftTableCell) else self._coerce_cell(cell)
+                for cell in raw_row
+            ]
+            columns = list(columns_hint) or [
+                f"Kolonne {idx + 1}" for idx in range(len(cells))
+            ]
             return cells, columns
 
         if isinstance(raw_row, SaftTableCell):
@@ -279,7 +292,10 @@ class SaftTableModel(QAbstractTableModel):
             ]
             cells = [self._coerce_cell(value) for value in values]
             if len(columns) < len(cells):
-                extra = [f"Kolonne {len(columns) + idx + 1}" for idx in range(len(cells) - len(columns))]
+                extra = [
+                    f"Kolonne {len(columns) + idx + 1}"
+                    for idx in range(len(cells) - len(columns))
+                ]
                 columns.extend(extra)
             elif len(columns) > len(cells):
                 columns = columns[: len(cells)]
@@ -306,7 +322,9 @@ class SaftTableModel(QAbstractTableModel):
         )
 
     def _fill_prefetch_buffer(self, *, initial: bool = False) -> None:
-        target = self._window_size + self._prefetch_size if initial else self._prefetch_size
+        target = (
+            self._window_size + self._prefetch_size if initial else self._prefetch_size
+        )
         while len(self._buffer) < target and self._has_more:
             next_row = self._get_next_row()
             if next_row is None:
