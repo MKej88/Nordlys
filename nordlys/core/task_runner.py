@@ -1,4 +1,5 @@
 """Generisk kjøring av tunge oppgaver i bakgrunnen."""
+
 from __future__ import annotations
 
 import inspect
@@ -28,7 +29,9 @@ class TaskRunner(QObject):
     sig_done: Signal = Signal(str, object)
     sig_error: Signal = Signal(str, str)
 
-    def __init__(self, parent: Optional[QObject] = None, *, max_threads: Optional[int] = None) -> None:
+    def __init__(
+        self, parent: Optional[QObject] = None, *, max_threads: Optional[int] = None
+    ) -> None:
         super().__init__(parent)
         if max_threads is None:
             self._pool = QThreadPool.globalInstance()
