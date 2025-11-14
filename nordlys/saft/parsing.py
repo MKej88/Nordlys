@@ -89,7 +89,7 @@ def _parse_amount_element(
     *,
     field: str,
     line: Optional[int],
-    prefix: str,
+    amount_tag: str,
     xml_path: Path,
 ) -> Decimal:
     if element is None:
@@ -103,7 +103,7 @@ def _parse_amount_element(
             line=element_line or line,
             xml_path=xml_path,
         )
-    nested = element.find(_tag(prefix, "Amount"))
+    nested = element.find(amount_tag)
     if nested is not None:
         nested_text = _clean_text(nested.text)
         nested_line = _sourceline(nested)
@@ -141,41 +141,49 @@ def _yield_transaction_entries(
     prefix: str,
     xml_path: Path,
 ) -> Iterator[SaftEntry]:
-    transaction_id = _clean_text(transaction.findtext(_tag(prefix, "TransactionID")))
-    transaction_date = _clean_text(
-        transaction.findtext(_tag(prefix, "TransactionDate"))
-    )
-    document_number = _clean_text(
-        transaction.findtext(_tag(prefix, "SourceDocumentID", "DocumentNumber"))
-    )
-    transaction_description = _clean_text(
-        transaction.findtext(_tag(prefix, "Description"))
-    )
+    transaction_id_tag = _tag(prefix, "TransactionID")
+    transaction_date_tag = _tag(prefix, "TransactionDate")
+    document_number_tag = _tag(prefix, "SourceDocumentID", "DocumentNumber")
+    transaction_description_tag = _tag(prefix, "Description")
     line_path = _tag(prefix, "Line")
+    line_number_tag = _tag(prefix, "LineNumber")
+    account_id_tag = _tag(prefix, "AccountID")
+    line_description_tag = _tag(prefix, "Description")
+    debit_amount_tag = _tag(prefix, "DebitAmount")
+    credit_amount_tag = _tag(prefix, "CreditAmount")
+    amount_tag = _tag(prefix, "Amount")
+    customer_id_tag = _tag(prefix, "CustomerID")
+    supplier_id_tag = _tag(prefix, "SupplierID")
+
+    transaction_id = _clean_text(transaction.findtext(transaction_id_tag))
+    transaction_date = _clean_text(transaction.findtext(transaction_date_tag))
+    document_number = _clean_text(transaction.findtext(document_number_tag))
+    transaction_description = _clean_text(
+        transaction.findtext(transaction_description_tag)
+    )
     for index, line in enumerate(transaction.findall(line_path), start=1):
-        line_number = _clean_text(line.findtext(_tag(prefix, "LineNumber"))) or str(
-            index
-        )
-        account_id = _clean_text(line.findtext(_tag(prefix, "AccountID")))
-        line_description = _clean_text(line.findtext(_tag(prefix, "Description")))
-        debit_elem = line.find(_tag(prefix, "DebitAmount"))
-        credit_elem = line.find(_tag(prefix, "CreditAmount"))
+        line_number = _clean_text(line.findtext(line_number_tag)) or str(index)
+        account_id = _clean_text(line.findtext(account_id_tag))
+        line_description = _clean_text(line.findtext(line_description_tag))
+        debit_elem = line.find(debit_amount_tag)
+        credit_elem = line.find(credit_amount_tag)
+        line_line = _sourceline(line)
         debit = _parse_amount_element(
             debit_elem,
             field="DebitAmount",
-            line=_sourceline(line),
-            prefix=prefix,
+            line=line_line,
+            amount_tag=amount_tag,
             xml_path=xml_path,
         )
         credit = _parse_amount_element(
             credit_elem,
             field="CreditAmount",
-            line=_sourceline(line),
-            prefix=prefix,
+            line=line_line,
+            amount_tag=amount_tag,
             xml_path=xml_path,
         )
-        customer_id = _clean_text(line.findtext(_tag(prefix, "CustomerID")))
-        supplier_id = _clean_text(line.findtext(_tag(prefix, "SupplierID")))
+        customer_id = _clean_text(line.findtext(customer_id_tag))
+        supplier_id = _clean_text(line.findtext(supplier_id_tag))
         yield {
             "journal_id": journal_id,
             "transaction_id": transaction_id,
