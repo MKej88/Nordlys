@@ -11,8 +11,8 @@ from contextlib import contextmanager
 from datetime import date, datetime
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple, TYPE_CHECKING, cast
-from PySide6.QtCore import QObject, Qt, QThread, Signal, Slot, QTimer
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple, TYPE_CHECKING, cast
+from PySide6.QtCore import QObject, Qt, Signal, Slot, QTimer
 from PySide6.QtGui import QBrush, QColor, QFont, QIcon, QTextCursor, QPen
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -32,7 +32,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPlainTextEdit,
-    QProgressDialog,
+    QProgressBar,
     QPushButton,
     QSizePolicy,
     QSpinBox,
@@ -56,6 +56,7 @@ except ImportError:  # PySide6 < 6.7
 
 from ..brreg import fetch_brreg, map_brreg_metrics
 from ..constants import APP_TITLE
+from ..core.task_runner import TaskRunner
 from ..industry_groups import (
     IndustryClassification,
     classify_from_brreg_json,
@@ -202,13 +203,28 @@ class SaftLoadResult:
     industry_error: Optional[str]
 
 
-def load_saft_file(file_path: str) -> SaftLoadResult:
+def load_saft_file(
+    file_path: str,
+    *,
+    progress_callback: Optional[Callable[[int, str], None]] = None,
+) -> SaftLoadResult:
     """Laster en enkelt SAF-T-fil og returnerer resultatet."""
+
+    file_name = Path(file_path).name
+
+    def _report_progress(percent: int, message: str) -> None:
+        if progress_callback is None:
+            return
+        clamped = max(0, min(100, int(percent)))
+        progress_callback(clamped, message)
+
+    _report_progress(0, f"Forbereder {file_name}")
 
     tree, ns = parse_saft(file_path)
     root = tree.getroot()
     header = parse_saft_header(root)
     dataframe = parse_saldobalanse(root)
+    _report_progress(25, f"Tolker saldobalanse for {file_name}")
     customers = parse_customers(root)
     suppliers = parse_suppliers(root)
 
@@ -287,11 +303,15 @@ def load_saft_file(file_path: str) -> SaftLoadResult:
                 parent_map=parent_map,
             )
 
+    _report_progress(50, f"Analyserer kunder og leverandører for {file_name}")
+
     summary = ns4102_summary_from_tb(dataframe)
     validation = validate_saft_against_xsd(
         file_path,
         header.file_version if header else None,
     )
+
+    _report_progress(75, f"Validerer og beriker data for {file_name}")
 
     brreg_json: Optional[Dict[str, object]] = None
     brreg_map: Optional[Dict[str, Optional[float]]] = None
@@ -342,6 +362,8 @@ def load_saft_file(file_path: str) -> SaftLoadResult:
     elif header:
         industry_error = "SAF-T mangler organisasjonsnummer."
 
+    _report_progress(100, f"Ferdig med {file_name}")
+
     return SaftLoadResult(
         file_path=file_path,
         header=header,
@@ -362,52 +384,35 @@ def load_saft_file(file_path: str) -> SaftLoadResult:
     )
 
 
-class SaftLoadWorker(QObject):
-    """Arbeider som laster og validerer SAF-T i bakgrunnen."""
+def load_saft_files(
+    file_paths: Sequence[str],
+    *,
+    progress_callback: Optional[Callable[[int, str], None]] = None,
+) -> List[SaftLoadResult]:
+    """Laster en eller flere SAF-T-filer sekvensielt med fremdriftsrapportering."""
 
-    finished: Signal = Signal(object)
-    error: Signal = Signal(str)
+    paths = list(file_paths)
+    total = len(paths)
+    if total == 0:
+        if progress_callback is not None:
+            progress_callback(100, "Ingen filer å laste.")
+        return []
 
-    def __init__(self, file_path: str) -> None:
-        super().__init__()
-        self._file_path = file_path
+    results: List[SaftLoadResult] = []
+    for index, path in enumerate(paths):
+        def _inner_progress(percent: int, message: str) -> None:
+            if progress_callback is None:
+                return
+            ratio = (index + max(0.0, min(100.0, percent)) / 100.0) / total
+            progress_callback(int(round(ratio * 100)), message)
 
-    @Slot()
-    def run(self) -> None:
-        try:
-            result = load_saft_file(self._file_path)
-            self.finished.emit(result)
-        except Exception as exc:  # pragma: no cover - presenteres i GUI
-            self.error.emit(str(exc))
+        result = load_saft_file(path, progress_callback=_inner_progress)
+        results.append(result)
 
+    if progress_callback is not None:
+        progress_callback(100, "Import fullført.")
 
-class MultiSaftLoadWorker(QObject):
-    """Laster flere SAF-T-filer sekvensielt i bakgrunnen."""
-
-    finished: Signal = Signal(object)
-    error: Signal = Signal(str)
-
-    def __init__(self, file_paths: Sequence[str]) -> None:
-        super().__init__()
-        self._file_paths = list(file_paths)
-
-    @Slot()
-    def run(self) -> None:
-        results: List[SaftLoadResult] = []
-        try:
-            for path in self._file_paths:
-                result = load_saft_file(path)
-                results.append(result)
-        except Exception as exc:  # pragma: no cover - feil vises i GUI
-            failed_index = len(results)
-            if 0 <= failed_index < len(self._file_paths):
-                failed_path = Path(self._file_paths[failed_index]).name
-                message = f"Feil ved lesing av {failed_path}: {exc}"
-            else:
-                message = str(exc)
-            self.error.emit(message)
-            return
-        self.finished.emit(results)
+    return results
 
 
 def _create_table_widget() -> QTableWidget:
@@ -2832,9 +2837,16 @@ class NordlysWindow(QMainWindow):
         self._current_dataset_key: Optional[str] = None
         self._loading_files: List[str] = []
 
-        self._load_thread: Optional[QThread] = None
-        self._load_worker: Optional[QObject] = None
-        self._progress_dialog: Optional[QProgressDialog] = None
+        self._task_runner = TaskRunner(self)
+        self._task_runner.sig_started.connect(self._on_task_started)
+        self._task_runner.sig_progress.connect(self._on_task_progress)
+        self._task_runner.sig_done.connect(self._on_task_done)
+        self._task_runner.sig_error.connect(self._on_task_error)
+
+        self._current_task_id: Optional[str] = None
+        self._current_task_meta: Dict[str, Any] = {}
+        self._status_progress_label: Optional[QLabel] = None
+        self._status_progress_bar: Optional[QProgressBar] = None
 
         self._page_map: Dict[str, QWidget] = {}
         self._page_factories: Dict[str, Callable[[], QWidget]] = {}
@@ -2928,6 +2940,19 @@ class NordlysWindow(QMainWindow):
 
         status = QStatusBar()
         status.showMessage("Klar.")
+        progress_label = QLabel()
+        progress_label.setObjectName("statusProgressLabel")
+        progress_label.setVisible(False)
+        status.addPermanentWidget(progress_label)
+        progress_bar = QProgressBar()
+        progress_bar.setRange(0, 100)
+        progress_bar.setValue(0)
+        progress_bar.setTextVisible(False)
+        progress_bar.setFixedWidth(180)
+        progress_bar.setVisible(False)
+        status.addPermanentWidget(progress_bar)
+        self._status_progress_label = progress_label
+        self._status_progress_bar = progress_bar
         self.setStatusBar(status)
 
     def _create_pages(self) -> None:
@@ -3393,11 +3418,11 @@ class NordlysWindow(QMainWindow):
 
     # region Handlinger
     def on_open(self) -> None:
-        if self._load_thread is not None:
+        if self._current_task_id is not None:
             QMessageBox.information(
                 self,
                 "Laster allerede",
-                "En SAF-T-fil lastes inn i bakgrunnen. Vent til prosessen er ferdig.",
+                "En SAF-T-jobb kjører allerede i bakgrunnen. Vent til prosessen er ferdig.",
             )
             return
         file_names, _ = QFileDialog.getOpenFileNames(
@@ -3417,59 +3442,35 @@ class NordlysWindow(QMainWindow):
         self._log_import_event(summary, reset=True)
         for name in file_names:
             self._log_import_event(f"Forbereder: {Path(name).name}")
-        worker = MultiSaftLoadWorker(file_names)
-        thread = QThread(self)
-        worker.moveToThread(thread)
+        description = "Importer SAF-T"
+        task_id = self._task_runner.run(
+            load_saft_files,
+            file_names,
+            description=description,
+        )
+        self._current_task_id = task_id
+        self._current_task_meta = {
+            "type": "saft_import",
+            "files": list(file_names),
+            "description": description,
+        }
 
-        thread.started.connect(self._on_loader_started)
-        thread.started.connect(worker.run)
-        worker.finished.connect(self._on_load_finished)
-        worker.error.connect(self._on_load_error)
-        worker.finished.connect(worker.deleteLater)
-        worker.error.connect(worker.deleteLater)
-        worker.finished.connect(thread.quit)
-        worker.error.connect(thread.quit)
-        thread.finished.connect(self._on_loader_thread_finished)
-        thread.finished.connect(thread.deleteLater)
+    def _show_status_progress(self, message: str, value: int) -> None:
+        if self._status_progress_label is not None:
+            self._status_progress_label.setText(message)
+            self._status_progress_label.setVisible(True)
+        if self._status_progress_bar is not None:
+            clamped = max(0, min(100, int(value)))
+            self._status_progress_bar.setValue(clamped)
+            self._status_progress_bar.setVisible(True)
 
-        self._load_worker = worker
-        self._load_thread = thread
-        thread.start()
-
-    @Slot()
-    def _on_loader_started(self) -> None:
-        if len(self._loading_files) == 1:
-            message = f"Laster SAF-T: {Path(self._loading_files[0]).name} …"
-        elif len(self._loading_files) > 1:
-            message = f"Laster {len(self._loading_files)} SAF-T-filer …"
-        else:
-            message = "Laster SAF-T …"
-        self._set_loading_state(True, message)
-        self._show_progress_dialog(message)
-
-    def _show_progress_dialog(self, message: str) -> None:
-        if self._progress_dialog is None:
-            dialog = QProgressDialog(self)
-            dialog.setCancelButton(None)
-            dialog.setRange(0, 0)
-            dialog.setAutoReset(False)
-            dialog.setAutoClose(False)
-            dialog.setWindowModality(Qt.WindowModal)
-            dialog.setWindowTitle("Laster SAF-T")
-            dialog.setMinimumWidth(360)
-            self._progress_dialog = dialog
-        if self._progress_dialog is not None:
-            self._progress_dialog.setLabelText(message)
-            self._progress_dialog.show()
-            self._progress_dialog.raise_()
-            self._progress_dialog.activateWindow()
-
-    def _close_progress_dialog(self) -> None:
-        if self._progress_dialog is None:
-            return
-        self._progress_dialog.hide()
-        self._progress_dialog.deleteLater()
-        self._progress_dialog = None
+    def _hide_status_progress(self) -> None:
+        if self._status_progress_label is not None:
+            self._status_progress_label.clear()
+            self._status_progress_label.setVisible(False)
+        if self._status_progress_bar is not None:
+            self._status_progress_bar.setValue(0)
+            self._status_progress_bar.setVisible(False)
 
     def _set_loading_state(self, loading: bool, status_message: Optional[str] = None) -> None:
         self.btn_open.setEnabled(not loading)
@@ -3508,11 +3509,68 @@ class NordlysWindow(QMainWindow):
         self.import_page.append_log(message)
 
     def _finalize_loading(self, status_message: Optional[str] = None) -> None:
-        self._close_progress_dialog()
+        self._hide_status_progress()
         self._set_loading_state(False)
         if status_message:
             self.statusBar().showMessage(status_message)
+        else:
+            self.statusBar().showMessage("Klar.")
         self._loading_files = []
+        self._current_task_id = None
+        self._current_task_meta = {}
+
+    @Slot(str)
+    def _on_task_started(self, task_id: str) -> None:
+        if task_id != self._current_task_id:
+            return
+        if len(self._loading_files) == 1:
+            message = f"Laster SAF-T: {Path(self._loading_files[0]).name} …"
+        elif len(self._loading_files) > 1:
+            message = f"Laster {len(self._loading_files)} SAF-T-filer …"
+        else:
+            message = "Laster SAF-T …"
+        self._set_loading_state(True, message)
+        self._show_status_progress(message, 0)
+
+    @Slot(str, int, str)
+    def _on_task_progress(self, task_id: str, percent: int, message: str) -> None:
+        if task_id != self._current_task_id:
+            return
+        clean_message = message.strip() if message else ""
+        if not clean_message:
+            clean_message = self._current_task_meta.get("description", "Arbeid pågår …")
+        self._show_status_progress(clean_message, percent)
+        self.statusBar().showMessage(clean_message)
+
+    @Slot(str, object)
+    def _on_task_done(self, task_id: str, result: object) -> None:
+        if task_id != self._current_task_id:
+            return
+        task_type = self._current_task_meta.get("type")
+        if task_type == "saft_import":
+            self._on_load_finished(result)
+        else:
+            self._finalize_loading()
+
+    @Slot(str, str)
+    def _on_task_error(self, task_id: str, exc_str: str) -> None:
+        if task_id != self._current_task_id:
+            return
+        message = self._format_task_error(exc_str)
+        task_type = self._current_task_meta.get("type")
+        if task_type == "saft_import":
+            self._on_load_error(message)
+        else:
+            self._finalize_loading(message)
+
+    def _format_task_error(self, exc_str: str) -> str:
+        text = exc_str.strip()
+        if not text:
+            return "Ukjent feil"
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        if not lines:
+            return "Ukjent feil"
+        return lines[-1]
 
     @Slot(object)
     def _on_load_finished(self, result_obj: object) -> None:
@@ -4016,18 +4074,12 @@ class NordlysWindow(QMainWindow):
             ),
         ]
 
-    @Slot(str)
     def _on_load_error(self, message: str) -> None:
         self._finalize_loading("Feil ved lesing av SAF-T.")
         self._log_import_event(f"Feil ved lesing av SAF-T: {message}")
         if getattr(self, "import_page", None):
             self.import_page.record_error(f"Lesing av SAF-T: {message}")
         QMessageBox.critical(self, "Feil ved lesing av SAF-T", message)
-
-    @Slot()
-    def _on_loader_thread_finished(self) -> None:
-        self._load_thread = None
-        self._load_worker = None
 
     def _normalize_identifier(self, value: object) -> Optional[str]:
         if value is None:
