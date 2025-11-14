@@ -12,7 +12,7 @@ from datetime import date, datetime
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple, TYPE_CHECKING, cast
-from PySide6.QtCore import QObject, Qt, Signal, Slot, QTimer
+from PySide6.QtCore import QObject, Qt, Slot, QTimer
 from PySide6.QtGui import QBrush, QColor, QFont, QIcon, QTextCursor, QPen
 from PySide6.QtWidgets import (
     QAbstractItemView,
