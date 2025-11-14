@@ -3,11 +3,14 @@ from __future__ import annotations
 import sys
 import xml.etree.ElementTree as ET
 import zipfile
+from decimal import Decimal
 
 import pandas as pd
 import pytest
 
 from nordlys.saft import (
+    check_trial_balance,
+    iter_saft_entries,
     ns4102_summary_from_tb,
     parse_customers,
     parse_saft_header,
@@ -201,6 +204,65 @@ def test_parse_saft_detects_namespace(tmp_path):
     tree, ns = parse_saft(xml_path)
     assert tree.getroot().tag.endswith("AuditFile")
     assert ns["n1"] == "urn:StandardAuditFile-Taxation-Financial:NO"
+
+
+def test_iter_saft_entries_streams_lines(tmp_path):
+    root = build_sample_root()
+    xml_path = tmp_path / "stream.xml"
+    ET.ElementTree(root).write(xml_path, encoding="utf-8", xml_declaration=True)
+
+    entries = list(iter_saft_entries(xml_path))
+
+    assert len(entries) == 4
+    assert entries[0]["account_id"] == "3000"
+    assert entries[0]["kredit"] == Decimal("1000")
+    total_debet = sum(item["debet"] for item in entries)
+    total_kredit = sum(item["kredit"] for item in entries)
+    assert total_debet == Decimal("1600")
+    assert total_kredit == Decimal("1600")
+
+
+def test_check_trial_balance_balanced(tmp_path):
+    root = build_sample_root()
+    xml_path = tmp_path / "balanced.xml"
+    ET.ElementTree(root).write(xml_path, encoding="utf-8", xml_declaration=True)
+
+    result = check_trial_balance(xml_path)
+
+    assert result["debet"] == Decimal("1600")
+    assert result["kredit"] == Decimal("1600")
+    assert result["diff"] == Decimal("0")
+
+
+def test_check_trial_balance_reports_diff(tmp_path):
+    xml_path = tmp_path / "unbalanced.xml"
+    xml_path.write_text(
+        """
+        <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+          <GeneralLedgerEntries>
+            <Journal>
+              <Transaction>
+                <Line>
+                  <AccountID>1000</AccountID>
+                  <DebitAmount>100</DebitAmount>
+                </Line>
+                <Line>
+                  <AccountID>2000</AccountID>
+                  <CreditAmount>90</CreditAmount>
+                </Line>
+              </Transaction>
+            </Journal>
+          </GeneralLedgerEntries>
+        </AuditFile>
+        """.strip(),
+        encoding="utf-8",
+    )
+
+    result = check_trial_balance(xml_path)
+
+    assert result["debet"] == Decimal("100")
+    assert result["kredit"] == Decimal("90")
+    assert result["diff"] == Decimal("10")
 
 
 def test_validate_saft_handles_missing_file(tmp_path):

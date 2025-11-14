@@ -10,8 +10,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, cast
 
-from .constants import NS
-from .utils import lazy_pandas, text_or_none, to_float
+from ..constants import NS
+from ..utils import lazy_pandas, text_or_none, to_float
 
 if TYPE_CHECKING:  # pragma: no cover - kun for typekontroll
     import numpy as np
@@ -111,7 +111,7 @@ class SupplierInfo:
     name: str
 
 
-SAFT_RESOURCE_DIR = Path(__file__).resolve().parent / "resources" / "saf_t"
+SAFT_RESOURCE_DIR = Path(__file__).resolve().parent.parent / "resources" / "saf_t"
 
 
 def _detect_version_family(version: Optional[str]) -> Optional[str]:
@@ -517,6 +517,8 @@ def parse_suppliers(root: ET.Element) -> Dict[str, SupplierInfo]:
     return suppliers
 
 
+from .parsing import check_trial_balance, iter_saft_entries
+
 __all__ = [
     "SaftHeader",
     "SaftValidationResult",
@@ -528,4 +530,6 @@ __all__ = [
     "parse_customers",
     "parse_suppliers",
     "validate_saft_against_xsd",
+    "iter_saft_entries",
+    "check_trial_balance",
 ]

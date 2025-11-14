@@ -3,15 +3,29 @@ from __future__ import annotations
 
 import html
 import math
+import os
+import random
 import sys
 import textwrap
 from concurrent.futures import ThreadPoolExecutor
-import random
 from contextlib import contextmanager
-from datetime import date, datetime
 from dataclasses import dataclass
+from datetime import date, datetime
+from decimal import Decimal
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple, TYPE_CHECKING, cast
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    List,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+    cast,
+)
 from PySide6.QtCore import QObject, Qt, Slot, QSortFilterProxyModel, QTimer
 from PySide6.QtGui import QBrush, QColor, QFont, QIcon, QTextCursor, QPen
 from PySide6.QtWidgets import (
@@ -68,6 +82,7 @@ from ..industry_groups import (
 )
 from ..regnskap import compute_balance_analysis, compute_result_analysis, prepare_regnskap_dataframe
 from ..saft import (
+    check_trial_balance,
     CustomerInfo,
     SaftHeader,
     SaftValidationResult,
@@ -93,6 +108,18 @@ if TYPE_CHECKING:  # pragma: no cover - kun for typekontroll
     import pandas as pd
 
 pd = lazy_pandas()
+
+
+def _env_flag(name: str) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return False
+    normalized = value.strip().lower()
+    return normalized in {"1", "true", "ja", "on", "yes"}
+
+
+SAFT_STREAMING_ENABLED = _env_flag("NORDLYS_SAFT_STREAMING")
+SAFT_STREAMING_VALIDATE = _env_flag("NORDLYS_SAFT_STREAMING_VALIDATE")
 
 
 REVISION_TASKS: Dict[str, List[str]] = {
@@ -200,6 +227,8 @@ class SaftLoadResult:
     analysis_year: Optional[int]
     summary: Optional[Dict[str, float]]
     validation: SaftValidationResult
+    trial_balance: Optional[Dict[str, Decimal]] = None
+    trial_balance_error: Optional[str] = None
     brreg_json: Optional[Dict[str, object]]
     brreg_map: Optional[Dict[str, Optional[float]]]
     brreg_error: Optional[str]
@@ -223,6 +252,23 @@ def load_saft_file(
         progress_callback(clamped, message)
 
     _report_progress(0, f"Forbereder {file_name}")
+
+    trial_balance: Optional[Dict[str, Decimal]] = None
+    trial_balance_error: Optional[str] = None
+    if SAFT_STREAMING_ENABLED:
+        _report_progress(5, f"Leser hovedbok (streaming) for {file_name}")
+        try:
+            trial_balance = check_trial_balance(
+                Path(file_path), validate=SAFT_STREAMING_VALIDATE
+            )
+            if trial_balance["diff"] != Decimal("0"):
+                trial_balance_error = (
+                    "Prøvebalansen går ikke opp (diff "
+                    f"{trial_balance['diff']}) for {file_name}."
+                )
+        except Exception as exc:  # pragma: no cover - robust mot eksterne feil
+            trial_balance = None
+            trial_balance_error = str(exc)
 
     tree, ns = parse_saft(file_path)
     root = tree.getroot()
@@ -379,6 +425,8 @@ def load_saft_file(
         cost_vouchers=cost_vouchers,
         analysis_year=analysis_year,
         summary=summary,
+        trial_balance=trial_balance,
+        trial_balance_error=trial_balance_error,
         validation=validation,
         brreg_json=brreg_json,
         brreg_map=brreg_map,
