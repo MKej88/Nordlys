@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, cast
 
 from ..constants import NS
 from ..utils import lazy_pandas, text_or_none, to_float
+from .parsing import check_trial_balance, iter_saft_entries
 
 if TYPE_CHECKING:  # pragma: no cover - kun for typekontroll
     import numpy as np
@@ -516,8 +517,6 @@ def parse_suppliers(root: ET.Element) -> Dict[str, SupplierInfo]:
         )
     return suppliers
 
-
-from .parsing import check_trial_balance, iter_saft_entries
 
 __all__ = [
     "SaftHeader",
