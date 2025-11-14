@@ -26,7 +26,7 @@ from typing import (
     Tuple,
     cast,
 )
-from PySide6.QtCore import QObject, Qt, Slot, QSortFilterProxyModel, QTimer
+from PySide6.QtCore import QModelIndex, QObject, Qt, Slot, QSortFilterProxyModel, QTimer
 from PySide6.QtGui import QBrush, QColor, QFont, QIcon, QTextCursor, QPen
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -1778,7 +1778,16 @@ class SammenstillingsanalysePage(QWidget):
                 change_percent = math.copysign(math.inf, change_value)
             else:
                 change_percent = 0.0
-            rows.append((konto or "", navn or "", float(current), float(previous), change_value, change_percent))
+            rows.append(
+                (
+                    konto or "",
+                    navn or "",
+                    float(current),
+                    float(previous),
+                    change_value,
+                    change_percent,
+                )
+            )
 
         self._cost_headers = headers
 
@@ -1798,16 +1807,16 @@ class SammenstillingsanalysePage(QWidget):
                 sort_value=navn or "",
                 alignment=Qt.AlignLeft | Qt.AlignVCenter,
             )
-            previous_cell = SaftTableCell(
-                value=previous,
-                display=format_currency(previous),
-                sort_value=previous,
-                alignment=Qt.AlignRight | Qt.AlignVCenter,
-            )
             current_cell = SaftTableCell(
                 value=current,
                 display=format_currency(current),
                 sort_value=current,
+                alignment=Qt.AlignRight | Qt.AlignVCenter,
+            )
+            previous_cell = SaftTableCell(
+                value=previous,
+                display=format_currency(previous),
+                sort_value=previous,
                 alignment=Qt.AlignRight | Qt.AlignVCenter,
             )
             change_cell = SaftTableCell(
@@ -1836,8 +1845,8 @@ class SammenstillingsanalysePage(QWidget):
                 [
                     konto_cell,
                     navn_cell,
-                    previous_cell,
                     current_cell,
+                    previous_cell,
                     change_cell,
                     percent_cell,
                     comment_cell,
@@ -4617,22 +4626,59 @@ def _apply_compact_row_heights(table: QTableWidget | QTableView) -> None:
     header = table.verticalHeader()
     if header is None:
         return
+
     minimum_height = _compact_row_base_height(table)
     header.setMinimumSectionSize(minimum_height)
-    header.setDefaultSectionSize(minimum_height)
-    header.setSectionResizeMode(QHeaderView.Fixed)
 
+    model = table.model()
+    parent_index = QModelIndex()
     if isinstance(table, QTableWidget):
         row_count = table.rowCount()
+        column_count = table.columnCount()
     else:
-        model = table.model()
-        row_count = model.rowCount() if model is not None else 0
+        if hasattr(table, "rootIndex"):
+            root_index = table.rootIndex()
+            if isinstance(root_index, QModelIndex) and root_index.isValid():
+                parent_index = root_index
+        if model is None:
+            row_count = 0
+            column_count = 0
+        else:
+            row_count = model.rowCount(parent_index)
+            column_count = model.columnCount(parent_index)
+
+    header.setSectionResizeMode(QHeaderView.Fixed)
+    header.setDefaultSectionSize(minimum_height)
 
     if row_count == 0:
         return
 
+    option = table.viewOptions()
+    row_heights: List[int] = []
     for row in range(row_count):
-        table.setRowHeight(row, minimum_height)
+        target_height = minimum_height
+        if model is not None and column_count > 0:
+            for column in range(column_count):
+                if isinstance(table, QTableWidget):
+                    index = model.index(row, column)
+                else:
+                    index = model.index(row, column, parent_index)
+                if not index.isValid():
+                    continue
+                delegate = (
+                    table.itemDelegateForColumn(column)
+                    or table.itemDelegateForRow(row)
+                    or table.itemDelegate()
+                )
+                if delegate is None:
+                    continue
+                size = delegate.sizeHint(option, index)
+                target_height = max(target_height, size.height())
+        table.setRowHeight(row, target_height)
+        row_heights.append(target_height)
+
+    if row_heights:
+        header.setDefaultSectionSize(max(row_heights))
 
 
 def _populate_table(
