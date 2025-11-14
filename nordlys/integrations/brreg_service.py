@@ -11,8 +11,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
-import requests
-from requests.adapters import HTTPAdapter
+import requests  # type: ignore[import-untyped, import-not-found]
+from requests.adapters import HTTPAdapter  # type: ignore[import-untyped, import-not-found]
 from urllib3.util.retry import Retry
 
 from ..constants import BRREG_URL_TMPL, ENHETSREGISTER_URL_TMPL
@@ -36,13 +36,15 @@ _MEMORY_CACHE_WARNING_EMITTED = False
 
 
 JSONMapping = Dict[str, Any]
+JSONList = list[Any]
+JSONPayload = JSONMapping | JSONList
 
 
 @dataclass
 class BrregServiceResult:
     """Resultat fra et HTTP-oppslag mot Brønnøysundregistrene."""
 
-    data: Optional[JSONMapping]
+    data: Optional[JSONPayload]
     error_code: Optional[str]
     error_message: Optional[str]
     from_cache: bool
@@ -80,7 +82,7 @@ def _normalize_orgnr(orgnr: str) -> str:
 
 
 def _candidate_cache_dirs() -> Tuple[Path, ...]:
-    candidates = []
+    candidates: list[Path] = []
     env_cache_dir = os.environ.get("NORDLYS_CACHE_DIR")
     if env_cache_dir:
         candidates.append(Path(env_cache_dir).expanduser())
@@ -88,19 +90,15 @@ def _candidate_cache_dirs() -> Tuple[Path, ...]:
     if xdg_cache_home:
         candidates.append(Path(xdg_cache_home).expanduser() / "nordlys")
     try:
-        home_cache = Path.home() / ".cache" / "nordlys"
+        candidates.append(Path.home() / ".cache" / "nordlys")
     except RuntimeError:
         # pragma: no cover - Path.home kan feile på enkelte plattformer
-        home_cache = None
-    else:
-        candidates.append(home_cache)
+        pass
     candidates.append(Path(tempfile.gettempdir()) / "nordlys_cache")
     # Filtrer bort duplikater samtidig som vi bevarer rekkefølgen
-    unique_candidates = []
-    seen = set()
+    unique_candidates: list[Path] = []
+    seen: set[Path] = set()
     for candidate in candidates:
-        if candidate is None:
-            continue
         resolved = candidate.expanduser().resolve()
         if resolved in seen:
             continue
@@ -404,7 +402,9 @@ def get_company_status(orgnr: str) -> CompanyStatus:
         )
         return CompanyStatus(normalized, None, None, None, None)
 
-    data = result.data or {}
+    data: Dict[str, Any] = {}
+    if isinstance(result.data, dict):
+        data = result.data
     konkurs = _interpret_bool(data.get("konkurs"))
     under_avvikling = _interpret_bool(data.get("underAvvikling"))
     under_tvangsopplosning = _interpret_bool(
