@@ -53,26 +53,68 @@ def _sourceline(element: Optional[ET.Element]) -> Optional[int]:
     return None
 
 
-def _parse_decimal(
+def _normalize_decimal_text(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    cleaned = value.replace("\xa0", "").replace(" ", "").strip()
+    if not cleaned:
+        return None
+    if cleaned.count(",") == 1 and cleaned.count(".") == 0:
+        cleaned = cleaned.replace(",", ".")
+    return cleaned
+
+
+def _parse_decimal_text(
     value: Optional[str],
     *,
     field: str,
     line: Optional[int],
     xml_path: Path,
 ) -> Decimal:
-    if value is None:
-        return Decimal("0")
-    text = value.strip()
-    if not text:
+    normalized = _normalize_decimal_text(value)
+    if normalized is None:
         return Decimal("0")
     try:
-        return Decimal(text)
+        return Decimal(normalized)
     except InvalidOperation as exc:  # pragma: no cover - vanskelige å trigge i tester
         location = f" (linje {line})" if line is not None else ""
         raise ValueError(
             f"Ugyldig tall i {field}{location} i SAF-T filen "
-            f"'{xml_path.name}': {text!r}"
+            f"'{xml_path.name}': {value!r}"
         ) from exc
+
+
+def _parse_amount_element(
+    element: Optional[ET.Element],
+    *,
+    field: str,
+    line: Optional[int],
+    prefix: str,
+    xml_path: Path,
+) -> Decimal:
+    if element is None:
+        return Decimal("0")
+    text = _clean_text(element.text)
+    element_line = _sourceline(element)
+    if text is not None:
+        return _parse_decimal_text(
+            text,
+            field=field,
+            line=element_line or line,
+            xml_path=xml_path,
+        )
+    nested = element.find(_tag(prefix, "Amount"))
+    if nested is not None:
+        nested_text = _clean_text(nested.text)
+        nested_line = _sourceline(nested)
+        if nested_text is not None:
+            return _parse_decimal_text(
+                nested_text,
+                field=field,
+                line=nested_line or element_line or line,
+                xml_path=xml_path,
+            )
+    return Decimal("0")
 
 
 def _ensure_validated(xml_path: Path) -> None:
@@ -118,16 +160,18 @@ def _yield_transaction_entries(
         line_description = _clean_text(line.findtext(_tag(prefix, "Description")))
         debit_elem = line.find(_tag(prefix, "DebitAmount"))
         credit_elem = line.find(_tag(prefix, "CreditAmount"))
-        debit = _parse_decimal(
-            debit_elem.text if debit_elem is not None else None,
+        debit = _parse_amount_element(
+            debit_elem,
             field="DebitAmount",
-            line=_sourceline(debit_elem) or _sourceline(line),
+            line=_sourceline(line),
+            prefix=prefix,
             xml_path=xml_path,
         )
-        credit = _parse_decimal(
-            credit_elem.text if credit_elem is not None else None,
+        credit = _parse_amount_element(
+            credit_elem,
             field="CreditAmount",
-            line=_sourceline(credit_elem) or _sourceline(line),
+            line=_sourceline(line),
+            prefix=prefix,
             xml_path=xml_path,
         )
         customer_id = _clean_text(line.findtext(_tag(prefix, "CustomerID")))
