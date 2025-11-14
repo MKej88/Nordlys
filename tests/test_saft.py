@@ -222,6 +222,39 @@ def test_iter_saft_entries_streams_lines(tmp_path):
     assert total_kredit == Decimal("1600")
 
 
+def test_iter_saft_entries_handles_amount_wrapper(tmp_path):
+    xml_path = tmp_path / "nested_amount.xml"
+    xml_path.write_text(
+        """
+        <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+          <GeneralLedgerEntries>
+            <Journal>
+              <Transaction>
+                <Line>
+                  <Description>Debet med Amount</Description>
+                  <DebitAmount><Amount>1 234,50</Amount></DebitAmount>
+                </Line>
+                <Line>
+                  <Description>Kredit med Amount</Description>
+                  <CreditAmount><Amount>1234.50</Amount></CreditAmount>
+                </Line>
+              </Transaction>
+            </Journal>
+          </GeneralLedgerEntries>
+        </AuditFile>
+        """.strip(),
+        encoding="utf-8",
+    )
+
+    entries = list(iter_saft_entries(xml_path))
+
+    assert len(entries) == 2
+    assert entries[0]["debet"] == Decimal("1234.50")
+    assert entries[0]["line_description"] == "Debet med Amount"
+    assert entries[1]["kredit"] == Decimal("1234.50")
+    assert entries[1]["line_description"] == "Kredit med Amount"
+
+
 def test_check_trial_balance_balanced(tmp_path):
     root = build_sample_root()
     xml_path = tmp_path / "balanced.xml"
