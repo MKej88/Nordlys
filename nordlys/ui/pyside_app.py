@@ -12,7 +12,7 @@ from datetime import date, datetime
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple, TYPE_CHECKING, cast
-from PySide6.QtCore import QObject, Qt, Slot, QTimer
+from PySide6.QtCore import QObject, Qt, Slot, QSortFilterProxyModel, QTimer
 from PySide6.QtGui import QBrush, QColor, QFont, QIcon, QTextCursor, QPen
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -36,6 +36,7 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QSizePolicy,
+    QStyle,
     QSpinBox,
     QSplitter,
     QStackedWidget,
@@ -44,6 +45,7 @@ from PySide6.QtWidgets import (
     QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
+    QTableView,
     QTableWidget,
     QTableWidgetItem,
     QStyledItemDelegate,
@@ -85,6 +87,7 @@ from ..saft_customers import (
     parse_saft,
 )
 from ..utils import format_currency, format_difference, lazy_pandas
+from .models import SaftTableCell, SaftTableModel, SaftTableSource
 
 if TYPE_CHECKING:  # pragma: no cover - kun for typekontroll
     import pandas as pd
@@ -1553,8 +1556,33 @@ class SammenstillingsanalysePage(QWidget):
         self._cost_highlight_widget.hide()
         self.cost_card.add_widget(self._cost_highlight_widget)
 
-        self.cost_table = _create_table_widget()
-        self.cost_table.setColumnCount(7)
+        self._cost_headers = [
+            "Konto",
+            "Kontonavn",
+            "Nå",
+            "I fjor",
+            "Endring (kr)",
+            "Endring (%)",
+            "Kommentar",
+        ]
+
+        self.cost_model = SaftTableModel(self)
+        self.cost_model.set_window_size(200)
+        self.cost_model.set_edit_callback(self._on_cost_cell_changed)
+
+        self.cost_proxy = QSortFilterProxyModel(self)
+        self.cost_proxy.setSourceModel(self.cost_model)
+        self.cost_proxy.setDynamicSortFilter(True)
+        self.cost_proxy.setSortCaseSensitivity(Qt.CaseInsensitive)
+        self.cost_proxy.setFilterCaseSensitivity(Qt.CaseInsensitive)
+        self.cost_proxy.setSortRole(Qt.UserRole)
+
+        self.cost_table = QTableView()
+        self.cost_table.setAlternatingRowColors(True)
+        self.cost_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.cost_table.setFocusPolicy(Qt.NoFocus)
+        self.cost_table.setSortingEnabled(True)
+        self.cost_table.setModel(self.cost_proxy)
         self.cost_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.cost_table.setMinimumHeight(360)
         self.cost_table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
@@ -1580,23 +1608,13 @@ class SammenstillingsanalysePage(QWidget):
             " background: transparent;"
             "}"
         )
-        self.cost_table.setHorizontalHeaderLabels(
-            [
-                "Konto",
-                "Kontonavn",
-                "Nå",
-                "I fjor",
-                "Endring (kr)",
-                "Endring (%)",
-                "Kommentar",
-            ]
-        )
         self.cost_table.setEditTriggers(
             QAbstractItemView.DoubleClicked
             | QAbstractItemView.SelectedClicked
             | QAbstractItemView.EditKeyPressed
         )
         header = self.cost_table.horizontalHeader()
+        header.setMinimumSectionSize(0)
         header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.Stretch)
         header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
@@ -1604,22 +1622,36 @@ class SammenstillingsanalysePage(QWidget):
         header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(5, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(6, QHeaderView.Stretch)
-        cost_vertical_header = self.cost_table.verticalHeader()
-        cost_vertical_header.setSectionResizeMode(QHeaderView.Fixed)
-        cost_uniform_setter = getattr(self.cost_table, "setUniformRowHeights", None)
-        if callable(cost_uniform_setter):
-            cost_uniform_setter(True)
+        self.cost_table.sortByColumn(0, Qt.AscendingOrder)
+        vertical_header = self.cost_table.verticalHeader()
+        vertical_header.setVisible(False)
+        vertical_header.setSectionResizeMode(QHeaderView.Fixed)
+        uniform_setter = getattr(self.cost_table, "setUniformRowHeights", None)
+        if callable(uniform_setter):
+            uniform_setter(True)
+        delegate = _CompactRowDelegate(self.cost_table)
+        self.cost_table.setItemDelegate(delegate)
+        self.cost_table._compact_delegate = delegate  # type: ignore[attr-defined]
+        self.cost_model.set_source(SaftTableSource(self._cost_headers, []))
         _apply_compact_row_heights(self.cost_table)
-        self.cost_table.itemChanged.connect(self._on_cost_item_changed)
         self.cost_table.hide()
         self.cost_card.add_widget(self.cost_table)
+
+        self.btn_cost_show_more = QPushButton("Vis mer")
+        self.btn_cost_show_more.clicked.connect(self._on_cost_fetch_more)
+        self.btn_cost_show_more.setVisible(False)
+        button_row = QWidget()
+        button_layout = QHBoxLayout(button_row)
+        button_layout.setContentsMargins(0, 6, 0, 0)
+        button_layout.addStretch(1)
+        button_layout.addWidget(self.btn_cost_show_more)
+        self.cost_card.add_widget(button_row)
 
         layout.addWidget(self.cost_card, 1)
 
         self._prepared_df: Optional[pd.DataFrame] = None
         self._fiscal_year: Optional[str] = None
         self._cost_comments: Dict[str, str] = {}
-        self._updating_cost_table = False
 
     def set_dataframe(self, df: Optional[pd.DataFrame], fiscal_year: Optional[str] = None) -> None:
         self._fiscal_year = fiscal_year.strip() if fiscal_year and fiscal_year.strip() else None
@@ -1643,7 +1675,8 @@ class SammenstillingsanalysePage(QWidget):
 
     def _clear_cost_table(self) -> None:
         self.cost_table.hide()
-        self.cost_table.setRowCount(0)
+        self.cost_model.set_source(SaftTableSource(self._cost_headers, []))
+        self._update_cost_show_more_visibility()
         _apply_compact_row_heights(self.cost_table)
         self.cost_info.setText("Importer en SAF-T saldobalanse for å analysere kostnadskonti.")
         self.cost_info.show()
@@ -1690,7 +1723,6 @@ class SammenstillingsanalysePage(QWidget):
             "Endring (%)",
             "Kommentar",
         ]
-        self.cost_table.setHorizontalHeaderLabels(headers)
 
         konto_values = cost_df.get("konto", pd.Series("", index=cost_df.index)).astype(str).str.strip()
         navn_series = cost_df.get("navn", pd.Series("", index=cost_df.index))
@@ -1710,60 +1742,80 @@ class SammenstillingsanalysePage(QWidget):
                 change_percent = 0.0
             rows.append((konto or "", navn or "", float(current), float(previous), change_value, change_percent))
 
-        table = self.cost_table
-        self._updating_cost_table = True
-        try:
-            with _suspend_table_updates(table):
-                table.setRowCount(len(rows))
-                for row_idx, (konto, navn, current, previous, change_value, change_percent) in enumerate(rows):
-                    konto_item = QTableWidgetItem(konto or "—")
-                    konto_item.setData(Qt.UserRole, konto)
-                    konto_item.setFlags(konto_item.flags() & ~Qt.ItemIsEditable)
-                    table.setItem(row_idx, 0, konto_item)
+        self._cost_headers = headers
 
-                    navn_item = QTableWidgetItem(navn or "—")
-                    navn_item.setFlags(navn_item.flags() & ~Qt.ItemIsEditable)
-                    table.setItem(row_idx, 1, navn_item)
+        row_cells: list[list[SaftTableCell]] = []
+        for row_idx, (konto, navn, current, previous, change_value, change_percent) in enumerate(rows):
+            konto_display = konto or "—"
+            konto_cell = SaftTableCell(
+                value=konto_display,
+                display=konto_display,
+                sort_value=konto or "",
+                alignment=Qt.AlignLeft | Qt.AlignVCenter,
+            )
+            navn_display = navn or "—"
+            navn_cell = SaftTableCell(
+                value=navn_display,
+                display=navn_display,
+                sort_value=navn or "",
+                alignment=Qt.AlignLeft | Qt.AlignVCenter,
+            )
+            current_cell = SaftTableCell(
+                value=current,
+                display=format_currency(current),
+                sort_value=current,
+                alignment=Qt.AlignRight | Qt.AlignVCenter,
+            )
+            previous_cell = SaftTableCell(
+                value=previous,
+                display=format_currency(previous),
+                sort_value=previous,
+                alignment=Qt.AlignRight | Qt.AlignVCenter,
+            )
+            change_cell = SaftTableCell(
+                value=change_value,
+                display=format_currency(change_value),
+                sort_value=change_value,
+                alignment=Qt.AlignRight | Qt.AlignVCenter,
+            )
+            percent_cell = SaftTableCell(
+                value=change_percent,
+                display=self._format_percent(change_percent),
+                sort_value=change_percent,
+                alignment=Qt.AlignRight | Qt.AlignVCenter,
+            )
+            comment_key = konto or f"row-{row_idx}"
+            comment_text = self._cost_comments.get(comment_key, "")
+            comment_cell = SaftTableCell(
+                value=comment_text,
+                display=comment_text,
+                sort_value=comment_text,
+                editable=True,
+                alignment=Qt.AlignLeft | Qt.AlignVCenter,
+                user_value=comment_key,
+            )
+            row_cells.append(
+                [
+                    konto_cell,
+                    navn_cell,
+                    current_cell,
+                    previous_cell,
+                    change_cell,
+                    percent_cell,
+                    comment_cell,
+                ]
+            )
 
-                    current_item = QTableWidgetItem(format_currency(current))
-                    current_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-                    current_item.setData(Qt.UserRole, current)
-                    current_item.setFlags(current_item.flags() & ~Qt.ItemIsEditable)
-                    table.setItem(row_idx, 2, current_item)
-
-                    previous_item = QTableWidgetItem(format_currency(previous))
-                    previous_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-                    previous_item.setData(Qt.UserRole, previous)
-                    previous_item.setFlags(previous_item.flags() & ~Qt.ItemIsEditable)
-                    table.setItem(row_idx, 3, previous_item)
-
-                    change_item = QTableWidgetItem(format_currency(change_value))
-                    change_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-                    change_item.setData(Qt.UserRole, change_value)
-                    change_item.setFlags(change_item.flags() & ~Qt.ItemIsEditable)
-                    table.setItem(row_idx, 4, change_item)
-
-                    percent_text = self._format_percent(change_percent)
-                    percent_item = QTableWidgetItem(percent_text)
-                    percent_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-                    percent_item.setData(Qt.UserRole, change_percent)
-                    percent_item.setFlags(percent_item.flags() & ~Qt.ItemIsEditable)
-                    table.setItem(row_idx, 5, percent_item)
-
-                    comment_key = konto or f"row-{row_idx}"
-                    comment_text = self._cost_comments.get(comment_key, "")
-                    comment_item = QTableWidgetItem(comment_text)
-                    comment_item.setData(Qt.UserRole, comment_key)
-                    table.setItem(row_idx, 6, comment_item)
-                _apply_compact_row_heights(table)
-        finally:
-            self._updating_cost_table = False
-
+        source = SaftTableSource(headers, row_cells)
+        self.cost_model.set_source(source)
+        _apply_compact_row_heights(self.cost_table)
         self.cost_info.hide()
-        table.show()
+        self.cost_table.show()
         self._cost_highlight_widget.show()
+        self._update_cost_show_more_visibility()
         self._apply_cost_highlighting()
-        table.scrollToTop()
+        self.cost_table.scrollToTop()
+        self._auto_resize_cost_columns()
 
     @staticmethod
     def _format_percent(value: Optional[float]) -> str:
@@ -1780,48 +1832,94 @@ class SammenstillingsanalysePage(QWidget):
     def _apply_cost_highlighting(self) -> None:
         threshold = float(self.cost_threshold.value())
         highlight_brush = QBrush(QColor(254, 243, 199))
-        default_brush = QBrush()
-        table = self.cost_table
-        with _suspend_table_updates(table):
-            for row_idx in range(table.rowCount()):
-                change_item = table.item(row_idx, 4)
-                if change_item is None:
+        row_count = self.cost_model.rowCount()
+        column_count = self.cost_model.columnCount()
+        for row_idx in range(row_count):
+            change_cell = self.cost_model.get_cell(row_idx, 4)
+            if change_cell is None:
+                continue
+            raw_value = change_cell.sort_value if change_cell.sort_value is not None else change_cell.value
+            try:
+                numeric = abs(float(raw_value))
+            except (TypeError, ValueError):
+                numeric = 0.0
+            highlight = threshold > 0.0 and numeric >= threshold
+            brush = highlight_brush if highlight else None
+            for col_idx in range(column_count):
+                if col_idx == 6:
                     continue
-                value = change_item.data(Qt.UserRole)
-                try:
-                    numeric = abs(float(value))
-                except (TypeError, ValueError):
-                    numeric = 0.0
-                highlight = threshold > 0.0 and numeric >= threshold
-                brush = highlight_brush if highlight else default_brush
-                for col_idx in range(table.columnCount()):
-                    if col_idx == 6:
-                        continue
-                    item = table.item(row_idx, col_idx)
-                    if item is not None:
-                        item.setBackground(brush)
-        table.viewport().update()
+                self.cost_model.set_cell_background(row_idx, col_idx, brush)
+        self.cost_table.viewport().update()
 
     def _on_cost_threshold_changed(self, _value: float) -> None:
         if self.cost_table.isVisible():
             self._apply_cost_highlighting()
 
-    def _on_cost_item_changed(self, item: QTableWidgetItem) -> None:
-        if self._updating_cost_table:
+    def _update_cost_show_more_visibility(self) -> None:
+        can_fetch_more = self.cost_model.canFetchMore()
+        self.btn_cost_show_more.setVisible(can_fetch_more)
+        self.btn_cost_show_more.setEnabled(can_fetch_more)
+
+    def _on_cost_fetch_more(self) -> None:
+        fetched = self.cost_model.fetch_more()
+        if fetched:
+            _apply_compact_row_heights(self.cost_table)
+            self._apply_cost_highlighting()
+            self._auto_resize_cost_columns()
+        self._update_cost_show_more_visibility()
+
+    def _on_cost_cell_changed(self, row: int, column: int, cell: SaftTableCell) -> None:
+        if column != 6:
             return
-        if item.column() != 6:
-            return
-        key = item.data(Qt.UserRole)
+        key = cell.user_value
         if not key:
-            konto_item = self.cost_table.item(item.row(), 0)
-            key = konto_item.data(Qt.UserRole) if konto_item else None
+            konto_cell = self.cost_model.get_cell(row, 0)
+            key = konto_cell.sort_value if konto_cell and konto_cell.sort_value else (
+                konto_cell.value if konto_cell else None
+            )
         if not key:
             return
-        text = item.text().strip()
+        text_value = cell.value if isinstance(cell.value, str) else str(cell.value or "")
+        text = text_value.strip()
         if text:
             self._cost_comments[str(key)] = text
         else:
             self._cost_comments.pop(str(key), None)
+
+    def _auto_resize_cost_columns(self) -> None:
+        """Tilpasser kolonnebreddene til innholdet uten å fjerne stretching."""
+
+        header = self.cost_table.horizontalHeader()
+        column_count = self.cost_model.columnCount()
+        if column_count <= 0:
+            return
+
+        stretch_sections: List[int] = []
+        for section in range(column_count):
+            if header.sectionResizeMode(section) == QHeaderView.Stretch:
+                stretch_sections.append(section)
+                header.setSectionResizeMode(section, QHeaderView.ResizeToContents)
+
+        target_widths: List[int] = []
+        for section in range(column_count):
+            self.cost_table.resizeColumnToContents(section)
+            header_hint = header.sectionSizeHint(section)
+            data_hint = self.cost_table.sizeHintForColumn(section)
+            target_widths.append(max(header_hint, data_hint, 0))
+
+        margin = header.style().pixelMetric(QStyle.PM_HeaderMargin, None, header)
+        padding = max(0, margin) * 2
+        for section, target in enumerate(target_widths):
+            if target > 0:
+                header.resizeSection(section, target + padding)
+
+        for section in stretch_sections:
+            header.setSectionResizeMode(section, QHeaderView.Stretch)
+            target = target_widths[section]
+            if target > 0:
+                header.resizeSection(section, target + padding)
+
+        header.setStretchLastSection(column_count - 1 in stretch_sections)
 
 
 class SignalBlocker:
@@ -4446,7 +4544,7 @@ class NordlysWindow(QMainWindow):
     # endregion
 
 
-def _compact_row_base_height(table: QTableWidget) -> int:
+def _compact_row_base_height(table: QTableWidget | QTableView) -> int:
     metrics = table.fontMetrics()
     base_height = metrics.height() if metrics is not None else 0
     # Litt ekstra klaring for å hindre at tekst klippes i høyden.
@@ -4468,7 +4566,7 @@ def _suspend_table_updates(table: QTableWidget):
         table.setSortingEnabled(sorting_enabled)
 
 
-def _apply_compact_row_heights(table: QTableWidget) -> None:
+def _apply_compact_row_heights(table: QTableWidget | QTableView) -> None:
     header = table.verticalHeader()
     if header is None:
         return
@@ -4477,11 +4575,22 @@ def _apply_compact_row_heights(table: QTableWidget) -> None:
     header.setDefaultSectionSize(minimum_height)
     header.setSectionResizeMode(QHeaderView.Fixed)
 
-    if table.rowCount() == 0:
+    if isinstance(table, QTableWidget):
+        row_count = table.rowCount()
+        if row_count == 0:
+            return
+        for row in range(row_count):
+            table.setRowHeight(row, minimum_height)
         return
 
-    for row in range(table.rowCount()):
-        table.setRowHeight(row, minimum_height)
+    model = table.model()
+    if model is None:
+        return
+    row_count = model.rowCount()
+    if row_count == 0:
+        return
+    for row in range(row_count):
+        header.resizeSection(row, minimum_height)
 
 
 def _populate_table(
