@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from typing import Callable, Iterable, List, Optional, Sequence, Tuple, cast
 
 from PySide6.QtCore import Qt
@@ -20,17 +20,13 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QSpinBox,
     QTabWidget,
-    QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
 from ... import saft_customers
-from ...utils import format_currency
-from ..helpers import SignalBlocker
-from ..models import SaftTableCell, SaftTableModel, SaftTableSource
-from ..tables import apply_compact_row_heights, create_table_widget, populate_table
+from ..tables import create_table_widget, populate_table
 from ..widgets import CardFrame, EmptyStateWidget
 
 __all__ = [

@@ -3,13 +3,12 @@ from __future__ import annotations
 import math
 from typing import Dict, List, Optional, Sequence, Tuple
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QSortFilterProxyModel, Qt, QTimer
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDoubleSpinBox,
     QFrame,
-    QGridLayout,
     QHeaderView,
     QHBoxLayout,
     QLabel,
@@ -20,6 +19,7 @@ from PySide6.QtWidgets import (
     QTableWidget,
     QVBoxLayout,
     QWidget,
+    QWIDGETSIZE_MAX,
 )
 
 from ... import regnskap

@@ -1,10 +1,7 @@
 """PySide6-basert GUI for Nordlys."""
 from __future__ import annotations
 
-import html
-import math
 import sys
-import textwrap
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -22,10 +19,9 @@ from typing import (
     Tuple,
     cast,
 )
-from PySide6.QtCore import QObject, Qt, Slot, QSortFilterProxyModel, QTimer
+from PySide6.QtCore import Qt, Slot, QTimer
 from PySide6.QtGui import QBrush, QColor, QFont
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QApplication,
     QComboBox,
     QFileDialog,
@@ -42,7 +38,6 @@ from PySide6.QtWidgets import (
     QStackedWidget,
     QStatusBar,
     QTableWidget,
-    QTableWidgetItem,
     QTabWidget,
     QTreeWidget,
     QTreeWidgetItem,
@@ -64,7 +59,7 @@ from ..industry_groups import (
     classify_from_orgnr,
     load_cached_brreg,
 )
-from ..utils import format_currency, format_difference, lazy_import, lazy_pandas
+from ..utils import format_currency, lazy_import, lazy_pandas
 from .config import (
     PRIMARY_UI_FONT_FAMILY,
     REVISION_TASKS,
