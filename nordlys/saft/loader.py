@@ -31,7 +31,6 @@ else:
     saft_customers = lazy_import("nordlys.saft_customers")
 
 
-
 @dataclass
 class SaftLoadResult:
     """Resultatobjekt fra bakgrunnslasting av SAF-T."""
@@ -110,7 +109,9 @@ def load_saft_file(
     if root is None:  # pragma: no cover - guard mot korrupt XML
         raise ValueError("SAF-T-filen mangler et rot-element.")
     ns_et: dict[str, str] = {
-        key: value for key, value in ns.items() if isinstance(key, str) and isinstance(value, str)
+        key: value
+        for key, value in ns.items()
+        if isinstance(key, str) and isinstance(value, str)
     }
     header = saft.parse_saft_header(root)
     dataframe = saft.parse_saldobalanse(root)
