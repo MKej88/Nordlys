@@ -51,6 +51,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSizePolicy,
     QStyle,
+    QStyleOptionViewItem,
     QSpinBox,
     QSplitter,
     QStackedWidget,
@@ -4653,7 +4654,7 @@ def _apply_compact_row_heights(table: QTableWidget | QTableView) -> None:
     if row_count == 0:
         return
 
-    option = table.viewOptions()
+    option = _safe_view_option(table)
     row_heights: List[int] = []
     for row in range(row_count):
         target_height = minimum_height
@@ -4679,6 +4680,32 @@ def _apply_compact_row_heights(table: QTableWidget | QTableView) -> None:
 
     if row_heights:
         header.setDefaultSectionSize(max(row_heights))
+
+
+def _safe_view_option(table: QTableWidget | QTableView) -> QStyleOptionViewItem:
+    """Returnerer en QStyleOptionViewItem uansett Qt-versjon."""
+
+    view_options = getattr(table, "viewOptions", None)
+    if view_options is not None:
+        try:
+            option = view_options()
+        except AttributeError:
+            option = None
+        else:
+            if isinstance(option, QStyleOptionViewItem):
+                return option
+
+    option = QStyleOptionViewItem()
+    option.font = table.font()
+    option.palette = table.palette()
+    if table.isEnabled():
+        option.state |= QStyle.State_Enabled
+    if table.hasFocus():
+        option.state |= QStyle.State_HasFocus
+    if table.isActiveWindow():
+        option.state |= QStyle.State_Active
+    option.direction = table.layoutDirection()
+    return option
 
 
 def _populate_table(
