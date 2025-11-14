@@ -136,7 +136,9 @@ class CardFrame(QFrame):
         ):
             self.body_layout.setStretchFactor(widget, 100)
 
-    def _maybe_mark_expanding_layout(self, sub_layout: QHBoxLayout | QVBoxLayout | QGridLayout) -> None:
+    def _maybe_mark_expanding_layout(
+        self, sub_layout: QHBoxLayout | QVBoxLayout | QGridLayout
+    ) -> None:
         if sub_layout.sizeConstraint() == QLayout.SetFixedSize:
             return
         if sub_layout.expandingDirections() & Qt.Vertical:

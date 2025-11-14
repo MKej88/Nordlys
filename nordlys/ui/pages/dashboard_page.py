@@ -43,9 +43,21 @@ class DashboardPage(QWidget):
         for idx, (key, title, desc) in enumerate(
             [
                 ("revenue", "Driftsinntekter", "Sum av kontogruppe 3xxx."),
-                ("ebitda_margin", "EBITDA-margin", "EBITDA i prosent av driftsinntekter."),
-                ("ebit_margin", "EBIT-margin", "Driftsresultat i prosent av driftsinntekter."),
-                ("result_margin", "Resultatmargin", "Årsresultat i prosent av driftsinntekter."),
+                (
+                    "ebitda_margin",
+                    "EBITDA-margin",
+                    "EBITDA i prosent av driftsinntekter.",
+                ),
+                (
+                    "ebit_margin",
+                    "EBIT-margin",
+                    "Driftsresultat i prosent av driftsinntekter.",
+                ),
+                (
+                    "result_margin",
+                    "Resultatmargin",
+                    "Årsresultat i prosent av driftsinntekter.",
+                ),
             ]
         ):
             badge = StatBadge(title, desc)
@@ -82,7 +94,9 @@ class DashboardPage(QWidget):
             "Bransjespesifikk",
             "Tilpassede perspektiver basert på bransjeidentifisering.",
         )
-        self.bransje_label = QLabel("Importer en SAF-T-fil for å se bransjespesifikke nøkkeltall.")
+        self.bransje_label = QLabel(
+            "Importer en SAF-T-fil for å se bransjespesifikke nøkkeltall."
+        )
         self.bransje_label.setObjectName("statusLabel")
         self.bransje_label.setWordWrap(True)
         self.bransje_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
@@ -151,7 +165,10 @@ class DashboardPage(QWidget):
         ebit = summary.get("ebit")
         result = summary.get("arsresultat")
 
-        set_badge("revenue", format_currency(revenue_value) if revenue_value is not None else "—")
+        set_badge(
+            "revenue",
+            format_currency(revenue_value) if revenue_value is not None else "—",
+        )
 
         def percent(value: Optional[float]) -> Optional[str]:
             if value is None or not revenue:

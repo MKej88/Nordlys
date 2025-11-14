@@ -49,6 +49,8 @@ __all__ = [
     "RegnskapsanalysePage",
     "SammenstillingsanalysePage",
 ]
+
+
 class SummaryPage(QWidget):
     """Side for vesentlighetsvurdering med tabell og forklaring."""
 
@@ -81,6 +83,7 @@ class SummaryPage(QWidget):
         ]
         populate_table(self.table, ["Nøkkel", "Beløp"], rows, money_cols={1})
 
+
 class ComparisonPage(QWidget):
     """Sammenstilling mellom SAF-T og Regnskapsregisteret."""
 
@@ -97,18 +100,23 @@ class ComparisonPage(QWidget):
         self.card = CardFrame(title, subtitle)
         self.table = create_table_widget()
         self.table.setColumnCount(4)
-        self.table.setHorizontalHeaderLabels([
-            "Nøkkel",
-            "SAF-T",
-            "Brreg",
-            "Avvik",
-        ])
+        self.table.setHorizontalHeaderLabels(
+            [
+                "Nøkkel",
+                "SAF-T",
+                "Brreg",
+                "Avvik",
+            ]
+        )
         self.card.add_widget(self.table)
         layout.addWidget(self.card)
         layout.addStretch(1)
 
     def update_comparison(
-        self, rows: Optional[Sequence[Tuple[str, Optional[float], Optional[float], Optional[float]]]]
+        self,
+        rows: Optional[
+            Sequence[Tuple[str, Optional[float], Optional[float], Optional[float]]]
+        ],
     ) -> None:
         if not rows:
             self.table.setRowCount(0)
@@ -128,6 +136,7 @@ class ComparisonPage(QWidget):
             formatted_rows,
             money_cols={1, 2, 3},
         )
+
 
 class RegnskapsanalysePage(QWidget):
     """Visning som oppsummerer balanse og resultat fra saldobalansen."""
@@ -211,8 +220,12 @@ class RegnskapsanalysePage(QWidget):
         self._prepared_df: Optional[pd.DataFrame] = None
         self._fiscal_year: Optional[str] = None
 
-    def set_dataframe(self, df: Optional[pd.DataFrame], fiscal_year: Optional[str] = None) -> None:
-        self._fiscal_year = fiscal_year.strip() if fiscal_year and fiscal_year.strip() else None
+    def set_dataframe(
+        self, df: Optional[pd.DataFrame], fiscal_year: Optional[str] = None
+    ) -> None:
+        self._fiscal_year = (
+            fiscal_year.strip() if fiscal_year and fiscal_year.strip() else None
+        )
         if df is None or df.empty:
             self._prepared_df = None
             self._clear_balance_table()
@@ -338,14 +351,24 @@ class RegnskapsanalysePage(QWidget):
             self._reset_analysis_table_height(table)
             return
         header_height = table.horizontalHeader().height()
-        default_row = table.verticalHeader().defaultSectionSize() or compact_row_base_height(table)
+        default_row = (
+            table.verticalHeader().defaultSectionSize()
+            or compact_row_base_height(table)
+        )
         rows_height = default_row * table.rowCount()
         grid_extra = max(0, table.rowCount() - 1)
         rows_height += grid_extra
         buffer = max(16, default_row // 2)
         frame = table.frameWidth() * 2
         margins = table.contentsMargins()
-        total = header_height + rows_height + buffer + frame + margins.top() + margins.bottom()
+        total = (
+            header_height
+            + rows_height
+            + buffer
+            + frame
+            + margins.top()
+            + margins.bottom()
+        )
         table.setMinimumHeight(total)
         table.setMaximumHeight(total)
 
@@ -432,9 +455,12 @@ class RegnskapsanalysePage(QWidget):
 
     def update_comparison(
         self,
-        _rows: Optional[Sequence[Tuple[str, Optional[float], Optional[float], Optional[float]]]],
+        _rows: Optional[
+            Sequence[Tuple[str, Optional[float], Optional[float], Optional[float]]]
+        ],
     ) -> None:
         return
+
 
 class SammenstillingsanalysePage(QWidget):
     """Side som viser detaljert sammenligning av kostnadskonti."""
@@ -572,8 +598,12 @@ class SammenstillingsanalysePage(QWidget):
         self._fiscal_year: Optional[str] = None
         self._cost_comments: Dict[str, str] = {}
 
-    def set_dataframe(self, df: Optional[pd.DataFrame], fiscal_year: Optional[str] = None) -> None:
-        self._fiscal_year = fiscal_year.strip() if fiscal_year and fiscal_year.strip() else None
+    def set_dataframe(
+        self, df: Optional[pd.DataFrame], fiscal_year: Optional[str] = None
+    ) -> None:
+        self._fiscal_year = (
+            fiscal_year.strip() if fiscal_year and fiscal_year.strip() else None
+        )
         self._cost_comments.clear()
         if df is None or df.empty:
             self._prepared_df = None
@@ -597,7 +627,9 @@ class SammenstillingsanalysePage(QWidget):
         self.cost_model.set_source(SaftTableSource(self._cost_headers, []))
         self._update_cost_show_more_visibility()
         apply_compact_row_heights(self.cost_table)
-        self.cost_info.setText("Importer en SAF-T saldobalanse for å analysere kostnadskonti.")
+        self.cost_info.setText(
+            "Importer en SAF-T saldobalanse for å analysere kostnadskonti."
+        )
         self.cost_info.show()
         self._cost_highlight_widget.hide()
         self._cost_comments.clear()
@@ -611,7 +643,11 @@ class SammenstillingsanalysePage(QWidget):
 
         prepared = self._prepared_df
         konto_series = prepared.get("konto", pd.Series("", index=prepared.index))
-        mask = konto_series.astype(str).str.strip().str.startswith(("4", "5", "6", "7", "8"))
+        mask = (
+            konto_series.astype(str)
+            .str.strip()
+            .str.startswith(("4", "5", "6", "7", "8"))
+        )
         cost_df = prepared.loc[mask].copy()
 
         if cost_df.empty:
@@ -630,7 +666,9 @@ class SammenstillingsanalysePage(QWidget):
         )
 
         current_values = pd.to_numeric(cost_df.get("UB"), errors="coerce").fillna(0.0)
-        previous_values = pd.to_numeric(cost_df.get("forrige"), errors="coerce").fillna(0.0)
+        previous_values = pd.to_numeric(cost_df.get("forrige"), errors="coerce").fillna(
+            0.0
+        )
 
         current_label, previous_label = self._year_headers()
         headers = [
@@ -643,7 +681,11 @@ class SammenstillingsanalysePage(QWidget):
             "Kommentar",
         ]
 
-        konto_values = cost_df.get("konto", pd.Series("", index=cost_df.index)).astype(str).str.strip()
+        konto_values = (
+            cost_df.get("konto", pd.Series("", index=cost_df.index))
+            .astype(str)
+            .str.strip()
+        )
         navn_series = cost_df.get("navn", pd.Series("", index=cost_df.index))
         navn_values = navn_series.fillna("").astype(str).str.strip()
 
@@ -659,12 +701,28 @@ class SammenstillingsanalysePage(QWidget):
                 change_percent = math.copysign(math.inf, change_value)
             else:
                 change_percent = 0.0
-            rows.append((konto or "", navn or "", float(current), float(previous), change_value, change_percent))
+            rows.append(
+                (
+                    konto or "",
+                    navn or "",
+                    float(current),
+                    float(previous),
+                    change_value,
+                    change_percent,
+                )
+            )
 
         self._cost_headers = headers
 
         row_cells: list[list[SaftTableCell]] = []
-        for row_idx, (konto, navn, current, previous, change_value, change_percent) in enumerate(rows):
+        for row_idx, (
+            konto,
+            navn,
+            current,
+            previous,
+            change_value,
+            change_percent,
+        ) in enumerate(rows):
             konto_display = konto or "—"
             konto_cell = SaftTableCell(
                 value=konto_display,
@@ -757,7 +815,11 @@ class SammenstillingsanalysePage(QWidget):
             change_cell = self.cost_model.get_cell(row_idx, 4)
             if change_cell is None:
                 continue
-            raw_value = change_cell.sort_value if change_cell.sort_value is not None else change_cell.value
+            raw_value = (
+                change_cell.sort_value
+                if change_cell.sort_value is not None
+                else change_cell.value
+            )
             try:
                 numeric = abs(float(raw_value))
             except (TypeError, ValueError):
@@ -793,12 +855,16 @@ class SammenstillingsanalysePage(QWidget):
         key = cell.user_value
         if not key:
             konto_cell = self.cost_model.get_cell(row, 0)
-            key = konto_cell.sort_value if konto_cell and konto_cell.sort_value else (
-                konto_cell.value if konto_cell else None
+            key = (
+                konto_cell.sort_value
+                if konto_cell and konto_cell.sort_value
+                else (konto_cell.value if konto_cell else None)
             )
         if not key:
             return
-        text_value = cell.value if isinstance(cell.value, str) else str(cell.value or "")
+        text_value = (
+            cell.value if isinstance(cell.value, str) else str(cell.value or "")
+        )
         text = text_value.strip()
         if text:
             self._cost_comments[str(key)] = text

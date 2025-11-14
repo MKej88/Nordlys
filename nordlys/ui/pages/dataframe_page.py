@@ -89,8 +89,12 @@ class DataFramePage(QWidget):
             work = self._frame_builder(df)
 
         columns = list(work.columns)
-        rows = [tuple(work.iloc[i][column] for column in columns) for i in range(len(work))]
-        money_idx = {columns.index(col) for col in self._money_columns if col in columns}
+        rows = [
+            tuple(work.iloc[i][column] for column in columns) for i in range(len(work))
+        ]
+        money_idx = {
+            columns.index(col) for col in self._money_columns if col in columns
+        }
         populate_table(self.table, columns, rows, money_cols=money_idx)
         if self._auto_resize_columns:
             self.table.resizeColumnsToContents()
@@ -108,27 +112,37 @@ def standard_tb_frame(df: pd.DataFrame) -> pd.DataFrame:
         work = work.sort_values("Konto", na_position="last")
 
     if "IB_netto" not in work.columns:
-        work["IB_netto"] = work.get("IB Debet", 0.0).fillna(0) - work.get("IB Kredit", 0.0).fillna(0)
+        work["IB_netto"] = work.get("IB Debet", 0.0).fillna(0) - work.get(
+            "IB Kredit", 0.0
+        ).fillna(0)
     if "UB_netto" not in work.columns:
-        work["UB_netto"] = work.get("UB Debet", 0.0).fillna(0) - work.get("UB Kredit", 0.0).fillna(0)
+        work["UB_netto"] = work.get("UB Debet", 0.0).fillna(0) - work.get(
+            "UB Kredit", 0.0
+        ).fillna(0)
 
     work["Endringer"] = work["UB_netto"] - work["IB_netto"]
 
     columns = ["Konto", "Kontonavn", "IB", "Endringer", "UB"]
-    konto = work["Konto"].fillna("") if "Konto" in work.columns else pd.Series([""] * len(work))
+    konto = (
+        work["Konto"].fillna("")
+        if "Konto" in work.columns
+        else pd.Series([""] * len(work))
+    )
     navn = (
         work["Kontonavn"].fillna("")
         if "Kontonavn" in work.columns
         else pd.Series([""] * len(work))
     )
 
-    result = pd.DataFrame({
-        "Konto": konto.astype(str),
-        "Kontonavn": navn.astype(str),
-        "IB": work["IB_netto"].fillna(0.0),
-        "Endringer": work["Endringer"].fillna(0.0),
-        "UB": work["UB_netto"].fillna(0.0),
-    })
+    result = pd.DataFrame(
+        {
+            "Konto": konto.astype(str),
+            "Kontonavn": navn.astype(str),
+            "IB": work["IB_netto"].fillna(0.0),
+            "Endringer": work["Endringer"].fillna(0.0),
+            "UB": work["UB_netto"].fillna(0.0),
+        }
+    )
     filtered = result[columns]
     zero_mask = (
         filtered["IB"].abs().le(1e-9)

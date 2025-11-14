@@ -44,27 +44,35 @@ class ImportPage(QWidget):
         grid.setColumnStretch(1, 1)
         grid.setColumnStretch(2, 1)
 
-        self.status_card = CardFrame("Status", "Hurtigoversikt over siste import og anbefalinger.")
+        self.status_card = CardFrame(
+            "Status", "Hurtigoversikt over siste import og anbefalinger."
+        )
         self.status_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.status_label = QLabel("Ingen SAF-T fil er lastet inn ennå.")
         self.status_label.setObjectName("statusLabel")
         self.status_label.setWordWrap(True)
         self.status_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
-        self.status_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.MinimumExpanding)
+        self.status_label.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.MinimumExpanding
+        )
         self.status_card.add_widget(self.status_label)
 
         self.validation_label = QLabel("Ingen XSD-validering er gjennomført.")
         self.validation_label.setObjectName("statusLabel")
         self.validation_label.setWordWrap(True)
         self.validation_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
-        self.validation_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.MinimumExpanding)
+        self.validation_label.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.MinimumExpanding
+        )
         self.status_card.add_widget(self.validation_label)
 
         self.brreg_label = QLabel("Regnskapsregister: ingen data importert ennå.")
         self.brreg_label.setObjectName("statusLabel")
         self.brreg_label.setWordWrap(True)
         self.brreg_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
-        self.brreg_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.MinimumExpanding)
+        self.brreg_label.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.MinimumExpanding
+        )
         self.status_card.add_widget(self.brreg_label)
         grid.addWidget(self.status_card, 0, 0)
 
@@ -148,7 +156,10 @@ class ImportPage(QWidget):
 
         if result.version_family:
             version_txt = result.version_family
-            if result.audit_file_version and result.audit_file_version != result.version_family:
+            if (
+                result.audit_file_version
+                and result.audit_file_version != result.version_family
+            ):
                 version_txt = f"{result.version_family} (AuditFileVersion: {result.audit_file_version})"
         else:
             version_txt = result.audit_file_version or "ukjent"
@@ -220,7 +231,9 @@ class ImportPage(QWidget):
             self.invoice_label.setText("Ingen SAF-T fil er lastet inn ennå.")
             return
         if count == 0:
-            self.invoice_label.setText("Ingen inngående fakturaer tilgjengelig i valgt datasett.")
+            self.invoice_label.setText(
+                "Ingen inngående fakturaer tilgjengelig i valgt datasett."
+            )
             return
         if count == 1:
             message = "1 inngående faktura klar for kontroll."
@@ -238,10 +251,14 @@ class ImportPage(QWidget):
         entry = f"[{timestamp}] {cleaned}"
         self._error_entries.append(entry)
         self._error_entries = self._error_entries[-6:]
-        bullets = "".join(f"<li>{html.escape(item)}</li>" for item in self._error_entries)
+        bullets = "".join(
+            f"<li>{html.escape(item)}</li>" for item in self._error_entries
+        )
         self.error_label.setText(f"<ul>{bullets}</ul>")
 
-    def update_misc_info(self, entries: Optional[Sequence[Tuple[str, str]]] = None) -> None:
+    def update_misc_info(
+        self, entries: Optional[Sequence[Tuple[str, str]]] = None
+    ) -> None:
         if not entries:
             self.misc_label.setText("Ingen tilleggsinformasjon tilgjengelig ennå.")
             return

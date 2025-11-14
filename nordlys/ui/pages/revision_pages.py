@@ -45,6 +45,8 @@ class VoucherReviewResult:
     voucher: "saft_customers.CostVoucher"
     status: str
     comment: str
+
+
 class ChecklistPage(QWidget):
     """Enkel sjekkliste for revisjonsområder."""
 
@@ -65,6 +67,7 @@ class ChecklistPage(QWidget):
         self.list_widget.clear()
         for item in items:
             QListWidgetItem(item, self.list_widget)
+
 
 class CostVoucherReviewPage(QWidget):
     """Interaktiv side for bilagskontroll av kostnader."""
@@ -162,12 +165,20 @@ class CostVoucherReviewPage(QWidget):
         self.table_lines.setHorizontalHeaderLabels(
             ["Konto", "Kontonavn", "MVA-kode", "Tekst", "Debet", "Kredit"]
         )
-        self.table_lines.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self.table_lines.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeToContents
+        )
         self.table_lines.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-        self.table_lines.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        self.table_lines.horizontalHeader().setSectionResizeMode(
+            2, QHeaderView.ResizeToContents
+        )
         self.table_lines.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
-        self.table_lines.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
-        self.table_lines.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeToContents)
+        self.table_lines.horizontalHeader().setSectionResizeMode(
+            4, QHeaderView.ResizeToContents
+        )
+        self.table_lines.horizontalHeader().setSectionResizeMode(
+            5, QHeaderView.ResizeToContents
+        )
         self.detail_card.add_widget(self.table_lines)
 
         comment_label = QLabel("Kommentar (frivillig):")
@@ -175,7 +186,9 @@ class CostVoucherReviewPage(QWidget):
         self.detail_card.add_widget(comment_label)
 
         self.txt_comment = QPlainTextEdit()
-        self.txt_comment.setPlaceholderText("Noter funn eller videre oppfølging for bilaget.")
+        self.txt_comment.setPlaceholderText(
+            "Noter funn eller videre oppfølging for bilaget."
+        )
         self.txt_comment.setFixedHeight(100)
         self.detail_card.add_widget(self.txt_comment)
 
@@ -221,12 +234,24 @@ class CostVoucherReviewPage(QWidget):
         self.summary_table.setHorizontalHeaderLabels(
             ["Bilag", "Dato", "Leverandør", "Beløp", "Status", "Kommentar"]
         )
-        self.summary_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        self.summary_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        self.summary_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
-        self.summary_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
-        self.summary_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
-        self.summary_table.horizontalHeader().setSectionResizeMode(5, QHeaderView.Stretch)
+        self.summary_table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeToContents
+        )
+        self.summary_table.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.ResizeToContents
+        )
+        self.summary_table.horizontalHeader().setSectionResizeMode(
+            2, QHeaderView.Stretch
+        )
+        self.summary_table.horizontalHeader().setSectionResizeMode(
+            3, QHeaderView.ResizeToContents
+        )
+        self.summary_table.horizontalHeader().setSectionResizeMode(
+            4, QHeaderView.ResizeToContents
+        )
+        self.summary_table.horizontalHeader().setSectionResizeMode(
+            5, QHeaderView.Stretch
+        )
         self.summary_table.setVisible(False)
         self.summary_card.add_widget(self.summary_table)
 
@@ -246,9 +271,7 @@ class CostVoucherReviewPage(QWidget):
 
         self.detail_card.setEnabled(False)
 
-    def set_vouchers(
-        self, vouchers: Sequence["saft_customers.CostVoucher"]
-    ) -> None:
+    def set_vouchers(self, vouchers: Sequence["saft_customers.CostVoucher"]) -> None:
         self._vouchers = list(vouchers)
         self._sample = []
         self._results = []
@@ -268,7 +291,9 @@ class CostVoucherReviewPage(QWidget):
             )
             self.btn_start_sample.setEnabled(True)
         else:
-            self.lbl_available.setText("Ingen kostnadsbilag tilgjengelig i valgt periode.")
+            self.lbl_available.setText(
+                "Ingen kostnadsbilag tilgjengelig i valgt periode."
+            )
             self.btn_start_sample.setEnabled(False)
         self._update_navigation_state()
 
@@ -283,7 +308,9 @@ class CostVoucherReviewPage(QWidget):
 
         sample_size = min(int(self.spin_sample.value()), len(self._vouchers))
         if sample_size <= 0:
-            QMessageBox.information(self, "Ingen utvalg", "Velg et antall større enn null.")
+            QMessageBox.information(
+                self, "Ingen utvalg", "Velg et antall større enn null."
+            )
             return
 
         self._sample = random.sample(self._vouchers, sample_size)
@@ -314,7 +341,9 @@ class CostVoucherReviewPage(QWidget):
         if voucher.supplier_name and voucher.supplier_id:
             supplier_text = f"{voucher.supplier_name} ({voucher.supplier_id})"
         self.value_supplier.setText(supplier_text or "–")
-        document_text = voucher.document_number or voucher.transaction_id or "Uten bilagsnummer"
+        document_text = (
+            voucher.document_number or voucher.transaction_id or "Uten bilagsnummer"
+        )
         self.value_document.setText(document_text)
         self.value_date.setText(self._format_date(voucher.transaction_date))
         self.value_amount.setText(self._format_amount(voucher.amount))
@@ -423,7 +452,9 @@ class CostVoucherReviewPage(QWidget):
         approved = sum(1 for result in completed_results if result.status == "Godkjent")
         rejected = len(completed_results) - approved
         current_result = self._get_current_result()
-        self.lbl_progress.setText("Kontroll fullført – du kan fortsatt bla mellom bilagene.")
+        self.lbl_progress.setText(
+            "Kontroll fullført – du kan fortsatt bla mellom bilagene."
+        )
         if current_result:
             self._update_status_display(current_result.status)
         else:
@@ -476,7 +507,9 @@ class CostVoucherReviewPage(QWidget):
         for row in rows_to_update:
             voucher = self._sample[row]
             if needs_rebuild:
-                bilag_text = voucher.document_number or voucher.transaction_id or "Bilag"
+                bilag_text = (
+                    voucher.document_number or voucher.transaction_id or "Bilag"
+                )
                 table.setItem(row, 0, QTableWidgetItem(bilag_text))
                 table.setItem(
                     row,
@@ -566,7 +599,9 @@ class CostVoucherReviewPage(QWidget):
         return None
 
     def _all_results_completed(self) -> bool:
-        return bool(self._sample) and all(result is not None for result in self._results)
+        return bool(self._sample) and all(
+            result is not None for result in self._results
+        )
 
     def _update_navigation_state(self) -> None:
         has_sample = bool(self._sample)
@@ -625,7 +660,13 @@ class CostVoucherReviewPage(QWidget):
             from reportlab.lib.pagesizes import A4
             from reportlab.lib.styles import getSampleStyleSheet
             from reportlab.lib.units import mm
-            from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+            from reportlab.platypus import (
+                Paragraph,
+                SimpleDocTemplate,
+                Spacer,
+                Table,
+                TableStyle,
+            )
         except ImportError:
             QMessageBox.warning(
                 self,
@@ -648,7 +689,9 @@ class CostVoucherReviewPage(QWidget):
         story.append(Paragraph("Bilagskontroll – Kostnader", styles["Title"]))
         story.append(Spacer(1, 6 * mm))
 
-        completed_results = [cast(VoucherReviewResult, result) for result in self._results]
+        completed_results = [
+            cast(VoucherReviewResult, result) for result in self._results
+        ]
         total_available = len(self._vouchers)
         sample_size = len(self._sample)
         timestamp = (
@@ -708,7 +751,9 @@ class CostVoucherReviewPage(QWidget):
 
         for index, result in enumerate(completed_results, start=1):
             voucher = result.voucher
-            heading = voucher.document_number or voucher.transaction_id or f"Bilag {index}"
+            heading = (
+                voucher.document_number or voucher.transaction_id or f"Bilag {index}"
+            )
             story.append(Paragraph(f"{index}. {heading}", styles["Heading3"]))
 
             meta_rows = [
@@ -728,7 +773,13 @@ class CostVoucherReviewPage(QWidget):
                     [
                         ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#f1f5f9")),
                         ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                        ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#cbd5f5")),
+                        (
+                            "INNERGRID",
+                            (0, 0),
+                            (-1, -1),
+                            0.25,
+                            colors.HexColor("#cbd5f5"),
+                        ),
                         ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#94a3b8")),
                     ]
                 )
@@ -758,7 +809,13 @@ class CostVoucherReviewPage(QWidget):
                         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
                         ("ALIGN", (4, 1), (-1, -1), "RIGHT"),
                         ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                        ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#cbd5f5")),
+                        (
+                            "INNERGRID",
+                            (0, 0),
+                            (-1, -1),
+                            0.25,
+                            colors.HexColor("#cbd5f5"),
+                        ),
                         ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#94a3b8")),
                     ]
                 )
@@ -782,6 +839,7 @@ class CostVoucherReviewPage(QWidget):
             f"Arbeidspapiret ble lagret til {file_path}.",
         )
 
+
 class SalesArPage(QWidget):
     """Revisjonsside for salg og kundefordringer med topp kunder."""
 
@@ -798,7 +856,9 @@ class SalesArPage(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(24)
 
-        self.top_card = CardFrame("Topp kunder", "Identifiser kunder med høyest omsetning.")
+        self.top_card = CardFrame(
+            "Topp kunder", "Identifiser kunder med høyest omsetning."
+        )
         controls = QHBoxLayout()
         controls.setSpacing(12)
         controls.addWidget(QLabel("Antall:"))
@@ -817,16 +877,20 @@ class SalesArPage(QWidget):
             "Importer en SAF-T-fil og velg datasettet for å se hvilke kunder som skiller seg ut.",
             icon="👥",
         )
-        self.empty_state.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.MinimumExpanding)
+        self.empty_state.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.MinimumExpanding
+        )
 
         self.top_table = create_table_widget()
         self.top_table.setColumnCount(4)
-        self.top_table.setHorizontalHeaderLabels([
-            "Kundenr",
-            "Kundenavn",
-            "Fakturaer",
-            "Omsetning (eks. mva)",
-        ])
+        self.top_table.setHorizontalHeaderLabels(
+            [
+                "Kundenr",
+                "Kundenavn",
+                "Fakturaer",
+                "Omsetning (eks. mva)",
+            ]
+        )
         self.top_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.top_table.hide()
 
@@ -864,6 +928,7 @@ class SalesArPage(QWidget):
     def set_controls_enabled(self, enabled: bool) -> None:
         self.calc_button.setEnabled(enabled)
         self.top_spin.setEnabled(enabled)
+
 
 class PurchasesApPage(QWidget):
     """Revisjonsside for innkjøp og leverandørgjeld med topp leverandører."""
@@ -903,7 +968,9 @@ class PurchasesApPage(QWidget):
             "Importer en SAF-T-fil og velg datasettet for å se hvilke leverandører som dominerer.",
             icon="🏷️",
         )
-        self.empty_state.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.MinimumExpanding)
+        self.empty_state.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.MinimumExpanding
+        )
 
         self.top_table = create_table_widget()
         self.top_table.setColumnCount(4)

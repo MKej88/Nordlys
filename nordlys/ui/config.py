@@ -104,7 +104,9 @@ def icon_for_navigation(key: str) -> Optional[QIcon]:
         _ICON_CACHE[key] = None
         return None
 
-    icon_path = Path(__file__).resolve().parent.parent / "resources" / "icons" / filename
+    icon_path = (
+        Path(__file__).resolve().parent.parent / "resources" / "icons" / filename
+    )
     if not icon_path.exists():
         _ICON_CACHE[key] = None
         return None
