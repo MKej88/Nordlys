@@ -229,11 +229,11 @@ class SaftLoadResult:
     validation: SaftValidationResult
     trial_balance: Optional[Dict[str, Decimal]] = None
     trial_balance_error: Optional[str] = None
-    brreg_json: Optional[Dict[str, object]]
-    brreg_map: Optional[Dict[str, Optional[float]]]
-    brreg_error: Optional[str]
-    industry: Optional[IndustryClassification]
-    industry_error: Optional[str]
+    brreg_json: Optional[Dict[str, object]] = None
+    brreg_map: Optional[Dict[str, Optional[float]]] = None
+    brreg_error: Optional[str] = None
+    industry: Optional[IndustryClassification] = None
+    industry_error: Optional[str] = None
 
 
 def load_saft_file(
