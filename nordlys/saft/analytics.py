@@ -18,6 +18,7 @@ from .parsing import (
     get_amount,
     get_tx_customer_id,
     get_tx_supplier_id,
+    NamespaceMap,
 )
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -52,7 +53,7 @@ def build_parent_map(root: ET.Element) -> Dict[ET.Element, Optional[ET.Element]]
 
 def build_customer_name_map(
     root: ET.Element,
-    ns: Dict[str, str],
+    ns: NamespaceMap,
     *,
     parent_map: Optional[Dict[ET.Element, Optional[ET.Element]]] = None,
 ) -> Dict[str, str]:
@@ -110,7 +111,7 @@ def build_customer_name_map(
 
 def build_supplier_name_map(
     root: ET.Element,
-    ns: Dict[str, str],
+    ns: NamespaceMap,
     *,
     parent_map: Optional[Dict[ET.Element, Optional[ET.Element]]] = None,
 ) -> Dict[str, str]:
@@ -191,10 +192,10 @@ def _ensure_date(value: Optional[object]) -> Optional[date]:
             return None
 
 
-def _iter_transactions(root: ET.Element, ns: Dict[str, str]) -> Iterable[ET.Element]:
+def _iter_transactions(root: ET.Element, ns: NamespaceMap) -> Iterable[ET.Element]:
     entries = _find(root, "n1:GeneralLedgerEntries", ns)
     if entries is None:
-        return []
+        return
     for journal in _findall(entries, "n1:Journal", ns):
         for transaction in _findall(journal, "n1:Transaction", ns):
             yield transaction
@@ -214,7 +215,7 @@ def _normalize_account_key(account: str) -> Optional[str]:
 
 
 def build_account_name_map(
-    root: ET.Element, ns: Dict[str, str]
+    root: ET.Element, ns: NamespaceMap
 ) -> Dict[str, Optional[str]]:
     """Bygger oppslagstabell fra kontonummer til kontonavn."""
 
@@ -240,7 +241,7 @@ def build_account_name_map(
     return mapping
 
 
-def _extract_vat_code(line: ET.Element, ns: Dict[str, str]) -> Optional[str]:
+def _extract_vat_code(line: ET.Element, ns: NamespaceMap) -> Optional[str]:
     """Henter mva-kode fra en bilagslinje, dersom tilgjengelig."""
 
     codes: List[str] = []
@@ -260,7 +261,7 @@ def _extract_vat_code(line: ET.Element, ns: Dict[str, str]) -> Optional[str]:
 
 def compute_customer_supplier_totals(
     root: ET.Element,
-    ns: Dict[str, str],
+    ns: NamespaceMap,
     *,
     year: Optional[int] = None,
     date_from: Optional[object] = None,
@@ -401,7 +402,7 @@ def compute_customer_supplier_totals(
 
 def compute_sales_per_customer(
     root: ET.Element,
-    ns: Dict[str, str],
+    ns: NamespaceMap,
     *,
     year: Optional[int] = None,
     date_from: Optional[object] = None,
@@ -506,7 +507,7 @@ def _is_cost_account(account: str) -> bool:
 
 def compute_purchases_per_supplier(
     root: ET.Element,
-    ns: Dict[str, str],
+    ns: NamespaceMap,
     *,
     year: Optional[int] = None,
     date_from: Optional[object] = None,
@@ -595,7 +596,7 @@ def compute_purchases_per_supplier(
 
 def extract_cost_vouchers(
     root: ET.Element,
-    ns: Dict[str, str],
+    ns: NamespaceMap,
     *,
     year: Optional[int] = None,
     date_from: Optional[object] = None,
