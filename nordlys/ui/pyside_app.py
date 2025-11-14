@@ -1339,7 +1339,9 @@ class RegnskapsanalysePage(QWidget):
         table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         vertical_header = table.verticalHeader()
         vertical_header.setSectionResizeMode(QHeaderView.Fixed)
-        _enable_uniform_row_heights(table)
+        setter = getattr(table, "setUniformRowHeights", None)
+        if callable(setter):
+            setter(True)
         table.setStyleSheet("QTableWidget::item { padding: 0px 6px; }")
         _apply_compact_row_heights(table)
 
@@ -1550,7 +1552,9 @@ class SammenstillingsanalysePage(QWidget):
         header.setSectionResizeMode(6, QHeaderView.Stretch)
         cost_vertical_header = self.cost_table.verticalHeader()
         cost_vertical_header.setSectionResizeMode(QHeaderView.Fixed)
-        _enable_uniform_row_heights(self.cost_table)
+        cost_uniform_setter = getattr(self.cost_table, "setUniformRowHeights", None)
+        if callable(cost_uniform_setter):
+            cost_uniform_setter(True)
         _apply_compact_row_heights(self.cost_table)
         self.cost_table.itemChanged.connect(self._on_cost_item_changed)
         self.cost_table.hide()
@@ -4353,14 +4357,6 @@ def _apply_compact_row_heights(table: QTableWidget) -> None:
 
     for row in range(table.rowCount()):
         table.setRowHeight(row, minimum_height)
-
-
-def _enable_uniform_row_heights(table: QTableWidget) -> None:
-    """Forsøker å skru på faste radhøyder dersom Qt-versjonen støtter det."""
-
-    setter = getattr(table, "setUniformRowHeights", None)
-    if callable(setter):
-        setter(True)
 
 
 def _populate_table(
