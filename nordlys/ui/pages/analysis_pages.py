@@ -19,7 +19,6 @@ from PySide6.QtWidgets import (
     QTableWidget,
     QVBoxLayout,
     QWidget,
-    QWIDGETSIZE_MAX,
 )
 
 from ... import regnskap
@@ -374,7 +373,7 @@ class RegnskapsanalysePage(QWidget):
 
     def _reset_analysis_table_height(self, table: QTableWidget) -> None:
         table.setMinimumHeight(0)
-        table.setMaximumHeight(QWIDGETSIZE_MAX)
+        table.setMaximumHeight(Qt.QWIDGETSIZE_MAX)
 
     def _apply_balance_styles(self) -> None:
         bold_labels = {
