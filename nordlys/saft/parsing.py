@@ -161,7 +161,10 @@ def _findall(
 def _to_decimal(value: Optional[str]) -> Decimal:
     if value is None:
         return Decimal("0")
-    text = value.strip()
+    stripped = value.strip()
+    if not stripped:
+        return Decimal("0")
+    text = "".join(ch for ch in stripped if not ch.isspace())
     if not text:
         return Decimal("0")
     if text.count(",") == 1 and text.count(".") == 0:

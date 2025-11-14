@@ -23,12 +23,21 @@ from .parsing import (
 if TYPE_CHECKING:  # pragma: no cover
     import pandas as pd
 
-pd = lazy_pandas()
+_pd: Optional["pd"] = None
 
-if pd is None:  # pragma: no cover - avhenger av installert pandas
-    raise RuntimeError(
-        "Pandas må være installert for å bruke analysefunksjonene for SAF-T."
-    )
+
+def _require_pandas() -> "pd":
+    """Laster pandas først når det faktisk trengs."""
+
+    global _pd
+    if _pd is None:
+        module = lazy_pandas()
+        if module is None:  # pragma: no cover - avhenger av installert pandas
+            raise RuntimeError(
+                "Pandas må være installert for å bruke analysefunksjonene for SAF-T."
+            )
+        _pd = module
+    return _pd
 
 
 def build_parent_map(root: ET.Element) -> Dict[ET.Element, Optional[ET.Element]]:
@@ -260,6 +269,8 @@ def compute_customer_supplier_totals(
 ) -> Tuple["pd.DataFrame", "pd.DataFrame"]:
     """Beregner kundesalg og leverandørkjøp i ett pass gjennom transaksjonene."""
 
+    pandas = _require_pandas()
+
     start_date = _ensure_date(date_from)
     end_date = _ensure_date(date_to)
     use_range = start_date is not None or end_date is not None
@@ -334,7 +345,7 @@ def compute_customer_supplier_totals(
         lookup_map = build_parent_map(root)
 
     if not customer_totals:
-        customer_df = pd.DataFrame(
+        customer_df = pandas.DataFrame(
             columns=["Kundenr", "Kundenavn", "Omsetning eks mva"]
         )
     else:
@@ -350,7 +361,7 @@ def compute_customer_supplier_totals(
                     "Transaksjoner": customer_counts.get(customer_id, 0),
                 }
             )
-        customer_df = pd.DataFrame(customer_rows)
+        customer_df = pandas.DataFrame(customer_rows)
         if not customer_df.empty:
             customer_df["Omsetning eks mva"] = (
                 customer_df["Omsetning eks mva"].astype(float).round(2)
@@ -360,7 +371,7 @@ def compute_customer_supplier_totals(
             ).reset_index(drop=True)
 
     if not supplier_totals:
-        supplier_df = pd.DataFrame(
+        supplier_df = pandas.DataFrame(
             columns=["Leverandørnr", "Leverandørnavn", "Innkjøp eks mva"]
         )
     else:
@@ -376,7 +387,7 @@ def compute_customer_supplier_totals(
                     "Transaksjoner": supplier_counts.get(supplier_id, 0),
                 }
             )
-        supplier_df = pd.DataFrame(supplier_rows)
+        supplier_df = pandas.DataFrame(supplier_rows)
         if not supplier_df.empty:
             supplier_df["Innkjøp eks mva"] = (
                 supplier_df["Innkjøp eks mva"].astype(float).round(2)
@@ -397,6 +408,8 @@ def compute_sales_per_customer(
     date_to: Optional[object] = None,
 ) -> "pd.DataFrame":
     """Beregner omsetning eksklusiv mva per kunde basert på alle 3xxx-konti."""
+
+    pandas = _require_pandas()
 
     start_date = _ensure_date(date_from)
     end_date = _ensure_date(date_to)
@@ -454,7 +467,7 @@ def compute_sales_per_customer(
             counts[customer_id] += 1
 
     if not totals:
-        return pd.DataFrame(columns=["Kundenr", "Kundenavn", "Omsetning eks mva"])
+        return pandas.DataFrame(columns=["Kundenr", "Kundenavn", "Omsetning eks mva"])
 
     name_map = build_customer_name_map(root, ns)
     rows = []
@@ -469,7 +482,7 @@ def compute_sales_per_customer(
             }
         )
 
-    df = pd.DataFrame(rows)
+    df = pandas.DataFrame(rows)
     if df.empty:
         return df
     df["Omsetning eks mva"] = df["Omsetning eks mva"].astype(float).round(2)
@@ -500,6 +513,8 @@ def compute_purchases_per_supplier(
     date_to: Optional[object] = None,
 ) -> "pd.DataFrame":
     """Beregner innkjøp eksklusiv mva per leverandør basert på kostnadskonti."""
+
+    pandas = _require_pandas()
 
     start_date = _ensure_date(date_from)
     end_date = _ensure_date(date_to)
@@ -553,7 +568,7 @@ def compute_purchases_per_supplier(
             counts[supplier_id] += 1
 
     if not totals:
-        return pd.DataFrame(
+        return pandas.DataFrame(
             columns=["Leverandørnr", "Leverandørnavn", "Innkjøp eks mva"]
         )
 
@@ -570,7 +585,7 @@ def compute_purchases_per_supplier(
             }
         )
 
-    df = pd.DataFrame(rows)
+    df = pandas.DataFrame(rows)
     if df.empty:
         return df
     df["Innkjøp eks mva"] = df["Innkjøp eks mva"].astype(float).round(2)
