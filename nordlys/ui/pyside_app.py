@@ -36,6 +36,7 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QSizePolicy,
+    QStyle,
     QSpinBox,
     QSplitter,
     QStackedWidget,
@@ -1613,6 +1614,7 @@ class SammenstillingsanalysePage(QWidget):
             | QAbstractItemView.EditKeyPressed
         )
         header = self.cost_table.horizontalHeader()
+        header.setMinimumSectionSize(0)
         header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.Stretch)
         header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
@@ -1892,16 +1894,32 @@ class SammenstillingsanalysePage(QWidget):
         if column_count <= 0:
             return
 
-        stretch_last = False
+        stretch_sections: List[int] = []
         for section in range(column_count):
-            mode = header.sectionResizeMode(section)
-            if mode == QHeaderView.Stretch:
-                stretch_last = section == column_count - 1
-                continue
-            if mode == QHeaderView.ResizeToContents:
-                self.cost_table.resizeColumnToContents(section)
+            if header.sectionResizeMode(section) == QHeaderView.Stretch:
+                stretch_sections.append(section)
+                header.setSectionResizeMode(section, QHeaderView.ResizeToContents)
 
-        header.setStretchLastSection(stretch_last)
+        target_widths: List[int] = []
+        for section in range(column_count):
+            self.cost_table.resizeColumnToContents(section)
+            header_hint = header.sectionSizeHint(section)
+            data_hint = self.cost_table.sizeHintForColumn(section)
+            target_widths.append(max(header_hint, data_hint, 0))
+
+        margin = header.style().pixelMetric(QStyle.PM_HeaderMargin, None, header)
+        padding = max(0, margin) * 2
+        for section, target in enumerate(target_widths):
+            if target > 0:
+                header.resizeSection(section, target + padding)
+
+        for section in stretch_sections:
+            header.setSectionResizeMode(section, QHeaderView.Stretch)
+            target = target_widths[section]
+            if target > 0:
+                header.resizeSection(section, target + padding)
+
+        header.setStretchLastSection(column_count - 1 in stretch_sections)
 
 
 class SignalBlocker:
