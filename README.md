@@ -2,6 +2,8 @@
 
 Nordlys er et Python-basert analyseverktøy som hjelper revisorer og controllere med å få oversikt over SAF-T-filer. Målet er å gi klar sikt i komplekse regnskapsdata gjennom et moderne skrivebordsgrensesnitt bygget med PySide6. Løsningen kombinerer informasjon fra regnskapsregisteret med data som leses fra SAF-T-filer og presenterer resultatet i et visuelt og interaktivt grensesnitt.
 
+De siste versjonene har fått raskere import ved hjelp av strømming av hovedboken, smartere bakgrunnsjobber og mer robust innhenting av informasjon fra Brønnøysundregistrene. Dette gir et smidigere brukergrensesnitt og færre feilmeldinger når nettet er ustabilt.
+
 ## Hovedfunksjoner
 
 - 📂 Importer én eller flere SAF-T-filer i samme operasjon. Alle datasettene legges i en årvelger slik at du enkelt kan hoppe mellom selskap og år.
@@ -14,6 +16,10 @@ Nordlys er et Python-basert analyseverktøy som hjelper revisorer og controllere
 - 🗂️ Forhåndsdefinerte revisjonsoppgaver og temakort som gir rask tilgang til relevante kontroller.
 - 🧮 Funksjoner for formatering av valuta og differanser som gjør tallene enklere å tolke.
 - 💾 Ett-klikks eksport av analyser til CSV- og XLSX-filer, inkludert innebygd fallback når `openpyxl` ikke er tilgjengelig.
+- 🚀 Strømming av hovedboken for store SAF-T-filer (aktiveres med `NORDLYS_SAFT_STREAMING=1`) slik at prøvebalansen kontrolleres før hele filen lastes inn.
+- 🧠 Bakgrunnskø for tyngre analyser med tydelig fremdrift, slik at grensesnittet holder seg responsivt mens data leses og prosesseres.
+- 🛡️ Forbedret Brønnøysund-integrasjon med HTTP-cache, feiltoleranse og mulighet til å angi egen cache-katalog via `NORDLYS_CACHE_DIR`.
+- 📂 Uttrekk av bilag med kostnadskontroller og leverandørdata for målrettet revisjon av inngående fakturaer.
 
 ## Forutsetninger
 
@@ -33,6 +39,8 @@ Nordlys bruker et utvalg veletablerte Python-bibliotek. Alle er listet i
   tabeller.
 - `requests>=2.31` – henter bransjeinformasjon og regnskapstall fra
   Brønnøysundregistrene.
+- `requests-cache>=1.1` – gir automatisk HTTP-cache slik at flere oppslag
+  mot samme organisasjonsnummer går raskt.
 - `openpyxl>=3.1` – standardmotor når analyser eksporteres til Excel (XLSX).
 - `xlsxwriter>=3.0` – trer inn automatisk hvis `openpyxl` mangler, slik at
   eksporten alltid fungerer.
@@ -42,6 +50,8 @@ Nordlys bruker et utvalg veletablerte Python-bibliotek. Alle er listet i
   gjennom automatiserte tester.
 - `xmlschema>=2.2` – valgfri validering av SAF-T-filer mot XSD-skjema for mer
   presise feilmeldinger.
+- `ruff>=0.4`, `black>=24.0` og `mypy>=1.8` – utviklerverktøy for linting,
+  formatering og statisk typekontroll.
 
 ## Komme i gang
 
@@ -66,6 +76,7 @@ Når Nordlys kjøres åpnes et PySide6-basert brukergrensesnitt som lar deg:
 - Se oversiktskort med nøkkeltall, forslag til revisjonsoppgaver og avstemningspunkter.
 - Se detaljerte tabeller for saldobalanse, kundespesifikasjoner og leverandørspesifikasjoner.
 - Oppdatere data fra Brønnøysundregistrene ved å slå opp organisasjonsnummeret i filen og få bransjegruppering.
+- Aktivere prøvebalanse-sjekk i forkant ved å sette miljøvariabelen `NORDLYS_SAFT_STREAMING=1` (valgfritt). Dette er nyttig for store filer fordi differanser fanges opp tidlig.
 
 ## Arbeidsflyt for flere SAF-T-filer
 
@@ -90,23 +101,31 @@ Testene genererer alle nødvendige SAF-T- og regnskapsdata programmatisk ved kj�
 Nordlys/
 ├── main.py                # Inngangspunkt som starter PySide6-applikasjonen
 ├── nordlys/
-│   ├── brreg.py           # Integrasjon mot Brønnøysundregistrenes API
-│   ├── constants.py       # Konstanter som brukes på tvers av modulene
-│   ├── industry_groups.py # Bransjeklassifisering og caching
-│   ├── regnskap.py        # Beregninger for resultat- og balanseanalyse
-│   ├── saft.py            # Parsing og analyse av SAF-T XML
-│   ├── saft_customers.py  # Kunde- og leverandøranalyse + eksport
+│   ├── brreg.py                 # Høyere nivå-funksjoner for Brønnøysund-data
+│   ├── constants.py             # Konstanter som brukes på tvers av modulene
+│   ├── core/
+│   │   └── task_runner.py       # Felles logikk for bakgrunnsoppgaver og fremdrift
+│   ├── industry_groups.py       # Bransjeklassifisering og caching
+│   ├── integrations/
+│   │   └── brreg_service.py     # HTTP-klient med caching mot Brønnøysund
+│   ├── regnskap.py              # Beregninger for resultat- og balanseanalyse
+│   ├── saft/
+│   │   └── parsing.py           # Kjernefunksjoner for å lese SAF-T XML
+│   ├── saft_customers.py        # Kunde- og leverandøranalyse + eksport
 │   ├── ui/
-│   │   └── pyside_app.py  # GUI-komponenter, datasettvelger og interaksjon
-│   └── resources/         # Ikoner og cachefiler brukt i grensesnittet
+│   │   ├── models/              # Qt-modeller for tabeller og lister
+│   │   └── pyside_app.py        # GUI-komponenter, datasettvelger og interaksjon
+│   └── resources/               # Ikoner og cachefiler brukt i grensesnittet
 └── tests/                 # Pytest-tester som genererer data programmatisk
 ```
 
 ## Nyttige tips for videre utvikling
 
+- Bruk `TaskRunner` til tunge operasjoner hvis du lager nye funksjoner som arbeider med mange transaksjoner, slik at UI-et forblir responsivt.
 - Behold funksjonelle endringer i egne moduler og legg til nye tester i `tests/` for å dokumentere forventet oppførsel.
 - Når nye tredjepartsbibliotek tas i bruk bør `requirements.txt` oppdateres og minimumsversjoner vurderes for å beholde Nordlys-navnet tydelig i alle miljø.
 - Brønnøysund-integrasjonen (`nordlys/brreg.py`) har en timeout på 20 sekunder. Håndter eventuelle feil med passende feilmeldinger i UI-et.
+- Sett `NORDLYS_CACHE_DIR` dersom du ønsker å kontrollere hvor HTTP-cachen lagres, for eksempel på en delt nettverksdisk. Nordlys faller automatisk tilbake til minne-cache hvis katalogen ikke kan brukes.
 
 ## Lisens
 
