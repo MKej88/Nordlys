@@ -7,7 +7,8 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Sequence
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Sequence
+import xml.etree.ElementTree as ET
 
 from ..brreg import fetch_brreg, map_brreg_metrics
 from ..industry_groups import (
@@ -19,10 +20,16 @@ from ..industry_groups import (
 from ..settings import SAFT_STREAMING_ENABLED, SAFT_STREAMING_VALIDATE
 from ..utils import lazy_import, lazy_pandas
 
-pd = lazy_pandas()
+if TYPE_CHECKING:
+    import pandas as pd
 
-saft = lazy_import("nordlys.saft")
-saft_customers = lazy_import("nordlys.saft_customers")
+    from .. import saft
+    from .. import saft_customers
+else:
+    pd = lazy_pandas()
+    saft = lazy_import("nordlys.saft")
+    saft_customers = lazy_import("nordlys.saft_customers")
+
 
 
 @dataclass
@@ -100,6 +107,11 @@ def load_saft_file(
 
     tree, ns = saft_customers.parse_saft(file_path)
     root = tree.getroot()
+    if root is None:  # pragma: no cover - guard mot korrupt XML
+        raise ValueError("SAF-T-filen mangler et rot-element.")
+    ns_et: dict[str, str] = {
+        key: value for key, value in ns.items() if isinstance(key, str) and isinstance(value, str)
+    }
     header = saft.parse_saft_header(root)
     dataframe = saft.parse_saldobalanse(root)
     _report_progress(25, f"Tolker saldobalanse for {file_name}")
@@ -112,7 +124,7 @@ def load_saft_file(
     customer_sales: Optional[pd.DataFrame] = None
     supplier_purchases: Optional[pd.DataFrame] = None
     cost_vouchers: List["saft_customers.CostVoucher"] = []
-    parent_map: Optional[Dict[object, Optional[object]]] = None
+    parent_map: Optional[Dict[ET.Element, Optional[ET.Element]]] = None
     if period_start or period_end:
         parent_map = saft_customers.build_parent_map(root)
         (
@@ -148,9 +160,10 @@ def load_saft_file(
                 analysis_year = parsed_end.year
         if analysis_year is None:
             for tx in root.findall(
-                ".//n1:GeneralLedgerEntries/n1:Journal/n1:Transaction", ns
+                ".//n1:GeneralLedgerEntries/n1:Journal/n1:Transaction",
+                ns_et or None,
             ):
-                date_element = tx.find("n1:TransactionDate", ns)
+                date_element = tx.find("n1:TransactionDate", ns_et or None)
                 if date_element is not None and date_element.text:
                     parsed = _parse_date(date_element.text)
                     if parsed:
