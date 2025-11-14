@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Dict, List, Optional
 
 from PySide6.QtGui import QIcon
+
+from ..settings import SAFT_STREAMING_ENABLED, SAFT_STREAMING_VALIDATE
 
 __all__ = [
     "SAFT_STREAMING_ENABLED",
@@ -14,18 +15,6 @@ __all__ = [
     "PRIMARY_UI_FONT_FAMILY",
     "icon_for_navigation",
 ]
-
-
-def _env_flag(name: str) -> bool:
-    value = os.getenv(name)
-    if value is None:
-        return False
-    normalized = value.strip().lower()
-    return normalized in {"1", "true", "ja", "on", "yes"}
-
-
-SAFT_STREAMING_ENABLED = _env_flag("NORDLYS_SAFT_STREAMING")
-SAFT_STREAMING_VALIDATE = _env_flag("NORDLYS_SAFT_STREAMING_VALIDATE")
 
 REVISION_TASKS: Dict[str, List[str]] = {
     "rev.innkjop": [
