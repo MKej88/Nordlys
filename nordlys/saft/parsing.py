@@ -5,7 +5,24 @@ from __future__ import annotations
 import xml.etree.ElementTree as ET
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Dict, Iterator, List, Optional
+from typing import Dict, Iterator, List, Optional, TypedDict
+
+
+class SaftEntry(TypedDict, total=False):
+    """Representerer en linje fra SAF-T-filen."""
+
+    journal_id: Optional[str]
+    transaction_id: Optional[str]
+    transaction_date: Optional[str]
+    document_number: Optional[str]
+    transaction_description: Optional[str]
+    line_number: str
+    line_description: Optional[str]
+    account_id: Optional[str]
+    debet: Decimal
+    kredit: Decimal
+    customer_id: Optional[str]
+    supplier_id: Optional[str]
 
 
 def _local_name(tag: str) -> str:
@@ -81,7 +98,7 @@ def _yield_transaction_entries(
     journal_id: Optional[str],
     prefix: str,
     xml_path: Path,
-) -> Iterator[Dict[str, object]]:
+) -> Iterator[SaftEntry]:
     transaction_id = _clean_text(transaction.findtext(_tag(prefix, "TransactionID")))
     transaction_date = _clean_text(
         transaction.findtext(_tag(prefix, "TransactionDate"))
@@ -131,9 +148,7 @@ def _yield_transaction_entries(
         }
 
 
-def iter_saft_entries(
-    path: Path, validate: bool = False
-) -> Iterator[Dict[str, object]]:
+def iter_saft_entries(path: Path, validate: bool = False) -> Iterator[SaftEntry]:
     """Returnerer en iterator over alle hovedbokslinjer i en SAF-T-fil."""
 
     xml_path = Path(path)
@@ -143,7 +158,7 @@ def iter_saft_entries(
     if validate:
         _ensure_validated(xml_path)
 
-    def _generator() -> Iterator[Dict[str, object]]:
+    def _generator() -> Iterator[SaftEntry]:
         try:
             context = ET.iterparse(str(xml_path), events=("start", "end"))
         except (OSError, ET.ParseError) as exc:
@@ -197,8 +212,8 @@ def check_trial_balance(path: Path, validate: bool = False) -> Dict[str, Decimal
     total_debet = Decimal("0")
     total_kredit = Decimal("0")
     for entry in iter_saft_entries(path, validate=validate):
-        total_debet += entry.get("debet", Decimal("0"))
-        total_kredit += entry.get("kredit", Decimal("0"))
+        total_debet += entry["debet"]
+        total_kredit += entry["kredit"]
     diff = total_debet - total_kredit
     return {"debet": total_debet, "kredit": total_kredit, "diff": diff}
 
