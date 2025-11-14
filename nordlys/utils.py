@@ -67,11 +67,19 @@ def to_float(value: Optional[str]) -> float:
     if not cleaned:
         return 0.0
 
+    sign = ""
+    if cleaned.startswith("(") or cleaned.endswith(")"):
+        if not (cleaned.startswith("(") and cleaned.endswith(")")):
+            return 0.0
+        cleaned = cleaned[1:-1].strip()
+        if not cleaned:
+            return 0.0
+        sign = "-"
+
     allowed_chars = set("0123456789.,+-")
     if any(char not in allowed_chars for char in cleaned):
         return 0.0
 
-    sign = ""
     if cleaned[0] in "+-":
         sign, cleaned = cleaned[0], cleaned[1:]
     elif cleaned[-1] in "+-":
