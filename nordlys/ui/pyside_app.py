@@ -1592,8 +1592,8 @@ class SammenstillingsanalysePage(QWidget):
         self._cost_headers = [
             "Konto",
             "Kontonavn",
-            "Nå",
             "I fjor",
+            "Nå",
             "Endring (kr)",
             "Endring (%)",
             "Kommentar",
@@ -1659,9 +1659,6 @@ class SammenstillingsanalysePage(QWidget):
         vertical_header = self.cost_table.verticalHeader()
         vertical_header.setVisible(False)
         vertical_header.setSectionResizeMode(QHeaderView.Fixed)
-        uniform_setter = getattr(self.cost_table, "setUniformRowHeights", None)
-        if callable(uniform_setter):
-            uniform_setter(True)
         delegate = _CompactRowDelegate(self.cost_table)
         self.cost_table.setItemDelegate(delegate)
         self.cost_table._compact_delegate = delegate  # type: ignore[attr-defined]
@@ -1669,6 +1666,14 @@ class SammenstillingsanalysePage(QWidget):
         _apply_compact_row_heights(self.cost_table)
         self.cost_table.hide()
         self.cost_card.add_widget(self.cost_table)
+
+        self.cost_model.modelReset.connect(self._on_cost_rows_changed)
+        self.cost_model.rowsInserted.connect(self._on_cost_rows_changed)
+        self.cost_model.rowsRemoved.connect(self._on_cost_rows_changed)
+        self.cost_model.dataChanged.connect(self._on_cost_rows_changed)
+        self.cost_proxy.modelReset.connect(self._on_cost_rows_changed)
+        self.cost_proxy.rowsInserted.connect(self._on_cost_rows_changed)
+        self.cost_proxy.rowsRemoved.connect(self._on_cost_rows_changed)
 
         self.btn_cost_show_more = QPushButton("Vis mer")
         self.btn_cost_show_more.clicked.connect(self._on_cost_fetch_more)
@@ -1793,16 +1798,16 @@ class SammenstillingsanalysePage(QWidget):
                 sort_value=navn or "",
                 alignment=Qt.AlignLeft | Qt.AlignVCenter,
             )
-            current_cell = SaftTableCell(
-                value=current,
-                display=format_currency(current),
-                sort_value=current,
-                alignment=Qt.AlignRight | Qt.AlignVCenter,
-            )
             previous_cell = SaftTableCell(
                 value=previous,
                 display=format_currency(previous),
                 sort_value=previous,
+                alignment=Qt.AlignRight | Qt.AlignVCenter,
+            )
+            current_cell = SaftTableCell(
+                value=current,
+                display=format_currency(current),
+                sort_value=current,
                 alignment=Qt.AlignRight | Qt.AlignVCenter,
             )
             change_cell = SaftTableCell(
@@ -1831,8 +1836,8 @@ class SammenstillingsanalysePage(QWidget):
                 [
                     konto_cell,
                     navn_cell,
-                    current_cell,
                     previous_cell,
+                    current_cell,
                     change_cell,
                     percent_cell,
                     comment_cell,
@@ -1899,6 +1904,9 @@ class SammenstillingsanalysePage(QWidget):
             _apply_compact_row_heights(self.cost_table)
             self._apply_cost_highlighting()
             self._auto_resize_cost_columns()
+
+    def _on_cost_rows_changed(self, *_args: object) -> None:
+        _apply_compact_row_heights(self.cost_table)
         self._update_cost_show_more_visibility()
 
     def _on_cost_cell_changed(self, row: int, column: int, cell: SaftTableCell) -> None:
