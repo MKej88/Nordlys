@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
     QComboBox,
+    QDialog,
     QDoubleSpinBox,
     QFileDialog,
     QFrame,
@@ -481,6 +482,54 @@ class _AnalysisTableDelegate(_CompactRowDelegate):
             rect = option.rect
             painter.drawLine(rect.bottomLeft(), rect.bottomRight())
             painter.restore()
+
+
+class TaskProgressDialog(QDialog):
+    """Lite hjelpevindu som viser fremdrift for bakgrunnsoppgaver."""
+
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self.setModal(False)
+        self.setWindowTitle("Laster data …")
+        self.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
+        self.setWindowFlag(Qt.WindowCloseButtonHint, False)
+        self.setMinimumWidth(360)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(12)
+
+        self._status_label = QLabel("Forbereder …")
+        self._status_label.setWordWrap(True)
+        layout.addWidget(self._status_label)
+
+        self._progress_bar = QProgressBar()
+        self._progress_bar.setRange(0, 100)
+        layout.addWidget(self._progress_bar)
+
+        self._detail_label = QLabel()
+        self._detail_label.setWordWrap(True)
+        self._detail_label.setObjectName("progressDetail")
+        self._detail_label.setStyleSheet("color: #475569;")
+        layout.addWidget(self._detail_label)
+
+        layout.addStretch(1)
+
+    def update_status(self, message: str, percent: int) -> None:
+        text = message.strip() if message else ""
+        self._status_label.setText(text or "Arbeid pågår …")
+        clamped = max(0, min(100, int(percent)))
+        self._progress_bar.setValue(clamped)
+
+    def set_files(self, file_paths: Sequence[str]) -> None:
+        if not file_paths:
+            self._detail_label.clear()
+            self._detail_label.setVisible(False)
+            return
+        names = [Path(path).name for path in file_paths]
+        bullet_lines = "\n".join(f"• {name}" for name in names)
+        self._detail_label.setText(f"Filer som lastes:\n{bullet_lines}")
+        self._detail_label.setVisible(True)
 
 
 class CardFrame(QFrame):
@@ -2847,6 +2896,7 @@ class NordlysWindow(QMainWindow):
         self._current_task_meta: Dict[str, Any] = {}
         self._status_progress_label: Optional[QLabel] = None
         self._status_progress_bar: Optional[QProgressBar] = None
+        self._progress_dialog: Optional[TaskProgressDialog] = None
 
         self._page_map: Dict[str, QWidget] = {}
         self._page_factories: Dict[str, Callable[[], QWidget]] = {}
@@ -3463,6 +3513,7 @@ class NordlysWindow(QMainWindow):
             clamped = max(0, min(100, int(value)))
             self._status_progress_bar.setValue(clamped)
             self._status_progress_bar.setVisible(True)
+        self._update_progress_dialog(message, value)
 
     def _hide_status_progress(self) -> None:
         if self._status_progress_label is not None:
@@ -3471,6 +3522,28 @@ class NordlysWindow(QMainWindow):
         if self._status_progress_bar is not None:
             self._status_progress_bar.setValue(0)
             self._status_progress_bar.setVisible(False)
+        self._close_progress_dialog()
+
+    def _ensure_progress_dialog(self) -> TaskProgressDialog:
+        if self._progress_dialog is None:
+            self._progress_dialog = TaskProgressDialog(self)
+        return self._progress_dialog
+
+    def _update_progress_dialog(self, message: str, value: int) -> None:
+        dialog = self._ensure_progress_dialog()
+        dialog.set_files(self._loading_files)
+        dialog.update_status(message, value)
+        if not dialog.isVisible():
+            dialog.show()
+        dialog.raise_()
+
+    def _close_progress_dialog(self) -> None:
+        if self._progress_dialog is None:
+            return
+        dialog = self._progress_dialog
+        self._progress_dialog = None
+        dialog.hide()
+        dialog.deleteLater()
 
     def _set_loading_state(self, loading: bool, status_message: Optional[str] = None) -> None:
         self.btn_open.setEnabled(not loading)
