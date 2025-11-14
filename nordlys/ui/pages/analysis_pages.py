@@ -21,6 +21,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+try:
+    from PySide6.QtWidgets import QWIDGETSIZE_MAX
+except ImportError:  # PySide6 < 6.7
+    QWIDGETSIZE_MAX = 16777215
+
 from ... import regnskap
 from ...utils import format_currency, format_difference, lazy_pandas
 from ..delegates import (
@@ -373,7 +378,7 @@ class RegnskapsanalysePage(QWidget):
 
     def _reset_analysis_table_height(self, table: QTableWidget) -> None:
         table.setMinimumHeight(0)
-        table.setMaximumHeight(Qt.QWIDGETSIZE_MAX)
+        table.setMaximumHeight(QWIDGETSIZE_MAX)
 
     def _apply_balance_styles(self) -> None:
         bold_labels = {
