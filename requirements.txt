@@ -10,7 +10,8 @@ reportlab>=3.6
 
 # Kvalitetssikring og validering
 pytest>=7.4
-xmlschema>=2.2
+# Valgfritt: aktiver XSD-validering ved å installere xmlschema separat
+xmlschema>=2.2 ; extra == "xsd"
 
 # Utviklerverktøy
 ruff>=0.4
