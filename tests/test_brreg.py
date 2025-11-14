@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import requests
-
 from nordlys import brreg
 from nordlys.brreg import find_first_by_exact_endkey, map_brreg_metrics
+from nordlys.integrations.brreg_service import BrregServiceResult
 
 
 def test_find_first_by_exact_endkey():
@@ -77,11 +76,15 @@ def test_map_brreg_metrics():
 
 
 def test_fetch_brreg_timeout(monkeypatch):
-    class DummySession:
-        def get(self, *args, **kwargs):
-            raise requests.Timeout("test-timeout")
+    def fake_fetch(orgnr: str) -> BrregServiceResult:
+        return BrregServiceResult(
+            data=None,
+            error_code="timeout",
+            error_message="Regnskapsregisteret: tidsavbrudd.",
+            from_cache=False,
+        )
 
-    monkeypatch.setattr(brreg, "_SESSION", DummySession(), raising=False)
+    monkeypatch.setattr(brreg, "fetch_regnskapsregister", fake_fetch)
 
     data, error = brreg.fetch_brreg("123456789")
 

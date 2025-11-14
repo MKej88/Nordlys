@@ -4,59 +4,13 @@ from __future__ import annotations
 
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
-import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
-
-from .constants import BRREG_URL_TMPL
-
-_SESSION: Optional[requests.Session] = None
-
-
-def _get_session() -> requests.Session:
-    """Returnerer en requests-session med retry-oppsett."""
-
-    global _SESSION
-    if _SESSION is None:
-        retry = Retry(
-            total=3,
-            connect=3,
-            read=3,
-            status=3,
-            backoff_factor=1,
-            status_forcelist=(429, 500, 502, 503, 504),
-            allowed_methods=("GET",),
-        )
-        adapter = HTTPAdapter(max_retries=retry)
-        session = requests.Session()
-        session.mount("https://", adapter)
-        session.mount("http://", adapter)
-        _SESSION = session
-    assert _SESSION is not None
-    return _SESSION
+from .integrations.brreg_service import fetch_regnskapsregister
 
 
 def fetch_brreg(orgnr: str) -> Tuple[Optional[Dict[str, object]], Optional[str]]:
     """Henter JSON-data for angitt organisasjonsnummer."""
-    url = BRREG_URL_TMPL.format(orgnr=orgnr)
-    session = _get_session()
-    try:
-        response = session.get(url, headers={"Accept": "application/json"}, timeout=20)
-        response.raise_for_status()
-        return response.json(), None
-    except requests.Timeout:
-        return None, (
-            "Kunne ikke hente data fra Brønnøysundregistrene på grunn av tidsavbrudd. "
-            "Vennligst prøv igjen litt senere."
-        )
-    except requests.ConnectionError as exc:
-        return None, (
-            "Feil ved tilkobling mot Brønnøysundregistrene. " f"Detaljer: {exc}"
-        )
-    except requests.RequestException as exc:
-        return None, str(exc)
-    except ValueError as exc:
-        return None, f"Ugyldig svar fra Brønnøysundregistrene: {exc}"
+    result = fetch_regnskapsregister(orgnr)
+    return result.data, result.error_message
 
 
 def find_numbers(data: object, path: str = "") -> List[Tuple[str, float]]:
