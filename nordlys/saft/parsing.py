@@ -65,8 +65,7 @@ def _ensure_validated(xml_path: Path) -> None:
     if result.is_valid is False:
         details = result.details or "Ukjent valideringsfeil."
         raise ValueError(
-            "XSD-validering av SAF-T mislyktes for "
-            f"'{xml_path.name}': {details}"
+            f"XSD-validering av SAF-T mislyktes for '{xml_path.name}': {details}"
         )
     if result.is_valid is None:
         details = result.details or (
@@ -84,7 +83,9 @@ def _yield_transaction_entries(
     xml_path: Path,
 ) -> Iterator[Dict[str, object]]:
     transaction_id = _clean_text(transaction.findtext(_tag(prefix, "TransactionID")))
-    transaction_date = _clean_text(transaction.findtext(_tag(prefix, "TransactionDate")))
+    transaction_date = _clean_text(
+        transaction.findtext(_tag(prefix, "TransactionDate"))
+    )
     document_number = _clean_text(
         transaction.findtext(_tag(prefix, "SourceDocumentID", "DocumentNumber"))
     )
@@ -93,7 +94,9 @@ def _yield_transaction_entries(
     )
     line_path = _tag(prefix, "Line")
     for index, line in enumerate(transaction.findall(line_path), start=1):
-        line_number = _clean_text(line.findtext(_tag(prefix, "LineNumber"))) or str(index)
+        line_number = _clean_text(line.findtext(_tag(prefix, "LineNumber"))) or str(
+            index
+        )
         account_id = _clean_text(line.findtext(_tag(prefix, "AccountID")))
         line_description = _clean_text(line.findtext(_tag(prefix, "Description")))
         debit_elem = line.find(_tag(prefix, "DebitAmount"))
@@ -128,7 +131,9 @@ def _yield_transaction_entries(
         }
 
 
-def iter_saft_entries(path: Path, validate: bool = False) -> Iterator[Dict[str, object]]:
+def iter_saft_entries(
+    path: Path, validate: bool = False
+) -> Iterator[Dict[str, object]]:
     """Returnerer en iterator over alle hovedbokslinjer i en SAF-T-fil."""
 
     xml_path = Path(path)
@@ -154,18 +159,18 @@ def iter_saft_entries(path: Path, validate: bool = False) -> Iterator[Dict[str, 
             for event, element in context:
                 if event == "start":
                     stack.append(_local_name(element.tag))
-                    if not prefix and element.tag.startswith("{") and "}" in element.tag:
+                    if (
+                        not prefix
+                        and element.tag.startswith("{")
+                        and "}" in element.tag
+                    ):
                         uri = element.tag.split("}", 1)[0][1:]
                         if uri:
                             prefix = f"{{{uri}}}"
                     continue
 
                 local = _local_name(element.tag)
-                if (
-                    local == "JournalID"
-                    and len(stack) >= 2
-                    and stack[-2] == "Journal"
-                ):
+                if local == "JournalID" and len(stack) >= 2 and stack[-2] == "Journal":
                     journal_id = _clean_text(element.text)
                 elif local == "Journal":
                     journal_id = None
