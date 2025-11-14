@@ -52,7 +52,6 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QStyle,
     QSpinBox,
-    QSplitter,
     QStackedWidget,
     QStatusBar,
     QTreeWidget,
@@ -1364,17 +1363,23 @@ class RegnskapsanalysePage(QWidget):
         self.balance_table.setItemDelegate(self._table_delegate)
         self.result_table.setItemDelegate(self._table_delegate)
 
-        analysis_splitter = QSplitter(Qt.Horizontal)
-        analysis_splitter.setHandleWidth(16)
-        analysis_splitter.setChildrenCollapsible(False)
-        analysis_splitter.setContentsMargins(0, 0, 0, 0)
-        analysis_splitter.addWidget(self.balance_section)
-        analysis_splitter.addWidget(self.result_section)
-        analysis_splitter.setStretchFactor(0, 3)
-        analysis_splitter.setStretchFactor(1, 2)
-        analysis_splitter.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        analysis_splitter.setOpaqueResize(True)
-        self.analysis_card.add_widget(analysis_splitter)
+        analysis_container = QWidget()
+        analysis_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        analysis_layout = QHBoxLayout(analysis_container)
+        analysis_layout.setContentsMargins(0, 0, 0, 0)
+        analysis_layout.setSpacing(0)
+
+        divider = QFrame()
+        divider.setObjectName("analysisDivider")
+        divider.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
+        divider.setFrameShape(QFrame.NoFrame)
+        divider.setFixedWidth(12)
+
+        analysis_layout.addWidget(self.balance_section, 1)
+        analysis_layout.addWidget(divider)
+        analysis_layout.addWidget(self.result_section, 1)
+
+        self.analysis_card.add_widget(analysis_container)
         layout.addWidget(self.analysis_card, 1)
 
         self._prepared_df: Optional[pd.DataFrame] = None
@@ -3497,8 +3502,7 @@ class NordlysWindow(QMainWindow):
             QTabBar::tab:selected { background: #2563eb; color: #f8fafc; }
             QTabBar::tab:hover { background: rgba(37, 99, 235, 0.35); color: #0f172a; }
             QTabBar::tab:!selected { border: 1px solid rgba(148, 163, 184, 0.35); }
-            QSplitter::handle { background-color: rgba(148, 163, 184, 0.45); width: 4px; margin: 4px 0; border-radius: 2px; }
-            QSplitter::handle:pressed { background-color: rgba(37, 99, 235, 0.6); }
+            #analysisDivider { background-color: rgba(148, 163, 184, 0.45); border-radius: 2px; margin: 4px 0; }
             QScrollBar:vertical { background: rgba(148, 163, 184, 0.18); width: 12px; margin: 8px 2px 8px 0; border-radius: 6px; }
             QScrollBar::handle:vertical { background: #2563eb; min-height: 24px; border-radius: 6px; }
             QScrollBar::handle:vertical:hover { background: #1d4ed8; }
