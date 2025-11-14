@@ -23,6 +23,10 @@ def test_to_float_handles_common_separators(value, expected):
     assert to_float(value) == pytest.approx(expected)
 
 
+def test_to_float_handles_parentheses_as_negative():
+    assert to_float("(1 234,50)") == pytest.approx(-1234.5)
+
+
 def test_to_float_invalid_returns_zero():
     assert to_float("not a number") == 0.0
 
