@@ -7,7 +7,7 @@ import xml.etree.ElementTree as ET
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from importlib import import_module
 from types import ModuleType
-from typing import TYPE_CHECKING, Any, List, Optional, cast
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, cast
 
 if TYPE_CHECKING:  # pragma: no cover - kun for typekontroll
     import pandas as pd
@@ -40,6 +40,7 @@ class _LazyModule(ModuleType):
 
 
 _PANDAS_PROXY: Optional[_LazyModule] = None
+_LAZY_MODULES: Dict[str, _LazyModule] = {}
 
 
 def lazy_pandas() -> "pd":
@@ -49,6 +50,14 @@ def lazy_pandas() -> "pd":
     if _PANDAS_PROXY is None:
         _PANDAS_PROXY = _LazyModule("pandas")
     return cast("pd", _PANDAS_PROXY)
+
+
+def lazy_import(module_name: str) -> ModuleType:
+    """Returnerer en proxy som importerer modulen på første bruk."""
+
+    if module_name not in _LAZY_MODULES:
+        _LAZY_MODULES[module_name] = _LazyModule(module_name)
+    return _LAZY_MODULES[module_name]
 
 
 def to_float(value: Optional[str]) -> float:
@@ -193,4 +202,5 @@ __all__ = [
     "format_currency",
     "format_difference",
     "lazy_pandas",
+    "lazy_import",
 ]
