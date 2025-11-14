@@ -1,4 +1,5 @@
 """Felles innstillinger som leses fra miljøvariabler."""
+
 from __future__ import annotations
 
 import os

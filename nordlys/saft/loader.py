@@ -1,4 +1,5 @@
 """Funksjoner for lasting av SAF-T-data uten GUI-avhengigheter."""
+
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
@@ -273,6 +274,7 @@ def load_saft_files(
 
     results: List[SaftLoadResult] = []
     for index, path in enumerate(paths):
+
         def _inner_progress(percent: int, message: str) -> None:
             if progress_callback is None:
                 return
