@@ -8,9 +8,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Dict, Optional
 
-import requests
-
-from .constants import ENHETSREGISTER_URL_TMPL
+from .integrations.brreg_service import fetch_enhetsregister
 from .saft import parse_saft_header
 from .saft_customers import parse_saft
 
@@ -213,18 +211,11 @@ def classify_from_brreg_json(
 def _fetch_enhetsregister(orgnr: str) -> Dict[str, object]:
     """Henter metadata fra Enhetsregisteret."""
 
-    url = ENHETSREGISTER_URL_TMPL.format(orgnr=orgnr)
-    response = requests.get(url, headers={"Accept": "application/json"}, timeout=20)
-    response.raise_for_status()
-    data = response.json()
-    if isinstance(data, list):
-        for element in data:
-            if isinstance(element, dict):
-                return element
-        raise ValueError("Uventet svarformat fra Enhetsregisteret.")
-    if not isinstance(data, dict):
-        raise ValueError("Uventet svarformat fra Enhetsregisteret.")
-    return data
+    result = fetch_enhetsregister(orgnr)
+    if result.data is None:
+        message = result.error_message or "Enhetsregisteret: ukjent feil."
+        raise RuntimeError(message)
+    return result.data
 
 
 def classify_from_orgnr(

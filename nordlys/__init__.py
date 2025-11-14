@@ -13,6 +13,7 @@ __all__ = [
     "ENHETSREGISTER_URL_TMPL",
     "NS",
     "brreg",
+    "integrations",
     "industry_groups",
     "saft",
     "utils",
@@ -20,6 +21,7 @@ __all__ = [
 
 _MODULE_MAP = {
     "brreg": "nordlys.brreg",
+    "integrations": "nordlys.integrations",
     "industry_groups": "nordlys.industry_groups",
     "saft": "nordlys.saft",
     "utils": "nordlys.utils",
