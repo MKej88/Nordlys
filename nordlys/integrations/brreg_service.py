@@ -89,7 +89,8 @@ def _candidate_cache_dirs() -> Tuple[Path, ...]:
         candidates.append(Path(xdg_cache_home).expanduser() / "nordlys")
     try:
         home_cache = Path.home() / ".cache" / "nordlys"
-    except RuntimeError:  # pragma: no cover - Path.home kan feile på enkelte plattformer
+    except RuntimeError:
+        # pragma: no cover - Path.home kan feile på enkelte plattformer
         home_cache = None
     else:
         candidates.append(home_cache)
@@ -248,7 +249,9 @@ def _fetch_json(
             timeout=_DEFAULT_TIMEOUT,
         )
     except requests.Timeout:
-        return BrregServiceResult(None, "timeout", f"{source_label}: tidsavbrudd.", False)
+        return BrregServiceResult(
+            None, "timeout", f"{source_label}: tidsavbrudd.", False
+        )
     except requests.ConnectionError as exc:
         return BrregServiceResult(
             None,
@@ -408,7 +411,9 @@ def get_company_status(orgnr: str) -> CompanyStatus:
         data.get("underTvangsavviklingEllerTvangsopplosning")
     )
     avvik_candidates = [
-        value for value in (under_avvikling, under_tvangsopplosning) if value is not None
+        value
+        for value in (under_avvikling, under_tvangsopplosning)
+        if value is not None
     ]
     avvikling = any(avvik_candidates) if avvik_candidates else None
     mva_reg = _interpret_bool(data.get("registrertIMvaregisteret"))

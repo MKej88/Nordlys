@@ -53,7 +53,9 @@ def test_get_company_status_maps_flags(monkeypatch):
 
 
 def test_fetch_enhetsregister_uses_fallback_cache(monkeypatch):
-    monkeypatch.setattr(brreg_service, "_REQUESTS_CACHE_AVAILABLE", False, raising=False)
+    monkeypatch.setattr(
+        brreg_service, "_REQUESTS_CACHE_AVAILABLE", False, raising=False
+    )
     monkeypatch.setattr(brreg_service, "_SESSION", None, raising=False)
     brreg_service._FALLBACK_CACHE.clear()
 
@@ -86,7 +88,9 @@ def test_fetch_enhetsregister_uses_fallback_cache(monkeypatch):
 
 
 def test_fetch_regnskapsregister_accepts_list_payload(monkeypatch):
-    monkeypatch.setattr(brreg_service, "_REQUESTS_CACHE_AVAILABLE", False, raising=False)
+    monkeypatch.setattr(
+        brreg_service, "_REQUESTS_CACHE_AVAILABLE", False, raising=False
+    )
     monkeypatch.setattr(brreg_service, "_SESSION", None, raising=False)
     brreg_service._FALLBACK_CACHE.clear()
 
