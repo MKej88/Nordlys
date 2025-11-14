@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import requests
+
+from nordlys import brreg
 from nordlys.brreg import find_first_by_exact_endkey, map_brreg_metrics
 
 
@@ -71,3 +74,16 @@ def test_map_brreg_metrics():
     assert mapped['driftsinntekter'] == 123
     assert mapped['arsresultat'] == 45
     assert mapped['ebit'] == 40
+
+
+def test_fetch_brreg_timeout(monkeypatch):
+    class DummySession:
+        def get(self, *args, **kwargs):
+            raise requests.Timeout("test-timeout")
+
+    monkeypatch.setattr(brreg, '_SESSION', DummySession(), raising=False)
+
+    data, error = brreg.fetch_brreg('123456789')
+
+    assert data is None
+    assert 'tidsavbrudd' in error.lower()
