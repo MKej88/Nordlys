@@ -51,7 +51,7 @@ except ImportError:  # PySide6 < 6.7
 from ..constants import APP_TITLE
 from ..core.task_runner import TaskRunner
 from ..industry_groups import IndustryClassification
-from ..saft.loader import SaftLoadResult, load_saft_file, load_saft_files
+from ..saft.loader import SaftLoadResult, load_saft_files
 from ..utils import format_currency, lazy_import, lazy_pandas
 from .config import PRIMARY_UI_FONT_FAMILY, REVISION_TASKS, icon_for_navigation
 from .pages.analysis_pages import (
