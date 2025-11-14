@@ -4624,20 +4624,15 @@ def _apply_compact_row_heights(table: QTableWidget | QTableView) -> None:
 
     if isinstance(table, QTableWidget):
         row_count = table.rowCount()
-        if row_count == 0:
-            return
-        for row in range(row_count):
-            table.setRowHeight(row, minimum_height)
-        return
+    else:
+        model = table.model()
+        row_count = model.rowCount() if model is not None else 0
 
-    model = table.model()
-    if model is None:
-        return
-    row_count = model.rowCount()
     if row_count == 0:
         return
+
     for row in range(row_count):
-        header.resizeSection(row, minimum_height)
+        table.setRowHeight(row, minimum_height)
 
 
 def _populate_table(
