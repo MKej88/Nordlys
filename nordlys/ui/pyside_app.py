@@ -1813,6 +1813,7 @@ class SammenstillingsanalysePage(QWidget):
         self._update_cost_show_more_visibility()
         self._apply_cost_highlighting()
         self.cost_table.scrollToTop()
+        self._auto_resize_cost_columns()
 
     @staticmethod
     def _format_percent(value: Optional[float]) -> str:
@@ -1862,6 +1863,7 @@ class SammenstillingsanalysePage(QWidget):
         if fetched:
             _apply_compact_row_heights(self.cost_table)
             self._apply_cost_highlighting()
+            self._auto_resize_cost_columns()
         self._update_cost_show_more_visibility()
 
     def _on_cost_cell_changed(self, row: int, column: int, cell: SaftTableCell) -> None:
@@ -1881,6 +1883,25 @@ class SammenstillingsanalysePage(QWidget):
             self._cost_comments[str(key)] = text
         else:
             self._cost_comments.pop(str(key), None)
+
+    def _auto_resize_cost_columns(self) -> None:
+        """Tilpasser kolonnebreddene til innholdet uten å fjerne stretching."""
+
+        header = self.cost_table.horizontalHeader()
+        column_count = self.cost_model.columnCount()
+        if column_count <= 0:
+            return
+
+        stretch_last = False
+        for section in range(column_count):
+            mode = header.sectionResizeMode(section)
+            if mode == QHeaderView.Stretch:
+                stretch_last = section == column_count - 1
+                continue
+            if mode == QHeaderView.ResizeToContents:
+                self.cost_table.resizeColumnToContents(section)
+
+        header.setStretchLastSection(stretch_last)
 
 
 class SignalBlocker:
