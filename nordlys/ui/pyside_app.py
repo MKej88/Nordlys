@@ -1332,11 +1332,6 @@ class NordlysWindow(QMainWindow):
             self.import_page.record_error(f"Lesing av SAF-T: {message}")
         QMessageBox.critical(self, "Feil ved lesing av SAF-T", message)
 
-    def _apply_saft_result(self, key: str, *, log_event: bool = False) -> None:
-        result = self._data_manager.current_result
-        if result is None:
-            return
-
     def _on_calc_top_customers(
         self, source: str, topn: int
     ) -> Optional[List[Tuple[str, str, int, float]]]:
