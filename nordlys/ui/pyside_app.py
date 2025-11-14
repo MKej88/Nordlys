@@ -1074,7 +1074,11 @@ class NordlysWindow(QMainWindow):
         if getattr(self, "import_page", None):
             self.import_page.update_invoice_count(len(self._data_manager.cost_vouchers))
 
-        df = self._data_manager.saft_df or result.dataframe
+        saft_df = self._data_manager.saft_df
+        if saft_df is not None:
+            df = saft_df
+        else:
+            df = result.dataframe
         self._update_header_fields()
         saldobalanse_page = cast(
             Optional[DataFramePage], getattr(self, "saldobalanse_page", None)
