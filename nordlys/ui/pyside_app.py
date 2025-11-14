@@ -80,34 +80,17 @@ from ..industry_groups import (
     classify_from_orgnr,
     load_cached_brreg,
 )
-from ..regnskap import compute_balance_analysis, compute_result_analysis, prepare_regnskap_dataframe
-from ..saft import (
-    check_trial_balance,
-    CustomerInfo,
-    SaftHeader,
-    SaftValidationResult,
-    SupplierInfo,
-    ns4102_summary_from_tb,
-    parse_customers,
-    parse_saldobalanse,
-    parse_saft_header,
-    parse_suppliers,
-    validate_saft_against_xsd,
-)
-from ..saft_customers import (
-    CostVoucher,
-    build_parent_map,
-    compute_customer_supplier_totals,
-    extract_cost_vouchers,
-    parse_saft,
-)
-from ..utils import format_currency, format_difference, lazy_pandas
+from ..utils import format_currency, format_difference, lazy_import, lazy_pandas
 from .models import SaftTableCell, SaftTableModel, SaftTableSource
 
 if TYPE_CHECKING:  # pragma: no cover - kun for typekontroll
     import pandas as pd
 
 pd = lazy_pandas()
+
+saft = lazy_import("nordlys.saft")
+saft_customers = lazy_import("nordlys.saft_customers")
+regnskap = lazy_import("nordlys.regnskap")
 
 
 def _env_flag(name: str) -> bool:
@@ -217,16 +200,16 @@ class SaftLoadResult:
     """Resultatobjekt fra bakgrunnslasting av SAF-T."""
 
     file_path: str
-    header: Optional[SaftHeader]
+    header: Optional["saft.SaftHeader"]
     dataframe: pd.DataFrame
-    customers: Dict[str, CustomerInfo]
+    customers: Dict[str, "saft.CustomerInfo"]
     customer_sales: Optional[pd.DataFrame]
-    suppliers: Dict[str, SupplierInfo]
+    suppliers: Dict[str, "saft.SupplierInfo"]
     supplier_purchases: Optional[pd.DataFrame]
-    cost_vouchers: List[CostVoucher]
+    cost_vouchers: List["saft_customers.CostVoucher"]
     analysis_year: Optional[int]
     summary: Optional[Dict[str, float]]
-    validation: SaftValidationResult
+    validation: "saft.SaftValidationResult"
     trial_balance: Optional[Dict[str, Decimal]] = None
     trial_balance_error: Optional[str] = None
     brreg_json: Optional[Dict[str, object]] = None
@@ -258,7 +241,7 @@ def load_saft_file(
     if SAFT_STREAMING_ENABLED:
         _report_progress(5, f"Leser hovedbok (streaming) for {file_name}")
         try:
-            trial_balance = check_trial_balance(
+            trial_balance = saft.check_trial_balance(
                 Path(file_path), validate=SAFT_STREAMING_VALIDATE
             )
             if trial_balance["diff"] != Decimal("0"):
@@ -270,13 +253,13 @@ def load_saft_file(
             trial_balance = None
             trial_balance_error = str(exc)
 
-    tree, ns = parse_saft(file_path)
+    tree, ns = saft_customers.parse_saft(file_path)
     root = tree.getroot()
-    header = parse_saft_header(root)
-    dataframe = parse_saldobalanse(root)
+    header = saft.parse_saft_header(root)
+    dataframe = saft.parse_saldobalanse(root)
     _report_progress(25, f"Tolker saldobalanse for {file_name}")
-    customers = parse_customers(root)
-    suppliers = parse_suppliers(root)
+    customers = saft.parse_customers(root)
+    suppliers = saft.parse_suppliers(root)
 
     def _parse_date(value: Optional[str]) -> Optional[date]:
         if value is None:
@@ -297,18 +280,18 @@ def load_saft_file(
     analysis_year: Optional[int] = None
     customer_sales: Optional[pd.DataFrame] = None
     supplier_purchases: Optional[pd.DataFrame] = None
-    cost_vouchers: List[CostVoucher] = []
+    cost_vouchers: List["saft_customers.CostVoucher"] = []
     parent_map: Optional[Dict[object, Optional[object]]] = None
     if period_start or period_end:
-        parent_map = build_parent_map(root)
-        customer_sales, supplier_purchases = compute_customer_supplier_totals(
+        parent_map = saft_customers.build_parent_map(root)
+        customer_sales, supplier_purchases = saft_customers.compute_customer_supplier_totals(
             root,
             ns,
             date_from=period_start,
             date_to=period_end,
             parent_map=parent_map,
         )
-        cost_vouchers = extract_cost_vouchers(
+        cost_vouchers = saft_customers.extract_cost_vouchers(
             root,
             ns,
             date_from=period_start,
@@ -339,14 +322,14 @@ def load_saft_file(
                         break
         if analysis_year is not None:
             if parent_map is None:
-                parent_map = build_parent_map(root)
-            customer_sales, supplier_purchases = compute_customer_supplier_totals(
+                parent_map = saft_customers.build_parent_map(root)
+            customer_sales, supplier_purchases = saft_customers.compute_customer_supplier_totals(
                 root,
                 ns,
                 year=analysis_year,
                 parent_map=parent_map,
             )
-            cost_vouchers = extract_cost_vouchers(
+            cost_vouchers = saft_customers.extract_cost_vouchers(
                 root,
                 ns,
                 year=analysis_year,
@@ -355,8 +338,8 @@ def load_saft_file(
 
     _report_progress(50, f"Analyserer kunder og leverandører for {file_name}")
 
-    summary = ns4102_summary_from_tb(dataframe)
-    validation = validate_saft_against_xsd(
+    summary = saft.ns4102_summary_from_tb(dataframe)
+    validation = saft.validate_saft_against_xsd(
         file_path,
         header.file_version if header else None,
     )
@@ -838,7 +821,9 @@ class ImportPage(QWidget):
         self.status_label.updateGeometry()
         self.status_card.updateGeometry()
 
-    def update_validation_status(self, result: Optional[SaftValidationResult]) -> None:
+    def update_validation_status(
+        self, result: Optional["saft.SaftValidationResult"]
+    ) -> None:
         if result is None:
             self.validation_label.setText("Ingen XSD-validering er gjennomført.")
             self.validation_label.updateGeometry()
@@ -1348,7 +1333,7 @@ class RegnskapsanalysePage(QWidget):
             self._clear_result_table()
             return
 
-        self._prepared_df = prepare_regnskap_dataframe(df)
+        self._prepared_df = regnskap.prepare_regnskap_dataframe(df)
         self._update_balance_table()
         self._update_result_table()
 
@@ -1378,7 +1363,7 @@ class RegnskapsanalysePage(QWidget):
             self._clear_balance_table()
             return
 
-        rows = compute_balance_analysis(self._prepared_df)
+        rows = regnskap.compute_balance_analysis(self._prepared_df)
         current_label, previous_label = self._year_headers()
         table_rows: List[Tuple[object, object, object, object]] = []
         for row in rows:
@@ -1404,7 +1389,7 @@ class RegnskapsanalysePage(QWidget):
             self._clear_result_table()
             return
 
-        rows = compute_result_analysis(self._prepared_df)
+        rows = regnskap.compute_result_analysis(self._prepared_df)
         current_label, previous_label = self._year_headers()
         table_rows: List[Tuple[object, object, object, object]] = []
         for row in rows:
@@ -1709,7 +1694,7 @@ class SammenstillingsanalysePage(QWidget):
             self._clear_cost_table()
             return
 
-        self._prepared_df = prepare_regnskap_dataframe(df)
+        self._prepared_df = regnskap.prepare_regnskap_dataframe(df)
         self._update_cost_table()
 
     def _year_headers(self) -> Tuple[str, str]:
@@ -2011,7 +1996,7 @@ class ChecklistPage(QWidget):
 class VoucherReviewResult:
     """Resultat fra vurdering av et enkelt bilag."""
 
-    voucher: CostVoucher
+    voucher: "saft_customers.CostVoucher"
     status: str
     comment: str
 
@@ -2021,8 +2006,8 @@ class CostVoucherReviewPage(QWidget):
 
     def __init__(self, title: str, subtitle: str) -> None:
         super().__init__()
-        self._vouchers: List[CostVoucher] = []
-        self._sample: List[CostVoucher] = []
+        self._vouchers: List["saft_customers.CostVoucher"] = []
+        self._sample: List["saft_customers.CostVoucher"] = []
         self._results: List[Optional[VoucherReviewResult]] = []
         self._current_index: int = -1
         self._sample_started_at: Optional[datetime] = None
@@ -2196,7 +2181,9 @@ class CostVoucherReviewPage(QWidget):
 
         self.detail_card.setEnabled(False)
 
-    def set_vouchers(self, vouchers: Sequence[CostVoucher]) -> None:
+    def set_vouchers(
+        self, vouchers: Sequence["saft_customers.CostVoucher"]
+    ) -> None:
         self._vouchers = list(vouchers)
         self._sample = []
         self._results = []
@@ -3007,19 +2994,19 @@ class NordlysWindow(QMainWindow):
 
         self._saft_df: Optional[pd.DataFrame] = None
         self._saft_summary: Optional[Dict[str, float]] = None
-        self._header: Optional[SaftHeader] = None
+        self._header: Optional["saft.SaftHeader"] = None
         self._brreg_json: Optional[Dict[str, object]] = None
         self._brreg_map: Optional[Dict[str, Optional[float]]] = None
-        self._customers: Dict[str, CustomerInfo] = {}
+        self._customers: Dict[str, "saft.CustomerInfo"] = {}
         self._cust_name_by_nr: Dict[str, str] = {}
         self._cust_id_to_nr: Dict[str, str] = {}
         self._customer_sales: Optional[pd.DataFrame] = None
-        self._suppliers: Dict[str, SupplierInfo] = {}
+        self._suppliers: Dict[str, "saft.SupplierInfo"] = {}
         self._sup_name_by_nr: Dict[str, str] = {}
         self._sup_id_to_nr: Dict[str, str] = {}
         self._supplier_purchases: Optional[pd.DataFrame] = None
-        self._cost_vouchers: List[CostVoucher] = []
-        self._validation_result: Optional[SaftValidationResult] = None
+        self._cost_vouchers: List["saft_customers.CostVoucher"] = []
+        self._validation_result: Optional["saft.SaftValidationResult"] = None
         self._industry: Optional[IndustryClassification] = None
         self._industry_error: Optional[str] = None
         self._current_file: Optional[str] = None
@@ -4317,7 +4304,9 @@ class NordlysWindow(QMainWindow):
     def _normalize_supplier_key(self, value: object) -> Optional[str]:
         return self._normalize_identifier(value)
 
-    def _ingest_customers(self, customers: Dict[str, CustomerInfo]) -> None:
+    def _ingest_customers(
+        self, customers: Dict[str, "saft.CustomerInfo"]
+    ) -> None:
         self._customers = {}
         self._cust_name_by_nr = {}
         self._cust_id_to_nr = {}
@@ -4335,7 +4324,7 @@ class NordlysWindow(QMainWindow):
 
             customer_key = norm_id or (raw_id.strip() if isinstance(raw_id, str) and raw_id.strip() else None)
             if customer_key:
-                self._customers[customer_key] = CustomerInfo(
+                self._customers[customer_key] = saft.CustomerInfo(
                     customer_id=customer_key,
                     customer_number=resolved_number or customer_key,
                     name=name,
@@ -4369,7 +4358,9 @@ class NordlysWindow(QMainWindow):
                         self._cust_name_by_nr[norm_key] = name
                     self._cust_name_by_nr[key] = name
 
-    def _ingest_suppliers(self, suppliers: Dict[str, SupplierInfo]) -> None:
+    def _ingest_suppliers(
+        self, suppliers: Dict[str, "saft.SupplierInfo"]
+    ) -> None:
         self._suppliers = {}
         self._sup_name_by_nr = {}
         self._sup_id_to_nr = {}
@@ -4387,7 +4378,7 @@ class NordlysWindow(QMainWindow):
 
             supplier_key = norm_id or (raw_id.strip() if isinstance(raw_id, str) and raw_id.strip() else None)
             if supplier_key:
-                self._suppliers[supplier_key] = SupplierInfo(
+                self._suppliers[supplier_key] = saft.SupplierInfo(
                     supplier_id=supplier_key,
                     supplier_number=resolved_number or supplier_key,
                     name=name,
