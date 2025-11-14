@@ -8,21 +8,21 @@ from typing import Any
 from .constants import APP_TITLE, BRREG_URL_TMPL, ENHETSREGISTER_URL_TMPL, NS
 
 __all__ = [
-    'APP_TITLE',
-    'BRREG_URL_TMPL',
-    'ENHETSREGISTER_URL_TMPL',
-    'NS',
-    'brreg',
-    'industry_groups',
-    'saft',
-    'utils',
+    "APP_TITLE",
+    "BRREG_URL_TMPL",
+    "ENHETSREGISTER_URL_TMPL",
+    "NS",
+    "brreg",
+    "industry_groups",
+    "saft",
+    "utils",
 ]
 
 _MODULE_MAP = {
-    'brreg': 'nordlys.brreg',
-    'industry_groups': 'nordlys.industry_groups',
-    'saft': 'nordlys.saft',
-    'utils': 'nordlys.utils',
+    "brreg": "nordlys.brreg",
+    "industry_groups": "nordlys.industry_groups",
+    "saft": "nordlys.saft",
+    "utils": "nordlys.utils",
 }
 
 

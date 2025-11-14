@@ -1,9 +1,10 @@
 """Bransjeklassifisering basert på data fra Brønnøysundregistrene."""
+
 from __future__ import annotations
 
 import argparse
 import json
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -81,11 +82,38 @@ def _apply_secondary_hints(name: str) -> Optional[str]:
     lowered = name.lower()
     hints = [
         (("eiendom", "property"), "Utleie av eiendom"),
-        (("transport", "logist", "spedisjon", "frakt", "taxi", "buss"), "Transporttjenester"),
-        (("restaurant", "restaur", "bar", "pub", "cafe", "kafé", "pizza", "pizz", "mat og drikke"), "Restauranter og uteliv"),
+        (
+            ("transport", "logist", "spedisjon", "frakt", "taxi", "buss"),
+            "Transporttjenester",
+        ),
+        (
+            (
+                "restaurant",
+                "restaur",
+                "bar",
+                "pub",
+                "cafe",
+                "kafé",
+                "pizza",
+                "pizz",
+                "mat og drikke",
+            ),
+            "Restauranter og uteliv",
+        ),
         (("butikk", "handel", "shop", "store"), "Salg av varer (detaljhandel)"),
         (
-            ("bygg", "entrepren", "elektro", "verksted", "mekanisk", "betong", "trelast", "vvs", "rør", "anlegg"),
+            (
+                "bygg",
+                "entrepren",
+                "elektro",
+                "verksted",
+                "mekanisk",
+                "betong",
+                "trelast",
+                "vvs",
+                "rør",
+                "anlegg",
+            ),
             "Salg av varer og tjenester",
         ),
     ]
@@ -199,7 +227,9 @@ def _fetch_enhetsregister(orgnr: str) -> Dict[str, object]:
     return data
 
 
-def classify_from_orgnr(orgnr: str, company_name: Optional[str] = None) -> IndustryClassification:
+def classify_from_orgnr(
+    orgnr: str, company_name: Optional[str] = None
+) -> IndustryClassification:
     """Henter data fra Enhetsregisteret (med cache) og klassifiserer selskapet."""
 
     normalized = _normalize_orgnr(orgnr)

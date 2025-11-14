@@ -1,17 +1,18 @@
 """SAF-T verktøy for kunde- og leverandøranalyse av hovedbok med eksportfunksjoner."""
+
 from __future__ import annotations
 
-from collections import defaultdict
+import numbers
 import re
+import xml.etree.ElementTree as ET
+import zipfile
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
-import numbers
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple, TYPE_CHECKING
-import xml.etree.ElementTree as ET
+from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Tuple
 from xml.sax.saxutils import escape
-import zipfile
 
 from .utils import lazy_pandas
 
@@ -164,7 +165,9 @@ def _find(element: ET.Element, path: str, ns: Dict[str, str]) -> Optional[ET.Ele
     return element.find(normalized)
 
 
-def _findall(element: ET.Element, path: str, ns: Dict[str, str]) -> Iterable[ET.Element]:
+def _findall(
+    element: ET.Element, path: str, ns: Dict[str, str]
+) -> Iterable[ET.Element]:
     normalized, needs_mapping = _normalize_path(path, ns)
     if needs_mapping:
         return element.findall(normalized, _et_namespace(ns))
@@ -600,7 +603,9 @@ def _normalize_account_key(account: str) -> Optional[str]:
     return digits or None
 
 
-def build_account_name_map(root: ET.Element, ns: Dict[str, str]) -> Dict[str, Optional[str]]:
+def build_account_name_map(
+    root: ET.Element, ns: Dict[str, str]
+) -> Dict[str, Optional[str]]:
     """Bygger oppslagstabell fra kontonummer til kontonavn."""
 
     accounts_root = _find(root, "n1:MasterFiles/n1:GeneralLedgerAccounts", ns)
@@ -614,7 +619,9 @@ def build_account_name_map(root: ET.Element, ns: Dict[str, str]) -> Dict[str, Op
         if not account_id:
             continue
         name_element = _find(account, "n1:AccountDescription", ns)
-        account_name = _clean_text(name_element.text if name_element is not None else None)
+        account_name = _clean_text(
+            name_element.text if name_element is not None else None
+        )
         mapping[account_id] = account_name
         normalized = _normalize_account_key(account_id)
         if normalized and normalized not in mapping:
@@ -690,7 +697,9 @@ def compute_customer_supplier_totals(
 
         for line in lines_list:
             account_element = _find(line, "n1:AccountID", ns)
-            account_text = _clean_text(account_element.text if account_element is not None else None)
+            account_text = _clean_text(
+                account_element.text if account_element is not None else None
+            )
             if not account_text:
                 continue
 
@@ -724,7 +733,9 @@ def compute_customer_supplier_totals(
         lookup_map = build_parent_map(root)
 
     if not customer_totals:
-        customer_df = pd.DataFrame(columns=["Kundenr", "Kundenavn", "Omsetning eks mva"])
+        customer_df = pd.DataFrame(
+            columns=["Kundenr", "Kundenavn", "Omsetning eks mva"]
+        )
     else:
         customer_names = build_customer_name_map(root, ns, parent_map=lookup_map)
         customer_rows = []
@@ -740,11 +751,17 @@ def compute_customer_supplier_totals(
             )
         customer_df = pd.DataFrame(customer_rows)
         if not customer_df.empty:
-            customer_df["Omsetning eks mva"] = customer_df["Omsetning eks mva"].astype(float).round(2)
-            customer_df = customer_df.sort_values("Omsetning eks mva", ascending=False).reset_index(drop=True)
+            customer_df["Omsetning eks mva"] = (
+                customer_df["Omsetning eks mva"].astype(float).round(2)
+            )
+            customer_df = customer_df.sort_values(
+                "Omsetning eks mva", ascending=False
+            ).reset_index(drop=True)
 
     if not supplier_totals:
-        supplier_df = pd.DataFrame(columns=["Leverandørnr", "Leverandørnavn", "Innkjøp eks mva"])
+        supplier_df = pd.DataFrame(
+            columns=["Leverandørnr", "Leverandørnavn", "Innkjøp eks mva"]
+        )
     else:
         supplier_names = build_supplier_name_map(root, ns, parent_map=lookup_map)
         supplier_rows = []
@@ -760,8 +777,12 @@ def compute_customer_supplier_totals(
             )
         supplier_df = pd.DataFrame(supplier_rows)
         if not supplier_df.empty:
-            supplier_df["Innkjøp eks mva"] = supplier_df["Innkjøp eks mva"].astype(float).round(2)
-            supplier_df = supplier_df.sort_values("Innkjøp eks mva", ascending=False).reset_index(drop=True)
+            supplier_df["Innkjøp eks mva"] = (
+                supplier_df["Innkjøp eks mva"].astype(float).round(2)
+            )
+            supplier_df = supplier_df.sort_values(
+                "Innkjøp eks mva", ascending=False
+            ).reset_index(drop=True)
 
     return customer_df, supplier_df
 
@@ -788,7 +809,9 @@ def compute_sales_per_customer(
     totals: Dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
     counts: Dict[str, int] = defaultdict(int)
 
-    transactions = _findall(root, ".//n1:GeneralLedgerEntries/n1:Journal/n1:Transaction", ns)
+    transactions = _findall(
+        root, ".//n1:GeneralLedgerEntries/n1:Journal/n1:Transaction", ns
+    )
     for transaction in transactions:
         date_element = _find(transaction, "n1:TransactionDate", ns)
         tx_date = _ensure_date(date_element.text if date_element is not None else None)
@@ -811,7 +834,9 @@ def compute_sales_per_customer(
         has_income = False
         for line in lines:
             account_element = _find(line, "n1:AccountID", ns)
-            account = _clean_text(account_element.text if account_element is not None else None)
+            account = _clean_text(
+                account_element.text if account_element is not None else None
+            )
             if not account:
                 continue
             digits = "".join(ch for ch in account if ch.isdigit())
@@ -887,7 +912,9 @@ def compute_purchases_per_supplier(
     totals: Dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
     counts: Dict[str, int] = defaultdict(int)
 
-    transactions = _findall(root, ".//n1:GeneralLedgerEntries/n1:Journal/n1:Transaction", ns)
+    transactions = _findall(
+        root, ".//n1:GeneralLedgerEntries/n1:Journal/n1:Transaction", ns
+    )
     for transaction in transactions:
         date_element = _find(transaction, "n1:TransactionDate", ns)
         tx_date = _ensure_date(date_element.text if date_element is not None else None)
@@ -910,7 +937,9 @@ def compute_purchases_per_supplier(
         has_purchase = False
         for line in lines:
             account_element = _find(line, "n1:AccountID", ns)
-            account = _clean_text(account_element.text if account_element is not None else None)
+            account = _clean_text(
+                account_element.text if account_element is not None else None
+            )
             if not _is_cost_account(account or ""):
                 continue
             has_purchase = True
@@ -923,7 +952,9 @@ def compute_purchases_per_supplier(
             counts[supplier_id] += 1
 
     if not totals:
-        return pd.DataFrame(columns=["Leverandørnr", "Leverandørnavn", "Innkjøp eks mva"])
+        return pd.DataFrame(
+            columns=["Leverandørnr", "Leverandørnavn", "Innkjøp eks mva"]
+        )
 
     name_map = build_supplier_name_map(root, ns)
     rows = []
@@ -1004,13 +1035,20 @@ def extract_cost_vouchers(
 
         for line in lines:
             account_element = _find(line, "n1:AccountID", ns)
-            account = _clean_text(account_element.text if account_element is not None else None) or ""
+            account = (
+                _clean_text(
+                    account_element.text if account_element is not None else None
+                )
+                or ""
+            )
             normalized_account = _normalize_account_key(account) if account else None
             account_name = account_names.get(account) if account else None
             if account_name is None and normalized_account:
                 account_name = account_names.get(normalized_account)
             description_element = _find(line, "n1:Description", ns)
-            description = _clean_text(description_element.text if description_element is not None else None)
+            description = _clean_text(
+                description_element.text if description_element is not None else None
+            )
             debit = get_amount(line, "DebitAmount", ns)
             credit = get_amount(line, "CreditAmount", ns)
             vat_code = _extract_vat_code(line, ns)
@@ -1080,7 +1118,9 @@ def save_outputs(
     xlsx_path = output_dir / f"salg_per_kunde_eks_mva_{year_text}_{tag}.xlsx"
 
     export_df = df.copy()
-    export_df["Omsetning eks mva"] = export_df["Omsetning eks mva"].astype(float).round(2)
+    export_df["Omsetning eks mva"] = (
+        export_df["Omsetning eks mva"].astype(float).round(2)
+    )
     export_df.to_csv(csv_path, index=False, encoding="utf-8-sig")
     try:
         export_df.to_excel(xlsx_path, index=False)
@@ -1150,9 +1190,9 @@ def _write_basic_xlsx(df: pd.DataFrame, path: Path) -> None:
     body_xml = build_body(2)
 
     sheet_xml = (
-        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
-        "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
-        "xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">"
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
         "<sheetData>"
         f"{header_xml}{body_xml}"
         "</sheetData>"
@@ -1160,50 +1200,50 @@ def _write_basic_xlsx(df: pd.DataFrame, path: Path) -> None:
     )
 
     content_types_xml = (
-        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
-        "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">"
-        "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>"
-        "<Default Extension=\"xml\" ContentType=\"application/xml\"/>"
-        "<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>"
-        "<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>"
-        "<Override PartName=\"/xl/styles.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml\"/>"
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+        '<Default Extension="xml" ContentType="application/xml"/>'
+        '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+        '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+        '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
         "</Types>"
     )
 
     rels_xml = (
-        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
-        "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
-        "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/>"
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
         "</Relationships>"
     )
 
     workbook_xml = (
-        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
-        "<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
-        "xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">"
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
         "<sheets>"
-        "<sheet name=\"Sheet1\" sheetId=\"1\" r:id=\"rId1\"/>"
+        '<sheet name="Sheet1" sheetId="1" r:id="rId1"/>'
         "</sheets>"
         "</workbook>"
     )
 
     workbook_rels_xml = (
-        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
-        "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
-        "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>"
-        "<Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles\" Target=\"styles.xml\"/>"
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
+        '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
         "</Relationships>"
     )
 
     styles_xml = (
-        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
-        "<styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">"
-        "<fonts count=\"1\"><font/></fonts>"
-        "<fills count=\"1\"><fill><patternFill patternType=\"none\"/></fill></fills>"
-        "<borders count=\"1\"><border/></borders>"
-        "<cellStyleXfs count=\"1\"><xf/></cellStyleXfs>"
-        "<cellXfs count=\"1\"><xf xfId=\"0\"/></cellXfs>"
-        "<cellStyles count=\"1\"><cellStyle name=\"Normal\" xfId=\"0\" builtinId=\"0\"/></cellStyles>"
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        '<fonts count="1"><font/></fonts>'
+        '<fills count="1"><fill><patternFill patternType="none"/></fill></fills>'
+        '<borders count="1"><border/></borders>'
+        '<cellStyleXfs count="1"><xf/></cellStyleXfs>'
+        '<cellXfs count="1"><xf xfId="0"/></cellXfs>'
+        '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'
         "</styleSheet>"
     )
 

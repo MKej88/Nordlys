@@ -1,4 +1,5 @@
 """Integrasjon mot regnskapsregisteret."""
+
 from __future__ import annotations
 
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
@@ -8,7 +9,6 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 from .constants import BRREG_URL_TMPL
-
 
 _SESSION: Optional[requests.Session] = None
 
@@ -41,26 +41,25 @@ def fetch_brreg(orgnr: str) -> Tuple[Optional[Dict[str, object]], Optional[str]]
     url = BRREG_URL_TMPL.format(orgnr=orgnr)
     session = _get_session()
     try:
-        response = session.get(url, headers={'Accept': 'application/json'}, timeout=20)
+        response = session.get(url, headers={"Accept": "application/json"}, timeout=20)
         response.raise_for_status()
         return response.json(), None
     except requests.Timeout:
         return None, (
-            'Kunne ikke hente data fra Brønnøysundregistrene på grunn av tidsavbrudd. '
-            'Vennligst prøv igjen litt senere.'
+            "Kunne ikke hente data fra Brønnøysundregistrene på grunn av tidsavbrudd. "
+            "Vennligst prøv igjen litt senere."
         )
     except requests.ConnectionError as exc:
         return None, (
-            'Feil ved tilkobling mot Brønnøysundregistrene. '
-            f'Detaljer: {exc}'
+            "Feil ved tilkobling mot Brønnøysundregistrene. " f"Detaljer: {exc}"
         )
     except requests.RequestException as exc:
         return None, str(exc)
     except ValueError as exc:
-        return None, f'Ugyldig svar fra Brønnøysundregistrene: {exc}'
+        return None, f"Ugyldig svar fra Brønnøysundregistrene: {exc}"
 
 
-def find_numbers(data: object, path: str = '') -> List[Tuple[str, float]]:
+def find_numbers(data: object, path: str = "") -> List[Tuple[str, float]]:
     """Traverserer en struktur og finner tallverdier."""
     found: List[Tuple[str, float]] = []
     if isinstance(data, dict):
@@ -80,16 +79,16 @@ def find_numbers(data: object, path: str = '') -> List[Tuple[str, float]]:
 def _last_key(segment_path: str) -> str:
     """Returnerer siste nøkkelkomponent i en punktseparert sti."""
 
-    parts = segment_path.split('.')
+    parts = segment_path.split(".")
     for part in reversed(parts):
         if not part:
             continue
-        if '[' in part:
-            part = part.split('[', 1)[0]
+        if "[" in part:
+            part = part.split("[", 1)[0]
         part = part.strip()
         if part:
             return part
-    return ''
+    return ""
 
 
 def find_first_by_exact_endkey(
@@ -104,11 +103,15 @@ def find_first_by_exact_endkey(
     for key in prefer_keys:
         for path, value in numbers_list:
             last_key = _last_key(path).lower()
-            if last_key == key.lower() and not any(bad.lower() in path.lower() for bad in disallow_contains):
+            if last_key == key.lower() and not any(
+                bad.lower() in path.lower() for bad in disallow_contains
+            ):
                 return (path, value)
     for key in prefer_keys:
         for path, value in numbers_list:
-            if key.lower() in path.lower() and not any(bad.lower() in path.lower() for bad in disallow_contains):
+            if key.lower() in path.lower() and not any(
+                bad.lower() in path.lower() for bad in disallow_contains
+            ):
                 return (path, value)
     return None
 
@@ -117,32 +120,39 @@ def map_brreg_metrics(json_obj: Dict[str, object]) -> Dict[str, Optional[float]]
     """Mapper regnskapsverdier til kjente nøkkeltall."""
     mapped: Dict[str, Optional[float]] = {}
     numbers = find_numbers(json_obj)
-    hit_eiendeler = find_first_by_exact_endkey(json_obj, ['sumEiendeler'], numbers=numbers)
+    hit_eiendeler = find_first_by_exact_endkey(
+        json_obj, ["sumEiendeler"], numbers=numbers
+    )
     if not hit_eiendeler:
         hit_eiendeler = find_first_by_exact_endkey(
             json_obj,
-            ['sumEgenkapitalOgGjeld'],
+            ["sumEgenkapitalOgGjeld"],
             numbers=numbers,
         )
-    mapped['eiendeler_UB'] = hit_eiendeler[1] if hit_eiendeler else None
+    mapped["eiendeler_UB"] = hit_eiendeler[1] if hit_eiendeler else None
 
     hit_ek = find_first_by_exact_endkey(
         json_obj,
-        ['sumEgenkapital'],
-        disallow_contains=['EgenkapitalOgGjeld', 'egenkapitalOgGjeld'],
+        ["sumEgenkapital"],
+        disallow_contains=["EgenkapitalOgGjeld", "egenkapitalOgGjeld"],
         numbers=numbers,
     )
     if not hit_ek:
-        hit_ek = find_first_by_exact_endkey(json_obj, ['sumEgenkapital'], numbers=numbers)
-    mapped['egenkapital_UB'] = hit_ek[1] if hit_ek else None
+        hit_ek = find_first_by_exact_endkey(
+            json_obj, ["sumEgenkapital"], numbers=numbers
+        )
+    mapped["egenkapital_UB"] = hit_ek[1] if hit_ek else None
 
-    hit_gjeld = find_first_by_exact_endkey(json_obj, ['sumGjeld'], numbers=numbers)
-    mapped['gjeld_UB'] = hit_gjeld[1] if hit_gjeld else None
+    hit_gjeld = find_first_by_exact_endkey(json_obj, ["sumGjeld"], numbers=numbers)
+    mapped["gjeld_UB"] = hit_gjeld[1] if hit_gjeld else None
 
     for key, hints in [
-        ('driftsinntekter', ['driftsinntekter', 'sumDriftsinntekter', 'salgsinntekter']),
-        ('ebit', ['driftsresultat', 'ebit', 'driftsresultatFoerFinans']),
-        ('arsresultat', ['arsresultat', 'resultat', 'resultatEtterSkatt']),
+        (
+            "driftsinntekter",
+            ["driftsinntekter", "sumDriftsinntekter", "salgsinntekter"],
+        ),
+        ("ebit", ["driftsresultat", "ebit", "driftsresultatFoerFinans"]),
+        ("arsresultat", ["arsresultat", "resultat", "resultatEtterSkatt"]),
     ]:
         hit = find_first_by_exact_endkey(json_obj, hints, numbers=numbers)
         mapped[key] = hit[1] if hit else None
@@ -150,8 +160,8 @@ def map_brreg_metrics(json_obj: Dict[str, object]) -> Dict[str, Optional[float]]
 
 
 __all__ = [
-    'fetch_brreg',
-    'find_numbers',
-    'find_first_by_exact_endkey',
-    'map_brreg_metrics',
+    "fetch_brreg",
+    "find_numbers",
+    "find_first_by_exact_endkey",
+    "map_brreg_metrics",
 ]

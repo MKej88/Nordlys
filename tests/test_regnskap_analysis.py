@@ -17,31 +17,101 @@ def build_sample_tb() -> pd.DataFrame:
         {"Konto": "1000", "Kontonavn": "Immaterielle", "IB Debet": 50, "UB Debet": 60},
         {"Konto": "1100", "Kontonavn": "Tomter", "IB Debet": 100, "UB Debet": 120},
         {"Konto": "1200", "Kontonavn": "Maskiner", "IB Debet": 80, "UB Debet": 90},
-        {"Konto": "1300", "Kontonavn": "Finansielle anlegg", "IB Debet": 40, "UB Debet": 55},
+        {
+            "Konto": "1300",
+            "Kontonavn": "Finansielle anlegg",
+            "IB Debet": 40,
+            "UB Debet": 55,
+        },
         {"Konto": "1400", "Kontonavn": "Varelager", "IB Debet": 200, "UB Debet": 220},
-        {"Konto": "1500", "Kontonavn": "Kundefordringer", "IB Debet": 150, "UB Debet": 180},
+        {
+            "Konto": "1500",
+            "Kontonavn": "Kundefordringer",
+            "IB Debet": 150,
+            "UB Debet": 180,
+        },
         {"Konto": "1580", "Kontonavn": "Avsetning tap", "IB Debet": 20, "UB Debet": 30},
-        {"Konto": "1505", "Kontonavn": "Andre fordringer", "IB Debet": 30, "UB Debet": 40},
+        {
+            "Konto": "1505",
+            "Kontonavn": "Andre fordringer",
+            "IB Debet": 30,
+            "UB Debet": 40,
+        },
         {"Konto": "1600", "Kontonavn": "MVA", "IB Debet": 10, "UB Debet": 15},
         {"Konto": "1700", "Kontonavn": "Forskudd", "IB Debet": 5, "UB Debet": 7},
         {"Konto": "1800", "Kontonavn": "Finansielle", "IB Debet": 12, "UB Debet": 20},
         {"Konto": "1900", "Kontonavn": "Bank", "IB Debet": 300, "UB Debet": 350},
-        {"Konto": "2000", "Kontonavn": "Egenkapital", "IB Kredit": 750, "UB Kredit": 892},
+        {
+            "Konto": "2000",
+            "Kontonavn": "Egenkapital",
+            "IB Kredit": 750,
+            "UB Kredit": 892,
+        },
         {"Konto": "2100", "Kontonavn": "Avsetning", "IB Kredit": 28, "UB Kredit": 25},
-        {"Konto": "2200", "Kontonavn": "Langsiktig gjeld", "IB Kredit": 80, "UB Kredit": 100},
-        {"Konto": "2300", "Kontonavn": "Kortsiktig gjeld", "IB Kredit": 50, "UB Kredit": 70},
-        {"Konto": "2400", "Kontonavn": "Leverandørgjeld", "IB Kredit": 40, "UB Kredit": 50},
-        {"Konto": "2500", "Kontonavn": "Skyldig skattetrekk", "IB Kredit": 20, "UB Kredit": 15},
-        {"Konto": "2900", "Kontonavn": "Annen kortsiktig gjeld", "IB Kredit": 29, "UB Kredit": 35},
-        {"Konto": "3000", "Kontonavn": "Salgsinntekter", "IB Kredit": 900, "UB Kredit": 1000},
-        {"Konto": "3800", "Kontonavn": "Annen inntekt", "IB Kredit": 40, "UB Kredit": 50},
-        {"Konto": "3900", "Kontonavn": "Annen inntekt", "IB Kredit": 10, "UB Kredit": 20},
+        {
+            "Konto": "2200",
+            "Kontonavn": "Langsiktig gjeld",
+            "IB Kredit": 80,
+            "UB Kredit": 100,
+        },
+        {
+            "Konto": "2300",
+            "Kontonavn": "Kortsiktig gjeld",
+            "IB Kredit": 50,
+            "UB Kredit": 70,
+        },
+        {
+            "Konto": "2400",
+            "Kontonavn": "Leverandørgjeld",
+            "IB Kredit": 40,
+            "UB Kredit": 50,
+        },
+        {
+            "Konto": "2500",
+            "Kontonavn": "Skyldig skattetrekk",
+            "IB Kredit": 20,
+            "UB Kredit": 15,
+        },
+        {
+            "Konto": "2900",
+            "Kontonavn": "Annen kortsiktig gjeld",
+            "IB Kredit": 29,
+            "UB Kredit": 35,
+        },
+        {
+            "Konto": "3000",
+            "Kontonavn": "Salgsinntekter",
+            "IB Kredit": 900,
+            "UB Kredit": 1000,
+        },
+        {
+            "Konto": "3800",
+            "Kontonavn": "Annen inntekt",
+            "IB Kredit": 40,
+            "UB Kredit": 50,
+        },
+        {
+            "Konto": "3900",
+            "Kontonavn": "Annen inntekt",
+            "IB Kredit": 10,
+            "UB Kredit": 20,
+        },
         {"Konto": "4000", "Kontonavn": "Varekost", "IB Debet": 500, "UB Debet": 550},
         {"Konto": "5000", "Kontonavn": "Lønn", "IB Debet": 200, "UB Debet": 220},
         {"Konto": "6000", "Kontonavn": "Avskrivning", "IB Debet": 150, "UB Debet": 160},
-        {"Konto": "6100", "Kontonavn": "Andre driftskost", "IB Debet": 80, "UB Debet": 90},
+        {
+            "Konto": "6100",
+            "Kontonavn": "Andre driftskost",
+            "IB Debet": 80,
+            "UB Debet": 90,
+        },
         {"Konto": "7000", "Kontonavn": "Annen kost", "IB Debet": 60, "UB Debet": 65},
-        {"Konto": "8000", "Kontonavn": "Finansinntekt", "IB Kredit": 30, "UB Kredit": 40},
+        {
+            "Konto": "8000",
+            "Kontonavn": "Finansinntekt",
+            "IB Kredit": 30,
+            "UB Kredit": 40,
+        },
         {"Konto": "8100", "Kontonavn": "Finanskost", "IB Debet": 25, "UB Debet": 35},
         {"Konto": "8300", "Kontonavn": "Skatt", "IB Kredit": 15, "UB Kredit": 18},
     ]
@@ -65,7 +135,9 @@ def row_by_label(rows: list[AnalysisRow], label: str) -> AnalysisRow:
 def test_prepare_regnskap_dataframe_builds_expected_columns():
     df = build_sample_tb()
     prepared = prepare_regnskap_dataframe(df)
-    assert set(["konto", "navn", "IB", "endring", "UB", "forrige"]).issubset(prepared.columns)
+    assert set(["konto", "navn", "IB", "endring", "UB", "forrige"]).issubset(
+        prepared.columns
+    )
     first = prepared.iloc[0]
     assert first["konto"] == "1000"
     assert pytest.approx(first["UB"], rel=1e-6) == 60

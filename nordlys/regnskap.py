@@ -1,11 +1,10 @@
 """Beregninger for regnskapsanalysesiden."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Iterable, List, Optional, TYPE_CHECKING
-
-import math
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP, ROUND_UP
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from typing import TYPE_CHECKING, Callable, Iterable, List, Optional
 
 from .utils import lazy_pandas
 
@@ -177,7 +176,9 @@ def _make_row(label: str, current: float, previous: float) -> AnalysisRow:
 
 
 def _make_header(label: str) -> AnalysisRow:
-    return AnalysisRow(label=label, current=None, previous=None, change=None, is_header=True)
+    return AnalysisRow(
+        label=label, current=None, previous=None, change=None, is_header=True
+    )
 
 
 def compute_balance_analysis(prepared: pd.DataFrame) -> List[AnalysisRow]:
@@ -230,7 +231,9 @@ def compute_balance_analysis(prepared: pd.DataFrame) -> List[AnalysisRow]:
     korts_fordr_total_py = sum_py("15")
     korts_fordr_ovrige = korts_fordr_total - kundefordr
     korts_fordr_ovrige_py = korts_fordr_total_py - kundefordr_py
-    _add_asset_row("Andre kortsiktige fordringer", korts_fordr_ovrige, korts_fordr_ovrige_py)
+    _add_asset_row(
+        "Andre kortsiktige fordringer", korts_fordr_ovrige, korts_fordr_ovrige_py
+    )
 
     mva = sum_ub("16")
     mva_py = sum_py("16")
@@ -244,7 +247,9 @@ def compute_balance_analysis(prepared: pd.DataFrame) -> List[AnalysisRow]:
 
     finans_kortsiktig = sum_ub("18")
     finans_kortsiktig_py = sum_py("18")
-    _add_asset_row("Kortsiktige finansinvesteringer", finans_kortsiktig, finans_kortsiktig_py)
+    _add_asset_row(
+        "Kortsiktige finansinvesteringer", finans_kortsiktig, finans_kortsiktig_py
+    )
 
     bank = sum_ub("19")
     bank_py = sum_py("19")
@@ -306,17 +311,9 @@ def compute_balance_analysis(prepared: pd.DataFrame) -> List[AnalysisRow]:
 
     ek_rows.append(_make_row("Sum kortsiktig gjeld", kortsiktig_sum, kortsiktig_sum_py))
 
-    sum_ek_gjeld = (
-        egenkapital
-        + avsetninger
-        + sum_langsiktig
-        + kortsiktig_sum
-    )
+    sum_ek_gjeld = egenkapital + avsetninger + sum_langsiktig + kortsiktig_sum
     sum_ek_gjeld_py = (
-        egenkapital_py
-        + avsetninger_py
-        + sum_langsiktig_py
-        + kortsiktig_sum_py
+        egenkapital_py + avsetninger_py + sum_langsiktig_py + kortsiktig_sum_py
     )
 
     ek_rows.append(_make_row("Sum egenkapital og gjeld", sum_ek_gjeld, sum_ek_gjeld_py))
@@ -410,7 +407,9 @@ def compute_result_analysis(prepared: pd.DataFrame) -> List[AnalysisRow]:
         + finansinntekt_py
         - finanskost_py
     )
-    rows.append(_make_row("Resultat før skatt", resultat_for_skatt, resultat_for_skatt_py))
+    rows.append(
+        _make_row("Resultat før skatt", resultat_for_skatt, resultat_for_skatt_py)
+    )
 
     return rows
 
@@ -421,4 +420,3 @@ __all__ = [
     "compute_balance_analysis",
     "compute_result_analysis",
 ]
-

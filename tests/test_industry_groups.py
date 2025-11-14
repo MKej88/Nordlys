@@ -14,7 +14,9 @@ def _sample_json(code: str, description: str = "") -> dict:
 
 def test_classify_from_brreg_json_retail() -> None:
     data = _sample_json("47.110", "Butikkhandel")
-    result = industry_groups.classify_from_brreg_json("123456789", "Testbutikk AS", data)
+    result = industry_groups.classify_from_brreg_json(
+        "123456789", "Testbutikk AS", data
+    )
     assert result.group == "Salg av varer (detaljhandel)"
     assert result.sn2 == "47"
     assert result.naringskode == "47.110"
@@ -22,7 +24,9 @@ def test_classify_from_brreg_json_retail() -> None:
 
 def test_name_override_prioritised() -> None:
     data = _sample_json("68.200", "Utleie av egen eller leid fast eiendom")
-    result = industry_groups.classify_from_brreg_json("987654321", "Solgløtt Borettslag", data)
+    result = industry_groups.classify_from_brreg_json(
+        "987654321", "Solgløtt Borettslag", data
+    )
     assert result.group == "Borettslag og sameier"
 
 
@@ -34,7 +38,9 @@ def test_code_zero_maps_to_holding() -> None:
 
 def test_secondary_hint_changes_fallback() -> None:
     data = _sample_json("70.100", "Hovedkontortjenester")
-    result = industry_groups.classify_from_brreg_json("222333444", "Bygg og Anlegg Konsulent", data)
+    result = industry_groups.classify_from_brreg_json(
+        "222333444", "Bygg og Anlegg Konsulent", data
+    )
     assert result.group == "Salg av varer og tjenester"
 
 

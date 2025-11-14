@@ -11,3 +11,8 @@ reportlab>=3.6
 # Kvalitetssikring og validering
 pytest>=7.4
 xmlschema>=2.2
+
+# Utviklerverktøy
+ruff>=0.4
+black>=24.0
+mypy>=1.8
