@@ -30,6 +30,16 @@ class NordlysWindow(QMainWindow):
 
     def __init__(self) -> None:
         super().__init__()
+        self._init_window_geometry()
+        self._init_data_services()
+        self._init_ui_components()
+        self._apply_styles()
+        self._init_responsive_controller()
+        self._init_data_controller()
+        self._init_page_system()
+        self._init_import_export()
+
+    def _init_window_geometry(self) -> None:
         self.setWindowTitle(APP_TITLE)
         screen = QApplication.primaryScreen()
         if screen is not None:
@@ -44,11 +54,12 @@ class NordlysWindow(QMainWindow):
         self.setMinimumSize(1024, 680)
         self.setMaximumSize(16777215, 16777215)
 
+    def _init_data_services(self) -> None:
         self._dataset_store = SaftDatasetStore()
         self._analytics = SaftAnalytics(self._dataset_store)
-
         self._task_runner = TaskRunner(self)
 
+    def _init_ui_components(self) -> None:
         components: WindowComponents = setup_main_window(self)
         self.nav_panel = components.nav_panel
         self._content_layout = components.content_layout
@@ -62,8 +73,7 @@ class NordlysWindow(QMainWindow):
         self._status_progress_label = components.progress_label
         self._status_progress_bar = components.progress_bar
 
-        self._apply_styles()
-
+    def _init_responsive_controller(self) -> None:
         self._responsive = ResponsiveLayoutController(
             self,
             self.stack,
@@ -72,6 +82,7 @@ class NordlysWindow(QMainWindow):
         )
         self.stack.currentChanged.connect(lambda _: self._responsive.schedule_update())
 
+    def _init_data_controller(self) -> None:
         self._data_controller = SaftDataController(
             dataset_store=self._dataset_store,
             analytics=self._analytics,
@@ -82,6 +93,7 @@ class NordlysWindow(QMainWindow):
             update_header_fields=self._update_header_fields,
         )
 
+    def _init_page_system(self) -> None:
         self._page_manager = PageManager(
             self,
             self.stack,
@@ -89,9 +101,9 @@ class NordlysWindow(QMainWindow):
         )
         self._page_registry = PageRegistry(self._page_manager, self._data_controller)
         self._page_registry.register_all()
-
         NavigationBuilder(self.nav_panel).populate(self._on_navigation_changed)
 
+    def _init_import_export(self) -> None:
         self._import_controller = ImportExportController(
             parent=self,
             data_manager=self._dataset_store,
