@@ -10,7 +10,7 @@ from ..config import REVISION_TASKS
 from ..data_manager import SaftAnalytics, SaftDatasetStore
 from ..header_bar import HeaderBar
 from ..page_state_handler import ComparisonRows, PageStateHandler
-from ..saft.loader import SaftLoadResult
+from ...saft.loader import SaftLoadResult
 from .analytics import AnalyticsEventHandler
 from .context import ControllerContext
 from .dataset_flow import DatasetFlowController

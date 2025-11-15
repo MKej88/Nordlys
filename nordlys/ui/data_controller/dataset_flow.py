@@ -8,7 +8,7 @@ from typing import List, Optional, Sequence, Tuple
 
 from PySide6.QtWidgets import QMessageBox
 
-from ..saft.loader import SaftLoadResult
+from ...saft.loader import SaftLoadResult
 from ..utils import format_currency
 from .context import ControllerContext
 from .messaging import ImportMessenger
