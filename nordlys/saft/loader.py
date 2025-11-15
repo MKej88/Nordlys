@@ -5,22 +5,20 @@ from __future__ import annotations
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 from threading import Lock
 from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Sequence
-import xml.etree.ElementTree as ET
 
-from ..brreg import fetch_brreg, map_brreg_metrics
-from ..industry_groups import (
-    IndustryClassification,
-    classify_from_brreg_json,
-    classify_from_orgnr,
-    load_cached_brreg,
-)
 from ..helpers.lazy_imports import lazy_import, lazy_pandas
-from ..settings import SAFT_STREAMING_ENABLED, SAFT_STREAMING_VALIDATE
+from ..industry_groups import IndustryClassification
+from ..settings import SAFT_STREAMING_ENABLED
+from .brreg_enrichment import BrregEnrichment, enrich_from_header
+from .customer_analysis import (
+    CustomerSupplierAnalysis,
+    build_customer_supplier_analysis,
+)
+from .trial_balance import compute_trial_balance
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -57,21 +55,6 @@ class SaftLoadResult:
     industry_error: Optional[str] = None
 
 
-def _parse_date(value: Optional[str]) -> Optional[date]:
-    if value is None:
-        return None
-    text = value.strip()
-    if not text:
-        return None
-    try:
-        return date.fromisoformat(text)
-    except ValueError:
-        try:
-            return datetime.strptime(text, "%Y-%m-%d").date()
-        except ValueError:
-            return None
-
-
 def load_saft_file(
     file_path: str,
     *,
@@ -93,103 +76,27 @@ def load_saft_file(
     trial_balance_error: Optional[str] = None
     if SAFT_STREAMING_ENABLED:
         _report_progress(5, f"Leser hovedbok (streaming) for {file_name}")
-        try:
-            trial_balance = saft.check_trial_balance(
-                Path(file_path), validate=SAFT_STREAMING_VALIDATE
-            )
-            if trial_balance["diff"] != Decimal("0"):
-                trial_balance_error = (
-                    "Prøvebalansen går ikke opp (diff "
-                    f"{trial_balance['diff']}) for {file_name}."
-                )
-        except Exception as exc:  # pragma: no cover - robust mot eksterne feil
-            trial_balance = None
-            trial_balance_error = str(exc)
+        trial_balance_result = compute_trial_balance(file_path)
+        trial_balance = trial_balance_result.balance
+        trial_balance_error = trial_balance_result.error
 
     tree, ns = saft_customers.parse_saft(file_path)
     root = tree.getroot()
     if root is None:  # pragma: no cover - guard mot korrupt XML
         raise ValueError("SAF-T-filen mangler et rot-element.")
-    ns_et: dict[str, str] = {
-        key: value
-        for key, value in ns.items()
-        if isinstance(key, str) and isinstance(value, str)
-    }
     header = saft.parse_saft_header(root)
     dataframe = saft.parse_saldobalanse(root)
     _report_progress(25, f"Tolker saldobalanse for {file_name}")
     customers = saft.parse_customers(root)
     suppliers = saft.parse_suppliers(root)
 
-    period_start = _parse_date(header.period_start) if header else None
-    period_end = _parse_date(header.period_end) if header else None
-    analysis_year: Optional[int] = None
-    customer_sales: Optional[pd.DataFrame] = None
-    supplier_purchases: Optional[pd.DataFrame] = None
-    cost_vouchers: List["saft_customers.CostVoucher"] = []
-    parent_map: Optional[Dict[ET.Element, Optional[ET.Element]]] = None
-    if period_start or period_end:
-        parent_map = saft_customers.build_parent_map(root)
-        (
-            customer_sales,
-            supplier_purchases,
-        ) = saft_customers.compute_customer_supplier_totals(
-            root,
-            ns,
-            date_from=period_start,
-            date_to=period_end,
-            parent_map=parent_map,
-        )
-        cost_vouchers = saft_customers.extract_cost_vouchers(
-            root,
-            ns,
-            date_from=period_start,
-            date_to=period_end,
-            parent_map=parent_map,
-        )
-        if period_end:
-            analysis_year = period_end.year
-        elif period_start:
-            analysis_year = period_start.year
-    else:
-        if header and header.fiscal_year:
-            try:
-                analysis_year = int(header.fiscal_year)
-            except (TypeError, ValueError):
-                analysis_year = None
-        if analysis_year is None and header and header.period_end:
-            parsed_end = _parse_date(header.period_end)
-            if parsed_end:
-                analysis_year = parsed_end.year
-        if analysis_year is None:
-            for tx in root.findall(
-                ".//n1:GeneralLedgerEntries/n1:Journal/n1:Transaction",
-                ns_et or None,
-            ):
-                date_element = tx.find("n1:TransactionDate", ns_et or None)
-                if date_element is not None and date_element.text:
-                    parsed = _parse_date(date_element.text)
-                    if parsed:
-                        analysis_year = parsed.year
-                        break
-        if analysis_year is not None:
-            if parent_map is None:
-                parent_map = saft_customers.build_parent_map(root)
-            (
-                customer_sales,
-                supplier_purchases,
-            ) = saft_customers.compute_customer_supplier_totals(
-                root,
-                ns,
-                year=analysis_year,
-                parent_map=parent_map,
-            )
-            cost_vouchers = saft_customers.extract_cost_vouchers(
-                root,
-                ns,
-                year=analysis_year,
-                parent_map=parent_map,
-            )
+    analysis: CustomerSupplierAnalysis = build_customer_supplier_analysis(
+        header, root, ns
+    )
+    analysis_year = analysis.analysis_year
+    customer_sales = analysis.customer_sales
+    supplier_purchases = analysis.supplier_purchases
+    cost_vouchers = analysis.cost_vouchers
 
     _report_progress(50, f"Analyserer kunder og leverandører for {file_name}")
 
@@ -201,54 +108,7 @@ def load_saft_file(
 
     _report_progress(75, f"Validerer og beriker data for {file_name}")
 
-    brreg_json: Optional[Dict[str, object]] = None
-    brreg_map: Optional[Dict[str, Optional[float]]] = None
-    brreg_error: Optional[str] = None
-    industry: Optional[IndustryClassification] = None
-    industry_error: Optional[str] = None
-    if header and header.orgnr:
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            brreg_future = executor.submit(fetch_brreg, header.orgnr)
-            industry_future = executor.submit(
-                classify_from_orgnr,
-                header.orgnr,
-                header.company_name,
-            )
-
-            try:
-                fetched_json, fetch_error = brreg_future.result()
-                if fetch_error:
-                    brreg_error = fetch_error
-                else:
-                    brreg_json = fetched_json
-                    if brreg_json is not None:
-                        brreg_map = map_brreg_metrics(brreg_json)
-                    else:
-                        brreg_error = "Fikk ikke noe data fra Brønnøysundregistrene."
-            except Exception as exc:  # pragma: no cover - nettverksfeil vises i GUI
-                brreg_error = str(exc)
-
-            try:
-                industry = industry_future.result()
-            except Exception as exc:  # pragma: no cover - nettverksfeil vises i GUI
-                industry_error = str(exc)
-                cached: Optional[Dict[str, object]]
-                try:
-                    cached = load_cached_brreg(header.orgnr)
-                except Exception:
-                    cached = None
-                if cached:
-                    try:
-                        industry = classify_from_brreg_json(
-                            header.orgnr,
-                            header.company_name,
-                            cached,
-                        )
-                        industry_error = None
-                    except Exception as cache_exc:  # pragma: no cover - sjelden
-                        industry_error = str(cache_exc)
-    elif header:
-        industry_error = "SAF-T mangler organisasjonsnummer."
+    enrichment: BrregEnrichment = enrich_from_header(header)
 
     _report_progress(100, f"Ferdig med {file_name}")
 
@@ -266,11 +126,11 @@ def load_saft_file(
         trial_balance=trial_balance,
         trial_balance_error=trial_balance_error,
         validation=validation,
-        brreg_json=brreg_json,
-        brreg_map=brreg_map,
-        brreg_error=brreg_error,
-        industry=industry,
-        industry_error=industry_error,
+        brreg_json=enrichment.brreg_json,
+        brreg_map=enrichment.brreg_map,
+        brreg_error=enrichment.brreg_error,
+        industry=enrichment.industry,
+        industry_error=enrichment.industry_error,
     )
 
 
