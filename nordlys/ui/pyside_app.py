@@ -104,21 +104,9 @@ class NordlysWindow(QMainWindow):
         NavigationBuilder(self.nav_panel).populate(self._on_navigation_changed)
 
     def _init_import_export(self) -> None:
-        self._import_controller = ImportExportController(
-            parent=self,
-            data_manager=self._dataset_store,
-            task_runner=self._task_runner,
-            apply_results=self._data_controller.apply_saft_batch,
-            set_loading_state=self._data_controller.set_loading_state,
-            status_callback=self.statusBar().showMessage,
-            log_import_event=self._data_controller.log_import_event,
-            load_error_handler=self._data_controller.on_load_error,
-        )
-        self._import_controller.register_status_widgets(
-            self._status_progress_label, self._status_progress_bar
-        )
-        self.header_bar.open_requested.connect(self._import_controller.handle_open)
-        self.header_bar.export_requested.connect(self._import_controller.handle_export)
+        self._import_controller: Optional[ImportExportController] = None
+        self.header_bar.open_requested.connect(self._handle_open_requested)
+        self.header_bar.export_requested.connect(self._handle_export_requested)
 
     # region UI
     def _apply_styles(self) -> None:
@@ -173,6 +161,32 @@ class NordlysWindow(QMainWindow):
         self.lbl_orgnr.setText(f"Org.nr: {header.orgnr or '–'}")
         per = f"{header.fiscal_year or '–'} P{header.period_start or '?'}–P{header.period_end or '?'}"
         self.lbl_period.setText(f"Periode: {per}")
+
+    def _ensure_import_controller(self) -> ImportExportController:
+        if self._import_controller is None:
+            controller = ImportExportController(
+                parent=self,
+                data_manager=self._dataset_store,
+                task_runner=self._task_runner,
+                apply_results=self._data_controller.apply_saft_batch,
+                set_loading_state=self._data_controller.set_loading_state,
+                status_callback=self.statusBar().showMessage,
+                log_import_event=self._data_controller.log_import_event,
+                load_error_handler=self._data_controller.on_load_error,
+            )
+            controller.register_status_widgets(
+                self._status_progress_label, self._status_progress_bar
+            )
+            self._import_controller = controller
+        return self._import_controller
+
+    def _handle_open_requested(self) -> None:
+        controller = self._ensure_import_controller()
+        controller.handle_open()
+
+    def _handle_export_requested(self) -> None:
+        controller = self._ensure_import_controller()
+        controller.handle_export()
 
     # endregion
 

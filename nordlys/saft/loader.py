@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor
+import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
+from threading import Lock
 from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Sequence
 import xml.etree.ElementTree as ET
 
@@ -277,7 +279,7 @@ def load_saft_files(
     *,
     progress_callback: Optional[Callable[[int, str], None]] = None,
 ) -> List[SaftLoadResult]:
-    """Laster en eller flere SAF-T-filer sekvensielt med fremdriftsrapportering."""
+    """Laster en eller flere SAF-T-filer med fremdriftsrapportering."""
 
     paths = list(file_paths)
     total = len(paths)
@@ -286,19 +288,64 @@ def load_saft_files(
             progress_callback(100, "Ingen filer å laste.")
         return []
 
-    results: List[SaftLoadResult] = []
-    for index, path in enumerate(paths):
+    if total == 1:
+        single = load_saft_file(paths[0], progress_callback=progress_callback)
+        if progress_callback is not None:
+            progress_callback(100, "Import fullført.")
+        return [single]
 
-        def _inner_progress(percent: int, message: str) -> None:
-            if progress_callback is None:
-                return
-            ratio = (index + max(0.0, min(100.0, percent)) / 100.0) / total
-            progress_callback(int(round(ratio * 100)), message)
+    results: List[Optional[SaftLoadResult]] = [None] * total
 
-        result = load_saft_file(path, progress_callback=_inner_progress)
-        results.append(result)
+    if progress_callback is not None:
+        progress_lock = Lock()
+        progress_values: List[int] = [0] * total
+        last_messages: List[str] = [f"Laster {Path(path).name} …" for path in paths]
+        overall_progress = 0
+
+        def _progress_factory(index: int) -> Callable[[int, str], None]:
+            def _inner(percent: int, message: str) -> None:
+                nonlocal overall_progress
+                normalized = max(0, min(100, int(percent)))
+                clean_message = message.strip()
+                with progress_lock:
+                    progress_values[index] = normalized
+                    if clean_message:
+                        last_messages[index] = clean_message
+                    overall = int(round(sum(progress_values) / total))
+                    if overall < overall_progress:
+                        overall = overall_progress
+                    else:
+                        overall_progress = overall
+                    active_message = clean_message or last_messages[index]
+                progress_callback(overall, active_message)
+
+            return _inner
+
+    else:
+
+        def _progress_factory(index: int) -> Callable[[int, str], None]:
+            def _inner(percent: int, message: str) -> None:
+                return None
+
+            return _inner
+
+    cpu_count = os.cpu_count() or 1
+    max_workers = min(total, max(1, cpu_count))
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {}
+        for index, path in enumerate(paths):
+            progress_arg = _progress_factory(index)
+            kwargs = {}
+            if progress_callback is not None:
+                kwargs["progress_callback"] = progress_arg
+            futures[executor.submit(load_saft_file, path, **kwargs)] = index
+
+        for future in as_completed(futures):
+            index = futures[future]
+            results[index] = future.result()
 
     if progress_callback is not None:
         progress_callback(100, "Import fullført.")
 
-    return results
+    return [result for result in results if result is not None]

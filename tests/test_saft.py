@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import time
 import xml.etree.ElementTree as ET
 import zipfile
 from decimal import Decimal
@@ -16,6 +17,7 @@ from nordlys.saft import (
     parse_saft_header,
     parse_saldobalanse,
     parse_suppliers,
+    SaftValidationResult,
     validate_saft_against_xsd,
 )
 from nordlys.saft_customers import (
@@ -31,6 +33,7 @@ from nordlys.saft_customers import (
     save_outputs,
 )
 from nordlys.helpers.formatting import format_currency, format_difference
+from nordlys.saft.loader import SaftLoadResult, load_saft_files
 
 
 def build_sample_root() -> ET.Element:
@@ -743,3 +746,48 @@ def test_validate_saft_against_xsd_without_dependency(monkeypatch, tmp_path):
     assert result.version_family == "1.2"
     assert result.is_valid is None
     assert "xmlschema" in (result.details or "").lower()
+
+
+def test_load_saft_files_parallel_progress(monkeypatch):
+    validation = SaftValidationResult(
+        audit_file_version=None,
+        version_family=None,
+        schema_version=None,
+        is_valid=None,
+    )
+
+    def fake_load(path: str, progress_callback=None):
+        if progress_callback is not None:
+            progress_callback(0, f"Forbereder {path}")
+            progress_callback(50, f"Halvveis {path}")
+        if "slow" in path:
+            time.sleep(0.01)
+        if progress_callback is not None:
+            progress_callback(100, f"Ferdig {path}")
+        return SaftLoadResult(
+            file_path=path,
+            header=None,
+            dataframe=pd.DataFrame(),
+            customers={},
+            customer_sales=None,
+            suppliers={},
+            supplier_purchases=None,
+            cost_vouchers=[],
+            analysis_year=None,
+            summary={},
+            validation=validation,
+        )
+
+    monkeypatch.setattr("nordlys.saft.loader.load_saft_file", fake_load)
+
+    progress_events = []
+    files = ["slow.xml", "fast.xml", "medium.xml"]
+    results = load_saft_files(
+        files, progress_callback=lambda pct, msg: progress_events.append((pct, msg))
+    )
+
+    assert [result.file_path for result in results] == files
+    assert progress_events
+    percentages = [percent for percent, _ in progress_events]
+    assert all(earlier <= later for earlier, later in zip(percentages, percentages[1:]))
+    assert progress_events[-1] == (100, "Import fullført.")
