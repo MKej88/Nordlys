@@ -1,11 +1,9 @@
 """Sider for Nordlys-grensesnittet."""
 
-from .analysis_pages import (
-    ComparisonPage,
-    RegnskapsanalysePage,
-    SammenstillingsanalysePage,
-    SummaryPage,
-)
+from .comparison_page import ComparisonPage
+from .regnskapsanalyse_page import RegnskapsanalysePage
+from .sammenstilling_page import SammenstillingsanalysePage
+from .summary_page import SummaryPage
 from .dashboard_page import DashboardPage
 from .dataframe_page import DataFramePage, standard_tb_frame
 from .import_page import ImportPage
