@@ -18,16 +18,18 @@ def prepare_regnskap_dataframe(df: "pd.DataFrame") -> "pd.DataFrame":
 
     work = df.copy()
 
-    for column in [
-        "Konto",
-        "Kontonavn",
-        "IB Debet",
-        "IB Kredit",
-        "UB Debet",
-        "UB Kredit",
-    ]:
+    required_defaults: dict[str, object] = {
+        "Konto": "",
+        "Kontonavn": "",
+        "IB Debet": 0.0,
+        "IB Kredit": 0.0,
+        "UB Debet": 0.0,
+        "UB Kredit": 0.0,
+    }
+
+    for column, default in required_defaults.items():
         if column not in work.columns:
-            work[column] = 0.0
+            work[column] = default
 
     konto_series = work["Konto"].fillna("").astype(str)
     navn_series = work.get("Kontonavn", "").fillna("")

@@ -144,6 +144,25 @@ def test_prepare_regnskap_dataframe_builds_expected_columns():
     assert pytest.approx(first["forrige"], rel=1e-6) == 50
 
 
+def test_prepare_regnskap_dataframe_handles_missing_text_columns():
+    df = pd.DataFrame(
+        [
+            {
+                "IB Debet": 10.0,
+                "IB Kredit": 0.0,
+                "UB Debet": 12.0,
+                "UB Kredit": 0.0,
+            }
+        ]
+    )
+
+    prepared = prepare_regnskap_dataframe(df)
+
+    assert prepared.loc[0, "konto"] == ""
+    assert prepared.loc[0, "navn"] == ""
+    assert prepared.loc[0, "UB"] == pytest.approx(12.0)
+
+
 def test_compute_balance_analysis_matches_expected_totals():
     prepared = prepare_regnskap_dataframe(build_sample_tb())
     rows = compute_balance_analysis(prepared)
