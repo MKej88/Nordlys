@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 
 from nordlys.integrations import brreg_service
+from nordlys.integrations import brreg_client, brreg_cache
 from nordlys.integrations.brreg_service import BrregServiceResult
 
 
@@ -15,7 +16,7 @@ def test_get_company_status_network_error_returns_unknown(monkeypatch, caplog):
             from_cache=False,
         )
 
-    monkeypatch.setattr(brreg_service, "fetch_enhetsregister", fake_fetch)
+    monkeypatch.setattr(brreg_client, "fetch_enhetsregister", fake_fetch)
 
     with caplog.at_level(logging.WARNING):
         status = brreg_service.get_company_status("123456789")
@@ -41,7 +42,7 @@ def test_get_company_status_maps_flags(monkeypatch):
             from_cache=False,
         )
 
-    monkeypatch.setattr(brreg_service, "fetch_enhetsregister", fake_fetch)
+    monkeypatch.setattr(brreg_client, "fetch_enhetsregister", fake_fetch)
 
     status = brreg_service.get_company_status(" 999 999 999 ")
 
@@ -53,11 +54,9 @@ def test_get_company_status_maps_flags(monkeypatch):
 
 
 def test_fetch_enhetsregister_uses_fallback_cache(monkeypatch):
-    monkeypatch.setattr(
-        brreg_service, "_REQUESTS_CACHE_AVAILABLE", False, raising=False
-    )
-    monkeypatch.setattr(brreg_service, "_SESSION", None, raising=False)
-    brreg_service._FALLBACK_CACHE.clear()
+    monkeypatch.setattr(brreg_client, "REQUESTS_CACHE_AVAILABLE", False, raising=False)
+    brreg_cache.clear_fallback_cache()
+    brreg_cache.set_session(None)
 
     call_count = {"value": 0}
 
@@ -77,7 +76,7 @@ def test_fetch_enhetsregister_uses_fallback_cache(monkeypatch):
             return DummyResponse()
 
     dummy_session = DummySession()
-    monkeypatch.setattr(brreg_service, "_get_session", lambda: dummy_session)
+    monkeypatch.setattr(brreg_client, "get_session", lambda: dummy_session)
 
     result_first = brreg_service.fetch_enhetsregister("123456789")
     result_second = brreg_service.fetch_enhetsregister("123456789")
@@ -88,11 +87,9 @@ def test_fetch_enhetsregister_uses_fallback_cache(monkeypatch):
 
 
 def test_fetch_regnskapsregister_accepts_list_payload(monkeypatch):
-    monkeypatch.setattr(
-        brreg_service, "_REQUESTS_CACHE_AVAILABLE", False, raising=False
-    )
-    monkeypatch.setattr(brreg_service, "_SESSION", None, raising=False)
-    brreg_service._FALLBACK_CACHE.clear()
+    monkeypatch.setattr(brreg_client, "REQUESTS_CACHE_AVAILABLE", False, raising=False)
+    brreg_cache.clear_fallback_cache()
+    brreg_cache.set_session(None)
 
     class DummyResponse:
         status_code = 200
@@ -108,7 +105,7 @@ def test_fetch_regnskapsregister_accepts_list_payload(monkeypatch):
         def get(self, url: str, headers: dict[str, str], timeout: int) -> DummyResponse:
             return DummyResponse()
 
-    monkeypatch.setattr(brreg_service, "_get_session", lambda: DummySession())
+    monkeypatch.setattr(brreg_client, "get_session", lambda: DummySession())
 
     result = brreg_service.fetch_regnskapsregister("123456789")
 
