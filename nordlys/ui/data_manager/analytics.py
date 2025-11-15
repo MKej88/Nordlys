@@ -9,10 +9,8 @@ from .dataset_store import SaftDatasetStore
 __all__ = ["DataUnavailableError", "SaftAnalytics"]
 
 
-
 class DataUnavailableError(ValueError):
     """Feil som signaliserer at ønsket data ikke er tilgjengelig."""
-
 
 
 class SaftAnalytics:
