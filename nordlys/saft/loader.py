@@ -317,8 +317,11 @@ def load_saft_files(
 
     else:
 
-        def _progress_factory(index: int) -> Optional[Callable[[int, str], None]]:
-            return None
+        def _progress_factory(index: int) -> Callable[[int, str], None]:
+            def _inner(percent: int, message: str) -> None:
+                return None
+
+            return _inner
 
     cpu_count = os.cpu_count() or 1
     max_workers = min(total, max(1, cpu_count))
@@ -328,7 +331,7 @@ def load_saft_files(
         for index, path in enumerate(paths):
             progress_arg = _progress_factory(index)
             kwargs = {}
-            if progress_arg is not None:
+            if progress_callback is not None:
                 kwargs["progress_callback"] = progress_arg
             futures[executor.submit(load_saft_file, path, **kwargs)] = index
 
