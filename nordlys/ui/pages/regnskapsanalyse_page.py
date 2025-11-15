@@ -23,7 +23,7 @@ except ImportError:  # PySide6 < 6.7
     QWIDGETSIZE_MAX = 16777215
 
 from ... import regnskap
-from ...utils import lazy_pandas
+from ...helpers.lazy_imports import lazy_pandas
 from ..delegates import BOTTOM_BORDER_ROLE, TOP_BORDER_ROLE
 from ..delegates import AnalysisTableDelegate
 from ..tables import (

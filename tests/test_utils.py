@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-import pytest  # pytest trengs for parametrisering og approx-sammenligning
+import pytest
 
-from nordlys.utils import format_currency, format_difference, to_float
+from nordlys.helpers.formatting import format_currency, format_difference
+from nordlys.helpers.number_parsing import to_float
 
 
 @pytest.mark.parametrize(

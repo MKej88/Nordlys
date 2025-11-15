@@ -3,13 +3,13 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-import nordlys.regnskap as regnskap
 from nordlys.regnskap import (
     AnalysisRow,
     compute_balance_analysis,
     compute_result_analysis,
     prepare_regnskap_dataframe,
 )
+from nordlys.regnskap.analysis import _clean_value
 
 
 def build_sample_tb() -> pd.DataFrame:
@@ -223,6 +223,6 @@ def test_compute_result_analysis_rounds_negative_values_to_nearest_integer():
 def test_clean_value_rounds_negative_numbers_to_nearest_integer():
     """Sikrer symmetrisk avrunding for negative verdier."""
 
-    value = regnskap._clean_value(-100.2)
+    value = _clean_value(-100.2)
 
     assert value == -100

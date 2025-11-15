@@ -6,7 +6,7 @@ from typing import Optional, Sequence, Tuple
 
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
-from ...utils import format_currency, format_difference
+from ...helpers.formatting import format_currency, format_difference
 from ..tables import create_table_widget, populate_table
 from ..widgets import CardFrame
 

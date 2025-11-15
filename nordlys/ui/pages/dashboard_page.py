@@ -5,7 +5,7 @@ from typing import Dict, Optional
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QGridLayout, QLabel, QVBoxLayout, QWidget
 
-from ...utils import format_currency
+from ...helpers.formatting import format_currency
 from ..tables import create_table_widget, populate_table
 from ..widgets import CardFrame, StatBadge
 

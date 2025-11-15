@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Optional, Tuple
 from xml.sax.saxutils import escape
 
-from ..utils import lazy_pandas
+from ..helpers.lazy_imports import lazy_pandas
 
 if TYPE_CHECKING:  # pragma: no cover
     import pandas as pd

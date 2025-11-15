@@ -8,7 +8,7 @@ from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple, TYPE_CHECKING
 
-from ..utils import lazy_pandas
+from ..helpers.lazy_imports import lazy_pandas
 from .models import CostVoucher, VoucherLine
 from .parsing import (
     _clean_text,

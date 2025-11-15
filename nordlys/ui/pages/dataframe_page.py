@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ...utils import lazy_pandas
+from ...helpers.lazy_imports import lazy_pandas
 from ..tables import create_table_widget, populate_table
 from ..widgets import CardFrame, EmptyStateWidget
 

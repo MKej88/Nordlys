@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 from ...industry_groups import IndustryClassification
 from ...saft.loader import SaftLoadResult
-from ...utils import lazy_import, lazy_pandas
+from ...helpers.lazy_imports import lazy_import, lazy_pandas
 
 pd = lazy_pandas()
 saft = lazy_import("nordlys.saft")
