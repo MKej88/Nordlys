@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, cast
 
@@ -10,11 +11,39 @@ from PySide6.QtWidgets import QFileDialog, QLabel, QMessageBox, QProgressBar, QW
 
 from ..core.task_runner import TaskRunner
 from ..saft.loader import SaftLoadResult, load_saft_files
-from ..helpers.lazy_imports import lazy_pandas
 from .data_manager import SaftDatasetStore
-from .widgets import TaskProgressDialog
+from .excel_export import export_dataset_to_excel
+from .progress_display import ImportProgressDisplay
 
-pd = lazy_pandas()
+
+@dataclass
+class ImportTaskState:
+    """Holder styr på pågående importoppgaver."""
+
+    loading_files: List[str] = field(default_factory=list)
+    current_task_id: Optional[str] = None
+    meta: Dict[str, Any] = field(default_factory=dict)
+
+    def is_current(self, task_id: str) -> bool:
+        return task_id == self.current_task_id
+
+    def start(self, task_id: str, files: Sequence[str], description: str) -> None:
+        self.current_task_id = task_id
+        self.loading_files = list(files)
+        self.meta = {
+            "type": "saft_import",
+            "files": list(files),
+            "description": description,
+        }
+
+    def description(self) -> str:
+        description = self.meta.get("description")
+        return description if isinstance(description, str) else "Arbeid pågår …"
+
+    def clear(self) -> None:
+        self.loading_files.clear()
+        self.current_task_id = None
+        self.meta.clear()
 
 
 class ImportExportController(QObject):
@@ -41,12 +70,8 @@ class ImportExportController(QObject):
         self._log_import_event = log_import_event
         self._load_error_handler = load_error_handler
 
-        self._loading_files: List[str] = []
-        self._current_task_id: Optional[str] = None
-        self._current_task_meta: Dict[str, Any] = {}
-        self._status_progress_label: Optional[QLabel] = None
-        self._status_progress_bar: Optional[QProgressBar] = None
-        self._progress_dialog: Optional[TaskProgressDialog] = None
+        self._progress_display = ImportProgressDisplay(parent)
+        self._task_state = ImportTaskState()
 
         self._task_runner.sig_started.connect(self._on_task_started)
         self._task_runner.sig_progress.connect(self._on_task_progress)
@@ -57,14 +82,13 @@ class ImportExportController(QObject):
     def register_status_widgets(
         self, label: QLabel, progress_bar: QProgressBar
     ) -> None:
-        self._status_progress_label = label
-        self._status_progress_bar = progress_bar
+        self._progress_display.register_widgets(label, progress_bar)
 
     # endregion
 
     # region Handlinger
     def handle_open(self) -> None:
-        if self._current_task_id is not None:
+        if self._task_state.current_task_id is not None:
             QMessageBox.information(
                 self._window,
                 "Laster allerede",
@@ -82,7 +106,6 @@ class ImportExportController(QObject):
         )
         if not file_names:
             return
-        self._loading_files = list(file_names)
         summary = (
             "Starter import av 1 SAF-T-fil"
             if len(file_names) == 1
@@ -97,16 +120,11 @@ class ImportExportController(QObject):
             file_names,
             description=description,
         )
-        self._current_task_id = task_id
-        self._current_task_meta = {
-            "type": "saft_import",
-            "files": list(file_names),
-            "description": description,
-        }
+        self._task_state.start(task_id, file_names, description)
+        self._progress_display.set_files(self._task_state.loading_files)
 
     def handle_export(self) -> None:
-        saft_df = self._dataset_store.saft_df
-        if saft_df is None:
+        if self._dataset_store.saft_df is None:
             QMessageBox.warning(
                 self._window,
                 "Ingenting å eksportere",
@@ -122,38 +140,7 @@ class ImportExportController(QObject):
         if not file_name:
             return
         try:
-            with pd.ExcelWriter(file_name, engine="xlsxwriter") as writer:
-                saft_df.to_excel(writer, sheet_name="Saldobalanse", index=False)
-                summary = self._dataset_store.saft_summary
-                if summary:
-                    summary_df = pd.DataFrame([summary]).T.reset_index()
-                    summary_df.columns = ["Nøkkel", "Beløp"]
-                    summary_df.to_excel(
-                        writer,
-                        sheet_name="NS4102_Sammendrag",
-                        index=False,
-                    )
-                customer_sales = self._dataset_store.customer_sales
-                if customer_sales is not None:
-                    customer_sales.to_excel(
-                        writer, sheet_name="Sales_by_customer", index=False
-                    )
-                brreg_json = self._dataset_store.brreg_json
-                if brreg_json:
-                    pd.json_normalize(brreg_json).to_excel(
-                        writer, sheet_name="Brreg_JSON", index=False
-                    )
-                brreg_map = self._dataset_store.brreg_map
-                if brreg_map:
-                    map_df = pd.DataFrame(
-                        list(brreg_map.items()),
-                        columns=["Felt", "Verdi"],
-                    )
-                    map_df.to_excel(
-                        writer,
-                        sheet_name="Brreg_Mapping",
-                        index=False,
-                    )
+            export_dataset_to_excel(self._dataset_store, file_name)
             self._status_callback(f"Eksportert: {file_name}")
             self._log_import_event(f"Rapport eksportert: {Path(file_name).name}")
         except Exception as exc:  # pragma: no cover - vises i GUI
@@ -165,32 +152,34 @@ class ImportExportController(QObject):
     # region TaskRunner håndtering
     @Slot(str)
     def _on_task_started(self, task_id: str) -> None:
-        if task_id != self._current_task_id:
+        if not self._task_state.is_current(task_id):
             return
-        if len(self._loading_files) == 1:
-            message = f"Laster SAF-T: {Path(self._loading_files[0]).name} …"
-        elif len(self._loading_files) > 1:
-            message = f"Laster {len(self._loading_files)} SAF-T-filer …"
+        file_count = len(self._task_state.loading_files)
+        if file_count == 1:
+            message = f"Laster SAF-T: {Path(self._task_state.loading_files[0]).name} …"
+        elif file_count > 1:
+            message = f"Laster {file_count} SAF-T-filer …"
         else:
             message = "Laster SAF-T …"
         self._set_loading_state(True, message)
-        self._show_status_progress(message, 0)
+        self._progress_display.set_files(self._task_state.loading_files)
+        self._progress_display.show_progress(message, 0)
 
     @Slot(str, int, str)
     def _on_task_progress(self, task_id: str, percent: int, message: str) -> None:
-        if task_id != self._current_task_id:
+        if not self._task_state.is_current(task_id):
             return
         clean_message = message.strip() if message else ""
         if not clean_message:
-            clean_message = self._current_task_meta.get("description", "Arbeid pågår …")
-        self._show_status_progress(clean_message, percent)
+            clean_message = self._task_state.description()
+        self._progress_display.show_progress(clean_message, percent)
         self._status_callback(clean_message)
 
     @Slot(str, object)
     def _on_task_done(self, task_id: str, result: object) -> None:
-        if task_id != self._current_task_id:
+        if not self._task_state.is_current(task_id):
             return
-        task_type = self._current_task_meta.get("type")
+        task_type = self._task_state.meta.get("type")
         if task_type == "saft_import":
             self._handle_load_finished(result)
         else:
@@ -198,7 +187,7 @@ class ImportExportController(QObject):
 
     @Slot(str, str)
     def _on_task_error(self, task_id: str, exc_str: str) -> None:
-        if task_id != self._current_task_id:
+        if not self._task_state.is_current(task_id):
             return
         message = self._format_task_error(exc_str)
         self._finalize_loading(message)
@@ -215,53 +204,11 @@ class ImportExportController(QObject):
     # endregion
 
     # region Statusvisning
-    def _show_status_progress(self, message: str, value: int) -> None:
-        if self._status_progress_label is not None:
-            self._status_progress_label.setText(message)
-            self._status_progress_label.setVisible(True)
-        if self._status_progress_bar is not None:
-            clamped = max(0, min(100, int(value)))
-            self._status_progress_bar.setValue(clamped)
-            self._status_progress_bar.setVisible(True)
-        self._update_progress_dialog(message, value)
-
-    def _hide_status_progress(self) -> None:
-        if self._status_progress_label is not None:
-            self._status_progress_label.clear()
-            self._status_progress_label.setVisible(False)
-        if self._status_progress_bar is not None:
-            self._status_progress_bar.setValue(0)
-            self._status_progress_bar.setVisible(False)
-        self._close_progress_dialog()
-
-    def _ensure_progress_dialog(self) -> TaskProgressDialog:
-        if self._progress_dialog is None:
-            self._progress_dialog = TaskProgressDialog(self._window)
-        return self._progress_dialog
-
-    def _update_progress_dialog(self, message: str, value: int) -> None:
-        dialog = self._ensure_progress_dialog()
-        dialog.set_files(self._loading_files)
-        dialog.update_status(message, value)
-        if not dialog.isVisible():
-            dialog.show()
-        dialog.raise_()
-
-    def _close_progress_dialog(self) -> None:
-        if self._progress_dialog is None:
-            return
-        dialog = self._progress_dialog
-        self._progress_dialog = None
-        dialog.hide()
-        dialog.deleteLater()
-
     def _finalize_loading(self, status_message: Optional[str] = None) -> None:
-        self._hide_status_progress()
+        self._progress_display.hide()
         self._set_loading_state(False)
         self._status_callback(status_message or "Klar.")
-        self._loading_files = []
-        self._current_task_id = None
-        self._current_task_meta = {}
+        self._task_state.clear()
 
     # endregion
 
