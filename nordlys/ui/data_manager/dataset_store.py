@@ -400,10 +400,12 @@ class SaftDatasetStore:
                 )
                 previous_ub = debit - credit
 
-            mapping_frame = pd.DataFrame({
-                "_key": previous_keys,
-                "_value": previous_ub,
-            })
+            mapping_frame = pd.DataFrame(
+                {
+                    "_key": previous_keys,
+                    "_value": previous_ub,
+                }
+            )
             mapping_frame = mapping_frame.dropna(subset=["_key"])
             if not mapping_frame.empty:
                 previous_map = mapping_frame.groupby("_key")["_value"].sum()
