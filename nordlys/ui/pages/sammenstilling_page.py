@@ -28,6 +28,7 @@ except ImportError:  # PySide6 < 6.7
 
 from ... import regnskap
 from ...utils import format_currency, lazy_pandas
+from ..delegates import CompactRowDelegate
 from ..helpers import SignalBlocker
 from ..models import SaftTableCell, SaftTableModel, SaftTableSource
 from ..tables import apply_compact_row_heights

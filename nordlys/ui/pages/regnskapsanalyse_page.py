@@ -25,6 +25,7 @@ except ImportError:  # PySide6 < 6.7
 from ... import regnskap
 from ...utils import lazy_pandas
 from ..delegates import BOTTOM_BORDER_ROLE, TOP_BORDER_ROLE
+from ..delegates import AnalysisTableDelegate
 from ..tables import (
     apply_compact_row_heights,
     compact_row_base_height,
