@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+import warnings
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
@@ -176,10 +177,13 @@ def ensure_saft_validated(xml_path: Path) -> None:
     result = validate_saft_against_xsd(xml_path)
     if result.is_valid is None:
         details = result.details or "Validering ble hoppet over fordi XSD-støtte mangler."
-        raise ValueError(
-            "Klarte ikke å verifisere SAF-T mot XSD for "
-            f"'{xml_path.name}': {details}"
+        warnings.warn(
+            "Hoppet over SAF-T XSD-validering for "
+            f"'{xml_path.name}': {details}",
+            RuntimeWarning,
+            stacklevel=2,
         )
+        return
     if result.is_valid is False:
         details = result.details or "Ukjent valideringsfeil."
         raise ValueError(
