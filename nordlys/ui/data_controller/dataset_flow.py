@@ -86,7 +86,9 @@ class DatasetFlowController:
         if pages.import_page:
             pages.import_page.update_invoice_count(len(store.cost_vouchers))
 
-        saft_df = store.saft_df or result.dataframe
+        saft_df = store.saft_df
+        if saft_df is None:
+            saft_df = result.dataframe
         self._context.update_header_fields()
         if pages.saldobalanse_page:
             pages.saldobalanse_page.set_dataframe(saft_df)
