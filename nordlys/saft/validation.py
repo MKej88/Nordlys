@@ -174,6 +174,12 @@ def ensure_saft_validated(xml_path: Path) -> None:
     """Kaster feil dersom filen ikke er gyldig mot XSD."""
 
     result = validate_saft_against_xsd(xml_path)
+    if result.is_valid is None:
+        details = result.details or "Validering ble hoppet over fordi XSD-støtte mangler."
+        raise ValueError(
+            "Klarte ikke å verifisere SAF-T mot XSD for "
+            f"'{xml_path.name}': {details}"
+        )
     if result.is_valid is False:
         details = result.details or "Ukjent valideringsfeil."
         raise ValueError(
