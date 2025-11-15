@@ -47,13 +47,15 @@ def to_float(value: Optional[str]) -> float:
 
     comma_pos = cleaned.rfind(",")
     dot_pos = cleaned.rfind(".")
+    comma_count = cleaned.count(",")
+    dot_count = cleaned.count(".")
     decimal_sep: Optional[str] = None
 
-    if comma_pos != -1 and dot_pos != -1:
+    if comma_count and dot_count:
         decimal_sep = "," if comma_pos > dot_pos else "."
-    elif comma_pos != -1 and len(cleaned) - comma_pos - 1 <= 2:
+    elif comma_count == 1 and dot_count == 0 and len(cleaned) - comma_pos - 1 <= 2:
         decimal_sep = ","
-    elif dot_pos != -1:
+    elif dot_count == 1 and comma_count == 0:
         decimal_sep = "."
 
     if decimal_sep:
