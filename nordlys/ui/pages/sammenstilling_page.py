@@ -38,6 +38,7 @@ pd = lazy_pandas()
 
 __all__ = ["SammenstillingsanalysePage"]
 
+
 class SammenstillingsanalysePage(QWidget):
     """Side som viser detaljert sammenligning av kostnadskonti."""
 

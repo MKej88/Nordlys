@@ -68,7 +68,10 @@ class ImportExportController(QObject):
             QMessageBox.information(
                 self._window,
                 "Laster allerede",
-                "En SAF-T-jobb kjører allerede i bakgrunnen. Vent til prosessen er ferdig.",
+                (
+                    "En SAF-T-jobb kjører allerede i bakgrunnen. Vent til prosessen er "
+                    "ferdig."
+                ),
             )
             return
         file_names, _ = QFileDialog.getOpenFileNames(
@@ -104,7 +107,11 @@ class ImportExportController(QObject):
     def handle_export(self) -> None:
         saft_df = self._dataset_store.saft_df
         if saft_df is None:
-            QMessageBox.warning(self._window, "Ingenting å eksportere", "Last inn SAF-T først.")
+            QMessageBox.warning(
+                self._window,
+                "Ingenting å eksportere",
+                "Last inn SAF-T først.",
+            )
             return
         file_name, _ = QFileDialog.getSaveFileName(
             self._window,
@@ -121,7 +128,11 @@ class ImportExportController(QObject):
                 if summary:
                     summary_df = pd.DataFrame([summary]).T.reset_index()
                     summary_df.columns = ["Nøkkel", "Beløp"]
-                    summary_df.to_excel(writer, sheet_name="NS4102_Sammendrag", index=False)
+                    summary_df.to_excel(
+                        writer,
+                        sheet_name="NS4102_Sammendrag",
+                        index=False,
+                    )
                 customer_sales = self._dataset_store.customer_sales
                 if customer_sales is not None:
                     customer_sales.to_excel(
@@ -134,8 +145,15 @@ class ImportExportController(QObject):
                     )
                 brreg_map = self._dataset_store.brreg_map
                 if brreg_map:
-                    map_df = pd.DataFrame(list(brreg_map.items()), columns=["Felt", "Verdi"])
-                    map_df.to_excel(writer, sheet_name="Brreg_Mapping", index=False)
+                    map_df = pd.DataFrame(
+                        list(brreg_map.items()),
+                        columns=["Felt", "Verdi"],
+                    )
+                    map_df.to_excel(
+                        writer,
+                        sheet_name="Brreg_Mapping",
+                        index=False,
+                    )
             self._status_callback(f"Eksportert: {file_name}")
             self._log_import_event(f"Rapport eksportert: {Path(file_name).name}")
         except Exception as exc:  # pragma: no cover - vises i GUI

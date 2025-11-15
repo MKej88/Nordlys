@@ -12,6 +12,7 @@ from ..widgets import CardFrame
 __all__ = ["SummaryPage"]
 
 
+
 class SummaryPage(QWidget):
     """Side for vesentlighetsvurdering med tabell og forklaring."""
 
@@ -43,4 +44,3 @@ class SummaryPage(QWidget):
             ("Balanseavvik (Brreg)", summary.get("balanse_diff_brreg")),
         ]
         populate_table(self.table, ["Nøkkel", "Beløp"], rows, money_cols={1})
-

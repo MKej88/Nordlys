@@ -6,11 +6,19 @@ from dataclasses import dataclass
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QBrush, QColor, QFont
-from PySide6.QtWidgets import QFrame, QLabel, QSizePolicy, QTreeWidget, QTreeWidgetItem, QVBoxLayout
+from PySide6.QtWidgets import (
+    QFrame,
+    QLabel,
+    QSizePolicy,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QVBoxLayout,
+)
 
 from .config import PRIMARY_UI_FONT_FAMILY, icon_for_navigation
 
 __all__ = ["NavigationItem", "NavigationPanel"]
+
 
 
 @dataclass
@@ -19,6 +27,7 @@ class NavigationItem:
 
     key: str
     item: QTreeWidgetItem
+
 
 
 class NavigationPanel(QFrame):
@@ -98,4 +107,3 @@ class NavigationPanel(QFrame):
         parent.item.addChild(item)
         parent.item.setExpanded(True)
         return NavigationItem(key, item)
-

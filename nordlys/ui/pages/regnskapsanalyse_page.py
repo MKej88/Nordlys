@@ -39,6 +39,7 @@ pd = lazy_pandas()
 
 __all__ = ["RegnskapsanalysePage"]
 
+
 class RegnskapsanalysePage(QWidget):
     """Visning som oppsummerer balanse og resultat fra saldobalansen."""
 
@@ -50,7 +51,10 @@ class RegnskapsanalysePage(QWidget):
 
         self.analysis_card = CardFrame(
             "Regnskapsanalyse",
-            "Balansepostene til venstre og resultatpostene til høyre for enkel sammenligning.",
+            (
+                "Balansepostene til venstre og resultatpostene til høyre for enkel "
+                "sammenligning."
+            ),
         )
         self.analysis_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.balance_section = QWidget()

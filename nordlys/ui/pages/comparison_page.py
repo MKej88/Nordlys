@@ -13,13 +13,16 @@ from ..widgets import CardFrame
 __all__ = ["ComparisonPage"]
 
 
+
 class ComparisonPage(QWidget):
     """Sammenstilling mellom SAF-T og Regnskapsregisteret."""
 
     def __init__(
         self,
         title: str = "Regnskapsanalyse",
-        subtitle: str = "Sammenligner SAF-T data med nøkkeltall hentet fra Regnskapsregisteret.",
+        subtitle: str = (
+            "Sammenligner SAF-T data med nøkkeltall hentet fra Regnskapsregisteret."
+        ),
     ) -> None:
         super().__init__()
         layout = QVBoxLayout(self)
@@ -65,4 +68,3 @@ class ComparisonPage(QWidget):
             formatted_rows,
             money_cols={1, 2, 3},
         )
-
