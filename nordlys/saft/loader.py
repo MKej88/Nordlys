@@ -300,9 +300,11 @@ def load_saft_files(
         progress_lock = Lock()
         progress_values: List[int] = [0] * total
         last_messages: List[str] = [f"Laster {Path(path).name} …" for path in paths]
+        overall_progress = 0
 
         def _progress_factory(index: int) -> Callable[[int, str], None]:
             def _inner(percent: int, message: str) -> None:
+                nonlocal overall_progress
                 normalized = max(0, min(100, int(percent)))
                 clean_message = message.strip()
                 with progress_lock:
@@ -310,6 +312,10 @@ def load_saft_files(
                     if clean_message:
                         last_messages[index] = clean_message
                     overall = int(round(sum(progress_values) / total))
+                    if overall < overall_progress:
+                        overall = overall_progress
+                    else:
+                        overall_progress = overall
                     active_message = clean_message or last_messages[index]
                 progress_callback(overall, active_message)
 
