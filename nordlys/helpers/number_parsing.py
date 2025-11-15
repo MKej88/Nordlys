@@ -18,7 +18,7 @@ def to_float(value: Optional[str]) -> float:
     if not text:
         return 0.0
 
-    cleaned = text.replace(" ", "").replace("\xa0", "")
+    cleaned = "".join(ch for ch in text if not ch.isspace())
     if not cleaned:
         return 0.0
 
