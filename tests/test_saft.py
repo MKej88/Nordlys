@@ -789,7 +789,5 @@ def test_load_saft_files_parallel_progress(monkeypatch):
     assert [result.file_path for result in results] == files
     assert progress_events
     percentages = [percent for percent, _ in progress_events]
-    assert all(
-        earlier <= later for earlier, later in zip(percentages, percentages[1:])
-    )
+    assert all(earlier <= later for earlier, later in zip(percentages, percentages[1:]))
     assert progress_events[-1] == (100, "Import fullført.")
