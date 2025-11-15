@@ -27,6 +27,7 @@ class NavigationItem:
     key: str
     item: QTreeWidgetItem
 
+
 class NavigationPanel(QFrame):
     """Sidepanel med navigasjonstreet som brukes av hovedvinduet."""
 
