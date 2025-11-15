@@ -365,8 +365,52 @@ class SaftDatasetStore:
     ) -> pd.DataFrame:
         if previous is None or previous.empty:
             return dataframe
+
         df = dataframe.copy()
         prev = previous.copy()
+
+        def _konto_series(frame: pd.DataFrame) -> Optional[pd.Series]:
+            for column in ("Konto", "Kontonr", "Kontonummer", "AccountID", "Konto_int"):
+                if column in frame.columns:
+                    series = frame[column]
+                    if column == "Konto_int":
+                        # Konto_int er numerisk, men vi ønsker strengrepresentasjon for mappingen.
+                        return series.apply(self._normalize_identifier)
+                    return series.apply(self._normalize_identifier)
+            return None
+
+        current_keys = _konto_series(df)
+        previous_keys = _konto_series(prev)
+
+        previous_map: Optional[pd.Series] = None
+        if previous_keys is not None:
+            previous_ub = prev.get("UB_netto")
+            if previous_ub is not None:
+                previous_ub = pd.to_numeric(previous_ub, errors="coerce")
+            else:
+                debit = (
+                    pd.to_numeric(prev["UB Debet"], errors="coerce").fillna(0.0)
+                    if "UB Debet" in prev.columns
+                    else pd.Series(0.0, index=prev.index, dtype=float)
+                )
+                credit = (
+                    pd.to_numeric(prev["UB Kredit"], errors="coerce").fillna(0.0)
+                    if "UB Kredit" in prev.columns
+                    else pd.Series(0.0, index=prev.index, dtype=float)
+                )
+                previous_ub = debit - credit
+
+            mapping_frame = pd.DataFrame({
+                "_key": previous_keys,
+                "_value": previous_ub,
+            })
+            mapping_frame = mapping_frame.dropna(subset=["_key"])
+            if not mapping_frame.empty:
+                previous_map = mapping_frame.groupby("_key")["_value"].sum()
+
+        if current_keys is not None and previous_map is not None:
+            df["forrige"] = current_keys.map(previous_map)
+
         prev = prev.add_prefix("Forrige ")
         df = pd.concat([df, prev], axis=1)
         return df
