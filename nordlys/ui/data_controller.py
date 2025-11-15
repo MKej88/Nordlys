@@ -207,7 +207,9 @@ class SaftDataController:
                 len(self._dataset_store.cost_vouchers)
             )
 
-        saft_df = self._dataset_store.saft_df or result.dataframe
+        saft_df = self._dataset_store.saft_df
+        if saft_df is None:
+            saft_df = result.dataframe
         self._update_header_fields()
         if self.saldobalanse_page:
             self.saldobalanse_page.set_dataframe(saft_df)
