@@ -20,7 +20,6 @@ from .config import PRIMARY_UI_FONT_FAMILY, icon_for_navigation
 __all__ = ["NavigationItem", "NavigationPanel"]
 
 
-
 @dataclass
 class NavigationItem:
     """Knytter en unik nøkkel til et ttk-element i navigasjonen."""

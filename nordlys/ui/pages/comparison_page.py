@@ -13,7 +13,6 @@ from ..widgets import CardFrame
 __all__ = ["ComparisonPage"]
 
 
-
 class ComparisonPage(QWidget):
     """Sammenstilling mellom SAF-T og Regnskapsregisteret."""
 

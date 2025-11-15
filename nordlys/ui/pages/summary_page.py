@@ -12,7 +12,6 @@ from ..widgets import CardFrame
 __all__ = ["SummaryPage"]
 
 
-
 class SummaryPage(QWidget):
     """Side for vesentlighetsvurdering med tabell og forklaring."""
 
