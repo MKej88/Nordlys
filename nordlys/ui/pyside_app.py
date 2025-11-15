@@ -1,4 +1,5 @@
 """PySide6-basert GUI for Nordlys."""
+
 from __future__ import annotations
 
 import sys
@@ -50,10 +51,10 @@ except ImportError:  # PySide6 < 6.7
 
 from ..constants import APP_TITLE
 from ..core.task_runner import TaskRunner
-from ..industry_groups import IndustryClassification
 from ..saft.loader import SaftLoadResult, load_saft_files
-from ..utils import format_currency, lazy_import, lazy_pandas
+from ..utils import format_currency, lazy_pandas
 from .config import PRIMARY_UI_FONT_FAMILY, REVISION_TASKS, icon_for_navigation
+from .data_manager import DataUnavailableError, SaftDataManager
 from .pages.analysis_pages import (
     ComparisonPage,
     RegnskapsanalysePage,
@@ -71,60 +72,17 @@ from .pages.revision_pages import (
 )
 from .widgets import CardFrame, TaskProgressDialog
 
-if TYPE_CHECKING:  # pragma: no cover - kun for typekontroll
-    import pandas as pd
-
 pd = lazy_pandas()
 
-saft = lazy_import("nordlys.saft")
-saft_customers = lazy_import("nordlys.saft_customers")
-regnskap = lazy_import("nordlys.regnskap")
-
-
+if TYPE_CHECKING:  # pragma: no cover - kun for typekontroll
+    import pandas as pd
 
 
 TOP_BORDER_ROLE = Qt.UserRole + 41
 BOTTOM_BORDER_ROLE = Qt.UserRole + 42
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 @dataclass
-
-
-
-
-
-
-
 @dataclass
 class NavigationItem:
     key: str
@@ -229,31 +187,7 @@ class NordlysWindow(QMainWindow):
         self.setMinimumSize(1024, 680)
         self.setMaximumSize(16777215, 16777215)
 
-        self._saft_df: Optional[pd.DataFrame] = None
-        self._saft_summary: Optional[Dict[str, float]] = None
-        self._header: Optional["saft.SaftHeader"] = None
-        self._brreg_json: Optional[Dict[str, object]] = None
-        self._brreg_map: Optional[Dict[str, Optional[float]]] = None
-        self._customers: Dict[str, "saft.CustomerInfo"] = {}
-        self._cust_name_by_nr: Dict[str, str] = {}
-        self._cust_id_to_nr: Dict[str, str] = {}
-        self._customer_sales: Optional[pd.DataFrame] = None
-        self._suppliers: Dict[str, "saft.SupplierInfo"] = {}
-        self._sup_name_by_nr: Dict[str, str] = {}
-        self._sup_id_to_nr: Dict[str, str] = {}
-        self._supplier_purchases: Optional[pd.DataFrame] = None
-        self._cost_vouchers: List["saft_customers.CostVoucher"] = []
-        self._validation_result: Optional["saft.SaftValidationResult"] = None
-        self._industry: Optional[IndustryClassification] = None
-        self._industry_error: Optional[str] = None
-        self._current_file: Optional[str] = None
-
-        self._dataset_results: Dict[str, SaftLoadResult] = {}
-        self._dataset_years: Dict[str, Optional[int]] = {}
-        self._dataset_orgnrs: Dict[str, Optional[str]] = {}
-        self._dataset_order: List[str] = []
-        self._dataset_positions: Dict[str, int] = {}
-        self._current_dataset_key: Optional[str] = None
+        self._data_manager = SaftDataManager()
         self._loading_files: List[str] = []
 
         self._task_runner = TaskRunner(self)
@@ -275,17 +209,19 @@ class NordlysWindow(QMainWindow):
             Sequence[Tuple[str, Optional[float], Optional[float], Optional[float]]]
         ] = None
         self.revision_pages: Dict[str, QWidget] = {}
-        self.import_page: Optional['ImportPage'] = None
+        self.import_page: Optional["ImportPage"] = None
         self.sales_ar_page: Optional[SalesArPage] = None
-        self.purchases_ap_page: Optional['PurchasesApPage'] = None
-        self.cost_review_page: Optional['CostVoucherReviewPage'] = None
-        self.regnskap_page: Optional['RegnskapsanalysePage'] = None
-        self.sammenstilling_page: Optional['SammenstillingsanalysePage'] = None
+        self.purchases_ap_page: Optional["PurchasesApPage"] = None
+        self.cost_review_page: Optional["CostVoucherReviewPage"] = None
+        self.regnskap_page: Optional["RegnskapsanalysePage"] = None
+        self.sammenstilling_page: Optional["SammenstillingsanalysePage"] = None
         self._navigation_initialized = False
         self._content_layout: Optional[QVBoxLayout] = None
         self._responsive_update_pending = False
         self._layout_mode: Optional[str] = None
-        self._layout_signature: Optional[Tuple[str, int, int, int, int, int, int]] = None
+        self._layout_signature: Optional[Tuple[str, int, int, int, int, int, int]] = (
+            None
+        )
 
         self._setup_ui()
         self._apply_styles()
@@ -379,7 +315,9 @@ class NordlysWindow(QMainWindow):
         import_page = ImportPage()
         self._register_page("import", import_page, attr="import_page")
 
-        self._register_lazy_page("dashboard", self._build_dashboard_page, attr="dashboard_page")
+        self._register_lazy_page(
+            "dashboard", self._build_dashboard_page, attr="dashboard_page"
+        )
         self._register_lazy_page(
             "plan.saldobalanse",
             self._build_saldobalanse_page,
@@ -411,13 +349,19 @@ class NordlysWindow(QMainWindow):
                 "Innkjøp og leverandørgjeld",
                 "Fokuser på varekjøp, kredittider og periodisering.",
             ),
-            "rev.lonn": ("Lønn", "Kontroll av lønnskjøringer, skatt og arbeidsgiveravgift."),
+            "rev.lonn": (
+                "Lønn",
+                "Kontroll av lønnskjøringer, skatt og arbeidsgiveravgift.",
+            ),
             "rev.kostnad": ("Kostnad", "Analyse av driftskostnader og periodisering."),
             "rev.driftsmidler": (
                 "Driftsmidler",
                 "Verifikasjon av investeringer og avskrivninger.",
             ),
-            "rev.finans": ("Finans og likvid", "Bank, finansielle instrumenter og kontantstrøm."),
+            "rev.finans": (
+                "Finans og likvid",
+                "Bank, finansielle instrumenter og kontantstrøm.",
+            ),
             "rev.varelager": (
                 "Varelager og varekjøp",
                 "Telling, nedskrivninger og bruttomargin.",
@@ -432,19 +376,25 @@ class NordlysWindow(QMainWindow):
             if key == "rev.salg":
                 self._register_lazy_page(
                     key,
-                    lambda title=title, subtitle=subtitle: self._build_sales_page(title, subtitle),
+                    lambda title=title, subtitle=subtitle: self._build_sales_page(
+                        title, subtitle
+                    ),
                     attr="sales_ar_page",
                 )
             elif key == "rev.innkjop":
                 self._register_lazy_page(
                     key,
-                    lambda title=title, subtitle=subtitle: self._build_purchases_page(title, subtitle),
+                    lambda title=title, subtitle=subtitle: self._build_purchases_page(
+                        title, subtitle
+                    ),
                     attr="purchases_ap_page",
                 )
             elif key == "rev.kostnad":
                 self._register_lazy_page(
                     key,
-                    lambda title=title, subtitle=subtitle: self._build_cost_page(title, subtitle),
+                    lambda title=title, subtitle=subtitle: self._build_cost_page(
+                        title, subtitle
+                    ),
                     attr="cost_review_page",
                 )
             else:
@@ -485,7 +435,9 @@ class NordlysWindow(QMainWindow):
         nav.tree.currentItemChanged.connect(self._on_navigation_changed)
         nav.tree.setCurrentItem(import_item.item)
 
-    def _register_page(self, key: str, widget: QWidget, *, attr: Optional[str] = None) -> None:
+    def _register_page(
+        self, key: str, widget: QWidget, *, attr: Optional[str] = None
+    ) -> None:
         self._page_map[key] = widget
         if attr:
             self._page_attributes[key] = attr
@@ -519,38 +471,42 @@ class NordlysWindow(QMainWindow):
         if key in REVISION_TASKS:
             self.revision_pages[key] = widget
         if key == "dashboard" and isinstance(widget, DashboardPage):
-            widget.update_summary(self._saft_summary)
+            widget.update_summary(self._data_manager.saft_summary)
         elif key == "plan.saldobalanse" and isinstance(widget, DataFramePage):
-            widget.set_dataframe(self._saft_df)
+            widget.set_dataframe(self._data_manager.saft_df)
         elif key == "plan.kontroll" and isinstance(widget, ComparisonPage):
             widget.update_comparison(self._latest_comparison_rows)
-        elif key == "plan.regnskapsanalyse" and isinstance(widget, RegnskapsanalysePage):
-            fiscal_year = self._header.fiscal_year if self._header else None
-            widget.set_dataframe(self._saft_df, fiscal_year)
+        elif key == "plan.regnskapsanalyse" and isinstance(
+            widget, RegnskapsanalysePage
+        ):
+            header = self._data_manager.header
+            fiscal_year = header.fiscal_year if header else None
+            widget.set_dataframe(self._data_manager.saft_df, fiscal_year)
             widget.update_comparison(self._latest_comparison_rows)
         elif key == "plan.vesentlighet" and isinstance(widget, SummaryPage):
-            widget.update_summary(self._saft_summary)
-        elif key == "plan.sammenstilling" and isinstance(widget, SammenstillingsanalysePage):
-            fiscal_year = self._header.fiscal_year if self._header else None
-            widget.set_dataframe(self._saft_df, fiscal_year)
+            widget.update_summary(self._data_manager.saft_summary)
+        elif key == "plan.sammenstilling" and isinstance(
+            widget, SammenstillingsanalysePage
+        ):
+            header = self._data_manager.header
+            fiscal_year = header.fiscal_year if header else None
+            widget.set_dataframe(self._data_manager.saft_df, fiscal_year)
         elif key == "rev.salg" and isinstance(widget, SalesArPage):
             widget.set_checklist_items(REVISION_TASKS.get(key, []))
-            has_data = self._customer_sales is not None and not self._customer_sales.empty
-            widget.set_controls_enabled(has_data)
-            if not has_data:
+            widget.set_controls_enabled(self._data_manager.has_customer_data)
+            if not self._data_manager.has_customer_data:
                 widget.clear_top_customers()
         elif key == "rev.innkjop" and isinstance(widget, PurchasesApPage):
-            has_data = self._supplier_purchases is not None and not self._supplier_purchases.empty
-            widget.set_controls_enabled(has_data)
-            if not has_data:
+            widget.set_controls_enabled(self._data_manager.has_supplier_data)
+            if not self._data_manager.has_supplier_data:
                 widget.clear_top_suppliers()
         elif key == "rev.kostnad" and isinstance(widget, CostVoucherReviewPage):
-            widget.set_vouchers(self._cost_vouchers)
+            widget.set_vouchers(self._data_manager.cost_vouchers)
         elif key in REVISION_TASKS and isinstance(widget, ChecklistPage):
             widget.set_items(REVISION_TASKS.get(key, []))
         self._schedule_responsive_update()
 
-    def _build_dashboard_page(self) -> 'DashboardPage':
+    def _build_dashboard_page(self) -> "DashboardPage":
         return DashboardPage()
 
     def _build_saldobalanse_page(self) -> DataFramePage:
@@ -569,7 +525,7 @@ class NordlysWindow(QMainWindow):
             "Sammenligner SAF-T mot Regnskapsregisteret for å avdekke avvik i inngående balanse.",
         )
 
-    def _build_regnskap_page(self) -> 'RegnskapsanalysePage':
+    def _build_regnskap_page(self) -> "RegnskapsanalysePage":
         return RegnskapsanalysePage()
 
     def _build_vesentlig_page(self) -> SummaryPage:
@@ -578,32 +534,32 @@ class NordlysWindow(QMainWindow):
             "Nøkkeltall som understøtter fastsettelse av vesentlighetsgrenser.",
         )
 
-    def _build_sammenstilling_page(self) -> 'SammenstillingsanalysePage':
+    def _build_sammenstilling_page(self) -> "SammenstillingsanalysePage":
         return SammenstillingsanalysePage()
 
     def _build_sales_page(self, title: str, subtitle: str) -> SalesArPage:
         page = SalesArPage(title, subtitle, self._on_calc_top_customers)
         page.set_checklist_items(REVISION_TASKS.get("rev.salg", []))
-        has_data = self._customer_sales is not None and not self._customer_sales.empty
-        page.set_controls_enabled(has_data)
-        if not has_data:
+        page.set_controls_enabled(self._data_manager.has_customer_data)
+        if not self._data_manager.has_customer_data:
             page.clear_top_customers()
         return page
 
-    def _build_purchases_page(self, title: str, subtitle: str) -> 'PurchasesApPage':
+    def _build_purchases_page(self, title: str, subtitle: str) -> "PurchasesApPage":
         page = PurchasesApPage(title, subtitle, self._on_calc_top_suppliers)
-        has_data = self._supplier_purchases is not None and not self._supplier_purchases.empty
-        page.set_controls_enabled(has_data)
-        if not has_data:
+        page.set_controls_enabled(self._data_manager.has_supplier_data)
+        if not self._data_manager.has_supplier_data:
             page.clear_top_suppliers()
         return page
 
-    def _build_cost_page(self, title: str, subtitle: str) -> 'CostVoucherReviewPage':
+    def _build_cost_page(self, title: str, subtitle: str) -> "CostVoucherReviewPage":
         page = CostVoucherReviewPage(title, subtitle)
-        page.set_vouchers(self._cost_vouchers)
+        page.set_vouchers(self._data_manager.cost_vouchers)
         return page
 
-    def _build_checklist_page(self, key: str, title: str, subtitle: str) -> ChecklistPage:
+    def _build_checklist_page(
+        self, key: str, title: str, subtitle: str
+    ) -> ChecklistPage:
         page = ChecklistPage(title, subtitle)
         page.set_items(REVISION_TASKS.get(key, []))
         return page
@@ -712,7 +668,9 @@ class NordlysWindow(QMainWindow):
     def _update_responsive_layout(self) -> None:
         if self._content_layout is None:
             return
-        available_width = self.centralWidget().width() if self.centralWidget() else self.width()
+        available_width = (
+            self.centralWidget().width() if self.centralWidget() else self.width()
+        )
         width = max(self.width(), available_width)
         if width <= 0:
             return
@@ -745,7 +703,15 @@ class NordlysWindow(QMainWindow):
             nav_spacing = 24
             header_min = 120
 
-        layout_signature = (mode, nav_width, margin, spacing, card_margin, card_spacing, nav_spacing)
+        layout_signature = (
+            mode,
+            nav_width,
+            margin,
+            spacing,
+            card_margin,
+            card_spacing,
+            nav_spacing,
+        )
         signature_changed = layout_signature != self._layout_signature
 
         self._layout_mode = mode
@@ -765,7 +731,9 @@ class NordlysWindow(QMainWindow):
             for card in self.findChildren(CardFrame):
                 layout = card.layout()
                 if isinstance(layout, QVBoxLayout):
-                    layout.setContentsMargins(card_margin, card_margin, card_margin, card_margin)
+                    layout.setContentsMargins(
+                        card_margin, card_margin, card_margin, card_margin
+                    )
                     layout.setSpacing(max(card_spacing, 10))
                 body_layout = getattr(card, "body_layout", None)
                 if isinstance(body_layout, QVBoxLayout):
@@ -914,31 +882,31 @@ class NordlysWindow(QMainWindow):
         dialog.hide()
         dialog.deleteLater()
 
-    def _set_loading_state(self, loading: bool, status_message: Optional[str] = None) -> None:
+    def _set_loading_state(
+        self, loading: bool, status_message: Optional[str] = None
+    ) -> None:
         self.btn_open.setEnabled(not loading)
-        has_data = self._saft_df is not None
+        has_data = self._data_manager.saft_df is not None
         self.btn_export.setEnabled(False if loading else has_data)
         if hasattr(self, "dataset_combo"):
             if loading:
                 self.dataset_combo.setEnabled(False)
             else:
-                self.dataset_combo.setEnabled(bool(self._dataset_order))
+                self.dataset_combo.setEnabled(bool(self._data_manager.dataset_order))
         if self.sales_ar_page:
             if loading:
                 self.sales_ar_page.set_controls_enabled(False)
             else:
-                has_customer_data = (
-                    self._customer_sales is not None and not self._customer_sales.empty
+                self.sales_ar_page.set_controls_enabled(
+                    self._data_manager.has_customer_data
                 )
-                self.sales_ar_page.set_controls_enabled(has_customer_data)
         if self.purchases_ap_page:
             if loading:
                 self.purchases_ap_page.set_controls_enabled(False)
             else:
-                has_supplier_data = (
-                    self._supplier_purchases is not None and not self._supplier_purchases.empty
+                self.purchases_ap_page.set_controls_enabled(
+                    self._data_manager.has_supplier_data
                 )
-                self.purchases_ap_page.set_controls_enabled(has_supplier_data)
         if status_message:
             self.statusBar().showMessage(status_message)
 
@@ -1026,31 +994,17 @@ class NordlysWindow(QMainWindow):
 
     def _apply_saft_batch(self, results: Sequence[SaftLoadResult]) -> None:
         if not results:
-            self._dataset_results = {}
-            self._dataset_years = {}
-            self._dataset_orgnrs = {}
-            self._dataset_order = []
-            self._dataset_positions = {}
-            self._current_dataset_key = None
+            self._data_manager.reset()
             self._update_dataset_selector()
             if getattr(self, "import_page", None):
                 self.import_page.update_invoice_count(None)
                 self.import_page.update_misc_info(None)
             return
 
-        self._dataset_results = {res.file_path: res for res in results}
-        self._dataset_positions = {res.file_path: idx for idx, res in enumerate(results)}
-        self._dataset_years = {
-            res.file_path: self._resolve_dataset_year(res) for res in results
-        }
-        self._dataset_orgnrs = {
-            res.file_path: self._resolve_dataset_orgnr(res) for res in results
-        }
-        self._dataset_order = self._sorted_dataset_keys()
-        default_key = self._select_default_dataset_key()
-        self._current_dataset_key = default_key
+        self._data_manager.apply_batch(results)
         self._update_dataset_selector()
 
+        default_key = self._data_manager.select_default_key()
         if default_key is None:
             return
 
@@ -1060,157 +1014,47 @@ class NordlysWindow(QMainWindow):
                 "Alle filer er lastet inn. Bruk årvelgeren for å bytte datasett."
             )
 
-    def _resolve_dataset_year(self, result: SaftLoadResult) -> Optional[int]:
-        if result.analysis_year is not None:
-            return result.analysis_year
-        header = result.header
-        if header and header.fiscal_year:
-            try:
-                return int(str(header.fiscal_year).strip())
-            except (TypeError, ValueError):
-                return None
-        return None
-
-    def _resolve_dataset_orgnr(self, result: SaftLoadResult) -> Optional[str]:
-        header = result.header
-        if not header or not header.orgnr:
-            return None
-        raw_orgnr = str(header.orgnr).strip()
-        if not raw_orgnr:
-            return None
-        normalized = "".join(ch for ch in raw_orgnr if ch.isdigit())
-        if normalized:
-            return normalized
-        return raw_orgnr
-
-    def _sorted_dataset_keys(self) -> List[str]:
-        def sort_key(key: str) -> Tuple[int, int]:
-            year = self._dataset_years.get(key)
-            year_value = year if year is not None else 9999
-            position = self._dataset_positions.get(key, 0)
-            return (year_value, position)
-
-        return sorted(self._dataset_results.keys(), key=sort_key)
-
-    def _select_default_dataset_key(self) -> Optional[str]:
-        if not self._dataset_order:
-            return None
-        for key in reversed(self._dataset_order):
-            year = self._dataset_years.get(key)
-            if year is not None:
-                return key
-        return self._dataset_order[-1]
-
     def _update_dataset_selector(self) -> None:
         if not hasattr(self, "dataset_combo"):
             return
         combo = self.dataset_combo
         combo.blockSignals(True)
         combo.clear()
-        if not self._dataset_order:
+        dataset_items = self._data_manager.dataset_items()
+        if not dataset_items:
             combo.setVisible(False)
             combo.blockSignals(False)
             return
-        for key in self._dataset_order:
-            result = self._dataset_results.get(key)
-            if result is None:
-                continue
-            combo.addItem(self._dataset_label(result), userData=key)
+        for item in dataset_items:
+            combo.addItem(
+                self._data_manager.dataset_label(item.result), userData=item.key
+            )
         combo.setVisible(True)
-        combo.setEnabled(bool(self._dataset_order))
-        if self._current_dataset_key in self._dataset_order:
-            combo.setCurrentIndex(self._dataset_order.index(self._current_dataset_key))
+        combo.setEnabled(bool(dataset_items))
+        current_key = self._data_manager.current_key
+        if current_key:
+            keys = [item.key for item in dataset_items]
+            if current_key in keys:
+                combo.setCurrentIndex(keys.index(current_key))
         combo.blockSignals(False)
 
-    def _dataset_label(self, result: SaftLoadResult) -> str:
-        year = self._dataset_years.get(result.file_path)
-        if year is None and result.analysis_year is not None:
-            year = result.analysis_year
-        if year is not None:
-            return str(year)
-        header = result.header
-        if header and header.fiscal_year and str(header.fiscal_year).strip():
-            return str(header.fiscal_year).strip()
-        position = self._dataset_positions.get(result.file_path)
-        if position is not None:
-            return str(position + 1)
-        return "1"
-
-    def _find_previous_dataset_key(self, current_key: str) -> Optional[str]:
-        current_year = self._dataset_years.get(current_key)
-        current_org = self._dataset_orgnrs.get(current_key)
-        if current_year is None or not current_org:
-            return None
-        exact_year = current_year - 1
-        for key, year in self._dataset_years.items():
-            if key == current_key or year is None:
-                continue
-            if year == exact_year and self._dataset_orgnrs.get(key) == current_org:
-                return key
-        closest_key: Optional[str] = None
-        closest_year: Optional[int] = None
-        for key, year in self._dataset_years.items():
-            if key == current_key or year is None:
-                continue
-            if self._dataset_orgnrs.get(key) != current_org:
-                continue
-            if year < current_year and (closest_year is None or year > closest_year):
-                closest_key = key
-                closest_year = year
-        return closest_key
-
-    def _prepare_dataframe_with_previous(
-        self,
-        current_df: pd.DataFrame,
-        previous_df: Optional[pd.DataFrame],
-    ) -> pd.DataFrame:
-        work = current_df.copy()
-        if previous_df is None:
-            return work
-        if "Konto" not in work.columns or "UB_netto" not in previous_df.columns:
-            return work
-
-        def _konto_key(value: object) -> str:
-            if value is None:
-                return ""
-            try:
-                if pd.isna(value):  # type: ignore[arg-type]
-                    return ""
-            except Exception:
-                pass
-            return str(value).strip()
-
-        prev_work = previous_df.copy()
-        if "Konto" not in prev_work.columns:
-            return work
-        prev_work["_konto_key"] = prev_work["Konto"].map(_konto_key)
-        mapping = (
-            prev_work.loc[prev_work["_konto_key"] != ""]
-            .drop_duplicates("_konto_key")
-            .set_index("_konto_key")["UB_netto"]
-            .fillna(0.0)
-        )
-
-        work["forrige"] = work["Konto"].map(_konto_key).map(mapping).fillna(0.0)
-        return work
-
     def _activate_dataset(self, key: str, *, log_event: bool = False) -> None:
-        result = self._dataset_results.get(key)
-        if result is None:
+        if not self._data_manager.activate(key):
             return
-        previous_key = self._find_previous_dataset_key(key)
-        previous_result = (
-            self._dataset_results.get(previous_key) if previous_key else None
-        )
-        self._current_dataset_key = key
-        if hasattr(self, "dataset_combo") and key in self._dataset_order:
-            combo = self.dataset_combo
-            combo.blockSignals(True)
-            combo.setCurrentIndex(self._dataset_order.index(key))
-            combo.blockSignals(False)
-        self._apply_saft_result(result, previous_result, log_event=log_event)
+        if hasattr(self, "dataset_combo"):
+            dataset_items = self._data_manager.dataset_items()
+            keys = [item.key for item in dataset_items]
+            if key in keys:
+                combo = self.dataset_combo
+                combo.blockSignals(True)
+                combo.setCurrentIndex(keys.index(key))
+                combo.blockSignals(False)
+        self._apply_saft_result(key, log_event=log_event)
         if not log_event:
-            self._log_import_event(f"Viser datasett: {self._dataset_label(result)}")
+            current_result = self._data_manager.current_result
+            if current_result is not None:
+                label = self._data_manager.dataset_label(current_result)
+                self._log_import_event(f"Viser datasett: {label}")
 
     def _on_dataset_changed(self, index: int) -> None:
         if index < 0 or index >= self.dataset_combo.count():
@@ -1218,112 +1062,62 @@ class NordlysWindow(QMainWindow):
         key = self.dataset_combo.itemData(index)
         if not isinstance(key, str):
             return
-        if key == self._current_dataset_key:
+        if key == self._data_manager.current_key:
             return
         self._activate_dataset(key)
 
-    def _apply_saft_result(
-        self,
-        result: SaftLoadResult,
-        previous_result: Optional[SaftLoadResult] = None,
-        *,
-        log_event: bool = False,
-    ) -> None:
-        self._header = result.header
-        previous_df = previous_result.dataframe if previous_result is not None else None
-        self._saft_df = self._prepare_dataframe_with_previous(result.dataframe, previous_df)
-        self._saft_summary = result.summary
-        self._validation_result = result.validation
-        self._current_file = result.file_path
+    def _apply_saft_result(self, key: str, *, log_event: bool = False) -> None:
+        result = self._data_manager.current_result
+        if result is None:
+            return
 
-        self._ingest_customers(result.customers)
-        self._ingest_suppliers(result.suppliers)
-        self._customer_sales = (
-            result.customer_sales.copy() if result.customer_sales is not None else None
-        )
-        self._supplier_purchases = (
-            result.supplier_purchases.copy()
-            if result.supplier_purchases is not None
-            else None
-        )
-        self._cost_vouchers = list(result.cost_vouchers)
         if getattr(self, "import_page", None):
-            self.import_page.update_invoice_count(len(self._cost_vouchers))
+            self.import_page.update_invoice_count(len(self._data_manager.cost_vouchers))
 
-        if self._customer_sales is not None and not self._customer_sales.empty:
-            if "Kundenavn" in self._customer_sales.columns:
-                mask = self._customer_sales["Kundenavn"].astype(str).str.strip() == ""
-                if mask.any():
-                    self._customer_sales.loc[mask, "Kundenavn"] = self._customer_sales.loc[mask, "Kundenr"].apply(
-                        lambda value: self._lookup_customer_name(value, value) or value
-                    )
-            else:
-                self._customer_sales["Kundenavn"] = self._customer_sales["Kundenr"].apply(
-                    lambda value: self._lookup_customer_name(value, value) or value
-                )
-            ordered_cols = ["Kundenr", "Kundenavn", "Omsetning eks mva"]
-            ordered_cols += [col for col in ["Transaksjoner"] if col in self._customer_sales.columns]
-            remaining = [col for col in self._customer_sales.columns if col not in ordered_cols]
-            self._customer_sales = self._customer_sales.loc[:, ordered_cols + remaining]
-
-        if self._supplier_purchases is not None and not self._supplier_purchases.empty:
-            if "Leverandørnavn" in self._supplier_purchases.columns:
-                mask = self._supplier_purchases["Leverandørnavn"].astype(str).str.strip() == ""
-                if mask.any():
-                    self._supplier_purchases.loc[mask, "Leverandørnavn"] = self._supplier_purchases.loc[
-                        mask, "Leverandørnr"
-                    ].apply(lambda value: self._lookup_supplier_name(value, value) or value)
-            else:
-                self._supplier_purchases["Leverandørnavn"] = self._supplier_purchases["Leverandørnr"].apply(
-                    lambda value: self._lookup_supplier_name(value, value) or value
-                )
-            ordered_sup_cols = ["Leverandørnr", "Leverandørnavn", "Innkjøp eks mva"]
-            ordered_sup_cols += [
-                col for col in ["Transaksjoner"] if col in self._supplier_purchases.columns
-            ]
-            remaining_sup = [
-                col for col in self._supplier_purchases.columns if col not in ordered_sup_cols
-            ]
-            self._supplier_purchases = self._supplier_purchases.loc[
-                :, ordered_sup_cols + remaining_sup
-            ]
-
-        df = self._saft_df if self._saft_df is not None else result.dataframe
+        saft_df = self._data_manager.saft_df
+        if saft_df is not None:
+            df = saft_df
+        else:
+            df = result.dataframe
         self._update_header_fields()
-        saldobalanse_page = cast(Optional[DataFramePage], getattr(self, "saldobalanse_page", None))
+        saldobalanse_page = cast(
+            Optional[DataFramePage], getattr(self, "saldobalanse_page", None)
+        )
         if saldobalanse_page:
             saldobalanse_page.set_dataframe(df)
         self._latest_comparison_rows = None
-        kontroll_page = cast(Optional[ComparisonPage], getattr(self, "kontroll_page", None))
+        kontroll_page = cast(
+            Optional[ComparisonPage], getattr(self, "kontroll_page", None)
+        )
         if kontroll_page:
             kontroll_page.update_comparison(None)
-        dashboard_page = cast(Optional[DashboardPage], getattr(self, "dashboard_page", None))
+        dashboard_page = cast(
+            Optional[DashboardPage], getattr(self, "dashboard_page", None)
+        )
         if dashboard_page:
-            dashboard_page.update_summary(self._saft_summary)
+            dashboard_page.update_summary(self._data_manager.saft_summary)
 
-        company = self._header.company_name if self._header else None
-        orgnr = self._header.orgnr if self._header else None
+        header = self._data_manager.header
+        company = header.company_name if header else None
+        orgnr = header.orgnr if header else None
         period = None
-        if self._header:
-            period = (
-                f"{self._header.fiscal_year or '—'} P{self._header.period_start or '?'}–P{self._header.period_end or '?'}"
-            )
+        if header:
+            period = f"{header.fiscal_year or '—'} P{header.period_start or '?'}–P{header.period_end or '?'}"
+        summary = self._data_manager.saft_summary or {}
+        revenue_value = summary.get("driftsinntekter")
         revenue_txt = (
-            format_currency(self._saft_summary.get("driftsinntekter"))
-            if self._saft_summary and self._saft_summary.get("driftsinntekter") is not None
-            else "—"
+            format_currency(revenue_value) if revenue_value is not None else "—"
         )
         account_count = len(df.index)
-        dataset_label = self._dataset_label(result)
+        dataset_label = self._data_manager.dataset_label(result)
         status_bits = [
             company or "Ukjent selskap",
             f"Org.nr: {orgnr}" if orgnr else "Org.nr: –",
             f"Periode: {period}" if period else None,
             f"{account_count} konti analysert",
             f"Driftsinntekter: {revenue_txt}",
+            f"Datasett: {dataset_label}",
         ]
-        if dataset_label:
-            status_bits.append(f"Datasett: {dataset_label}")
         status_message = " · ".join(bit for bit in status_bits if bit)
         if getattr(self, "import_page", None):
             misc_entries: List[Tuple[str, str]] = [
@@ -1332,14 +1126,16 @@ class NordlysWindow(QMainWindow):
                 ("Konti analysert", str(account_count)),
             ]
             if company:
-                misc_entries.append(("Selskap", company))
+                misc_entries.append(("Selskap", str(company)))
             if orgnr:
                 misc_entries.append(("Org.nr", str(orgnr)))
             if period:
                 misc_entries.append(("Periode", period))
             if revenue_txt and revenue_txt != "—":
                 misc_entries.append(("Driftsinntekter", revenue_txt))
-            misc_entries.append(("Oppdatert", datetime.now().strftime("%d.%m.%Y %H:%M")))
+            misc_entries.append(
+                ("Oppdatert", datetime.now().strftime("%d.%m.%Y %H:%M"))
+            )
             self.import_page.update_misc_info(misc_entries)
             self.import_page.update_status(status_message)
         if log_event:
@@ -1347,17 +1143,19 @@ class NordlysWindow(QMainWindow):
                 f"{dataset_label or Path(result.file_path).name}: SAF-T lesing fullført. {account_count} konti analysert."
             )
 
-        validation = result.validation
+        validation = self._data_manager.validation_result
         if getattr(self, "import_page", None):
             self.import_page.update_validation_status(validation)
-        if log_event:
+        if log_event and validation is not None:
             if validation.is_valid is True:
                 self._log_import_event("XSD-validering fullført: OK.")
             elif validation.is_valid is False:
                 self._log_import_event("XSD-validering feilet.")
             elif validation.is_valid is None and validation.details:
-                self._log_import_event("XSD-validering: detaljer tilgjengelig, se importstatus.")
-        if validation.is_valid is False:
+                self._log_import_event(
+                    "XSD-validering: detaljer tilgjengelig, se importstatus."
+                )
+        if validation and validation.is_valid is False:
             if getattr(self, "import_page", None):
                 detail = (
                     validation.details.strip().splitlines()[0]
@@ -1368,45 +1166,52 @@ class NordlysWindow(QMainWindow):
             QMessageBox.warning(
                 self,
                 "XSD-validering feilet",
-                validation.details or "Valideringen mot XSD feilet. Se Import-siden for detaljer.",
+                validation.details
+                or "Valideringen mot XSD feilet. Se Import-siden for detaljer.",
             )
-        elif validation.is_valid is None and validation.details:
+        elif validation and validation.is_valid is None and validation.details:
             QMessageBox.information(self, "XSD-validering", validation.details)
 
         if self.sales_ar_page:
-            has_customer_data = (
-                self._customer_sales is not None and not self._customer_sales.empty
+            self.sales_ar_page.set_controls_enabled(
+                self._data_manager.has_customer_data
             )
-            self.sales_ar_page.set_controls_enabled(has_customer_data)
             self.sales_ar_page.clear_top_customers()
         if self.purchases_ap_page:
-            has_supplier_data = (
-                self._supplier_purchases is not None and not self._supplier_purchases.empty
+            self.purchases_ap_page.set_controls_enabled(
+                self._data_manager.has_supplier_data
             )
-            self.purchases_ap_page.set_controls_enabled(has_supplier_data)
             self.purchases_ap_page.clear_top_suppliers()
         if self.cost_review_page:
-            self.cost_review_page.set_vouchers(self._cost_vouchers)
+            self.cost_review_page.set_vouchers(self._data_manager.cost_vouchers)
 
-        vesentlig_page = cast(Optional[SummaryPage], getattr(self, "vesentlig_page", None))
+        vesentlig_page = cast(
+            Optional[SummaryPage], getattr(self, "vesentlig_page", None)
+        )
         if vesentlig_page:
-            vesentlig_page.update_summary(self._saft_summary)
-        regnskap_page = cast(Optional[RegnskapsanalysePage], getattr(self, "regnskap_page", None))
+            vesentlig_page.update_summary(self._data_manager.saft_summary)
+        regnskap_page = cast(
+            Optional[RegnskapsanalysePage], getattr(self, "regnskap_page", None)
+        )
         if regnskap_page:
-            fiscal_year = self._header.fiscal_year if self._header else None
+            fiscal_year = header.fiscal_year if header else None
             regnskap_page.set_dataframe(df, fiscal_year)
         sammenstilling_page = cast(
-            Optional[SammenstillingsanalysePage], getattr(self, "sammenstilling_page", None)
+            Optional[SammenstillingsanalysePage],
+            getattr(self, "sammenstilling_page", None),
         )
         if sammenstilling_page:
-            fiscal_year = self._header.fiscal_year if self._header else None
+            fiscal_year = header.fiscal_year if header else None
             sammenstilling_page.set_dataframe(df, fiscal_year)
         brreg_status = self._process_brreg_result(result)
 
         self.btn_export.setEnabled(True)
-        status_parts = [f"Datasett aktivt: {dataset_label or Path(result.file_path).name}."]
-        if len(self._dataset_order) > 1:
-            status_parts.append(f"{len(self._dataset_order)} filer tilgjengelig.")
+        dataset_count = len(self._data_manager.dataset_order)
+        status_parts = [
+            f"Datasett aktivt: {dataset_label or Path(result.file_path).name}."
+        ]
+        if dataset_count > 1:
+            status_parts.append(f"{dataset_count} filer tilgjengelig.")
         if brreg_status:
             status_parts.append(brreg_status)
         self.statusBar().showMessage(" ".join(status_parts))
@@ -1414,15 +1219,14 @@ class NordlysWindow(QMainWindow):
     def _process_brreg_result(self, result: SaftLoadResult) -> str:
         """Oppdaterer interne strukturer med data fra Regnskapsregisteret."""
 
-        self._industry = result.industry
-        self._industry_error = result.industry_error
         if getattr(self, "import_page", None):
-            self.import_page.update_industry(result.industry, result.industry_error)
+            self.import_page.update_industry(
+                self._data_manager.industry, self._data_manager.industry_error
+            )
 
-        self._brreg_json = result.brreg_json
-        self._brreg_map = result.brreg_map
+        brreg_json = self._data_manager.brreg_json
 
-        if result.brreg_json is None:
+        if brreg_json is None:
             self._update_comparison_tables(None)
             if result.brreg_error:
                 error_text = str(result.brreg_error).strip()
@@ -1439,7 +1243,8 @@ class NordlysWindow(QMainWindow):
             self._log_import_event(message)
             return message
 
-        if not self._saft_summary:
+        summary = self._data_manager.saft_summary
+        if not summary:
             self._update_comparison_tables(None)
             message = "Regnskapsregister: import vellykket, men ingen SAF-T-oppsummering å sammenligne."
             if getattr(self, "import_page", None):
@@ -1457,15 +1262,21 @@ class NordlysWindow(QMainWindow):
 
     def _update_comparison_tables(
         self,
-        rows: Optional[Sequence[Tuple[str, Optional[float], Optional[float], Optional[float]]]],
+        rows: Optional[
+            Sequence[Tuple[str, Optional[float], Optional[float], Optional[float]]]
+        ],
     ) -> None:
         """Oppdaterer tabellene som sammenligner SAF-T med Regnskapsregisteret."""
 
         self._latest_comparison_rows = list(rows) if rows is not None else None
-        kontroll_page = cast(Optional[ComparisonPage], getattr(self, "kontroll_page", None))
+        kontroll_page = cast(
+            Optional[ComparisonPage], getattr(self, "kontroll_page", None)
+        )
         if kontroll_page:
             kontroll_page.update_comparison(rows)
-        regnskap_page = cast(Optional[RegnskapsanalysePage], getattr(self, "regnskap_page", None))
+        regnskap_page = cast(
+            Optional[RegnskapsanalysePage], getattr(self, "regnskap_page", None)
+        )
         if regnskap_page:
             regnskap_page.update_comparison(rows)
 
@@ -1474,44 +1285,46 @@ class NordlysWindow(QMainWindow):
     ) -> Optional[List[Tuple[str, Optional[float], Optional[float], Optional[float]]]]:
         """Konstruerer rader for sammenligning mot Regnskapsregisteret."""
 
-        if not self._saft_summary or not self._brreg_map:
+        summary = self._data_manager.saft_summary
+        brreg_map = self._data_manager.brreg_map
+        if not summary or not brreg_map:
             return None
 
         return [
             (
                 "Driftsinntekter",
-                self._saft_summary.get("driftsinntekter"),
-                self._brreg_map.get("driftsinntekter"),
+                summary.get("driftsinntekter"),
+                brreg_map.get("driftsinntekter"),
                 None,
             ),
             (
                 "EBIT",
-                self._saft_summary.get("ebit"),
-                self._brreg_map.get("ebit"),
+                summary.get("ebit"),
+                brreg_map.get("ebit"),
                 None,
             ),
             (
                 "Årsresultat",
-                self._saft_summary.get("arsresultat"),
-                self._brreg_map.get("arsresultat"),
+                summary.get("arsresultat"),
+                brreg_map.get("arsresultat"),
                 None,
             ),
             (
                 "Eiendeler (UB)",
-                self._saft_summary.get("eiendeler_UB_brreg"),
-                self._brreg_map.get("eiendeler_UB"),
+                summary.get("eiendeler_UB_brreg"),
+                brreg_map.get("eiendeler_UB"),
                 None,
             ),
             (
                 "Egenkapital (UB)",
-                self._saft_summary.get("egenkapital_UB"),
-                self._brreg_map.get("egenkapital_UB"),
+                summary.get("egenkapital_UB"),
+                brreg_map.get("egenkapital_UB"),
                 None,
             ),
             (
                 "Gjeld (UB)",
-                self._saft_summary.get("gjeld_UB_brreg"),
-                self._brreg_map.get("gjeld_UB"),
+                summary.get("gjeld_UB_brreg"),
+                brreg_map.get("gjeld_UB"),
                 None,
             ),
         ]
@@ -1523,240 +1336,35 @@ class NordlysWindow(QMainWindow):
             self.import_page.record_error(f"Lesing av SAF-T: {message}")
         QMessageBox.critical(self, "Feil ved lesing av SAF-T", message)
 
-    def _normalize_identifier(self, value: object) -> Optional[str]:
-        if value is None:
-            return None
-        try:
-            if pd.isna(value):  # type: ignore[arg-type]
-                return None
-        except Exception:
-            pass
-        text = str(value).strip()
-        return text or None
-
-    def _normalize_customer_key(self, value: object) -> Optional[str]:
-        return self._normalize_identifier(value)
-
-    def _normalize_supplier_key(self, value: object) -> Optional[str]:
-        return self._normalize_identifier(value)
-
-    def _ingest_customers(
-        self, customers: Dict[str, "saft.CustomerInfo"]
-    ) -> None:
-        self._customers = {}
-        self._cust_name_by_nr = {}
-        self._cust_id_to_nr = {}
-        for info in customers.values():
-            name = (info.name or '').strip()
-            raw_id = info.customer_id
-            raw_number = info.customer_number or info.customer_id
-            norm_id = self._normalize_customer_key(raw_id)
-            norm_number = self._normalize_customer_key(raw_number)
-            resolved_number = norm_number or norm_id or self._normalize_customer_key(raw_id)
-            if not resolved_number and isinstance(raw_number, str) and raw_number.strip():
-                resolved_number = raw_number.strip()
-            if not resolved_number and isinstance(raw_id, str) and raw_id.strip():
-                resolved_number = raw_id.strip()
-
-            customer_key = norm_id or (raw_id.strip() if isinstance(raw_id, str) and raw_id.strip() else None)
-            if customer_key:
-                self._customers[customer_key] = saft.CustomerInfo(
-                    customer_id=customer_key,
-                    customer_number=resolved_number or customer_key,
-                    name=name,
-                )
-
-            keys = {
-                raw_id,
-                norm_id,
-                raw_number,
-                norm_number,
-                resolved_number,
-            }
-            keys = {key for key in keys if isinstance(key, str) and key}
-
-            if resolved_number:
-                norm_resolved = self._normalize_customer_key(resolved_number)
-                all_number_keys = set(keys)
-                if norm_resolved:
-                    all_number_keys.add(norm_resolved)
-                all_number_keys.add(resolved_number)
-                for key in all_number_keys:
-                    norm_key = self._normalize_customer_key(key)
-                    if norm_key:
-                        self._cust_id_to_nr[norm_key] = resolved_number
-                    self._cust_id_to_nr[key] = resolved_number
-
-            if name:
-                for key in keys:
-                    norm_key = self._normalize_customer_key(key)
-                    if norm_key:
-                        self._cust_name_by_nr[norm_key] = name
-                    self._cust_name_by_nr[key] = name
-
-    def _ingest_suppliers(
-        self, suppliers: Dict[str, "saft.SupplierInfo"]
-    ) -> None:
-        self._suppliers = {}
-        self._sup_name_by_nr = {}
-        self._sup_id_to_nr = {}
-        for info in suppliers.values():
-            name = (info.name or "").strip()
-            raw_id = info.supplier_id
-            raw_number = info.supplier_number or info.supplier_id
-            norm_id = self._normalize_supplier_key(raw_id)
-            norm_number = self._normalize_supplier_key(raw_number)
-            resolved_number = norm_number or norm_id or self._normalize_supplier_key(raw_id)
-            if not resolved_number and isinstance(raw_number, str) and raw_number.strip():
-                resolved_number = raw_number.strip()
-            if not resolved_number and isinstance(raw_id, str) and raw_id.strip():
-                resolved_number = raw_id.strip()
-
-            supplier_key = norm_id or (raw_id.strip() if isinstance(raw_id, str) and raw_id.strip() else None)
-            if supplier_key:
-                self._suppliers[supplier_key] = saft.SupplierInfo(
-                    supplier_id=supplier_key,
-                    supplier_number=resolved_number or supplier_key,
-                    name=name,
-                )
-
-            keys = {raw_id, norm_id, raw_number, norm_number, resolved_number}
-            keys = {key for key in keys if isinstance(key, str) and key}
-
-            if resolved_number:
-                norm_resolved = self._normalize_supplier_key(resolved_number)
-                all_number_keys = set(keys)
-                if norm_resolved:
-                    all_number_keys.add(norm_resolved)
-                all_number_keys.add(resolved_number)
-                for key in all_number_keys:
-                    norm_key = self._normalize_supplier_key(key)
-                    if norm_key:
-                        self._sup_id_to_nr[norm_key] = resolved_number
-                    self._sup_id_to_nr[key] = resolved_number
-
-            if name:
-                for key in keys:
-                    norm_key = self._normalize_supplier_key(key)
-                    if norm_key:
-                        self._sup_name_by_nr[norm_key] = name
-                    self._sup_name_by_nr[key] = name
-
-    def _lookup_customer_name(self, number: object, customer_id: object) -> Optional[str]:
-        number_key = self._normalize_customer_key(number)
-        if number_key:
-            name = self._cust_name_by_nr.get(number_key)
-            if name:
-                return name
-        cid_key = self._normalize_customer_key(customer_id)
-        if cid_key:
-            info = self._customers.get(cid_key)
-            if info and info.name:
-                return info.name
-            name = self._cust_name_by_nr.get(cid_key)
-            if name:
-                return name
-        return None
-
-    def _lookup_supplier_name(self, number: object, supplier_id: object) -> Optional[str]:
-        number_key = self._normalize_supplier_key(number)
-        if number_key:
-            name = self._sup_name_by_nr.get(number_key)
-            if name:
-                return name
-        sid_key = self._normalize_supplier_key(supplier_id)
-        if sid_key:
-            info = self._suppliers.get(sid_key)
-            if info and info.name:
-                return info.name
-            name = self._sup_name_by_nr.get(sid_key)
-            if name:
-                return name
-        return None
-
-    def _safe_float(self, value: object) -> float:
-        try:
-            if pd.isna(value):  # type: ignore[arg-type]
-                return 0.0
-        except Exception:
-            pass
-        try:
-            return float(value)
-        except (TypeError, ValueError):
-            return 0.0
-
-    def _on_calc_top_customers(self, source: str, topn: int) -> Optional[List[Tuple[str, str, int, float]]]:
+    def _on_calc_top_customers(
+        self, source: str, topn: int
+    ) -> Optional[List[Tuple[str, str, int, float]]]:
         _ = source  # kilde er alltid 3xxx-transaksjoner
-        if self._customer_sales is None or self._customer_sales.empty:
-            QMessageBox.information(
-                self,
-                "Ingen inntektslinjer",
-                "Fant ingen inntektslinjer på 3xxx-konti i SAF-T-filen.",
-            )
+        try:
+            rows = self._data_manager.top_customers(topn)
+        except DataUnavailableError as exc:
+            QMessageBox.information(self, "Ingen inntektslinjer", str(exc))
             return None
-        data = self._customer_sales.copy()
-        data = data.sort_values("Omsetning eks mva", ascending=False).head(topn)
-        rows: List[Tuple[str, str, int, float]] = []
-        for _, row in data.iterrows():
-            number = row.get("Kundenr")
-            number_text = self._normalize_customer_key(number)
-            if not number_text and isinstance(number, str):
-                number_text = number.strip() or None
-            name = row.get("Kundenavn") or self._lookup_customer_name(number, number)
-            count_val = row.get("Transaksjoner", 0)
-            try:
-                count_int = int(count_val)
-            except (TypeError, ValueError):
-                count_int = 0
-            rows.append(
-                (
-                    number_text or "—",
-                    (name or "").strip() or "—",
-                    count_int,
-                    self._safe_float(row.get("Omsetning eks mva")),
-                )
-            )
         self.statusBar().showMessage(f"Topp kunder (3xxx) beregnet. N={topn}.")
         return rows
 
-    def _on_calc_top_suppliers(self, source: str, topn: int) -> Optional[List[Tuple[str, str, int, float]]]:
+    def _on_calc_top_suppliers(
+        self, source: str, topn: int
+    ) -> Optional[List[Tuple[str, str, int, float]]]:
         _ = source  # kilde er alltid kostnadskonti
-        if self._supplier_purchases is None or self._supplier_purchases.empty:
-            QMessageBox.information(
-                self,
-                "Ingen innkjøpslinjer",
-                "Fant ingen innkjøpslinjer på kostnadskonti (4xxx–8xxx) i SAF-T-filen.",
-            )
+        try:
+            rows = self._data_manager.top_suppliers(topn)
+        except DataUnavailableError as exc:
+            QMessageBox.information(self, "Ingen innkjøpslinjer", str(exc))
             return None
-        data = self._supplier_purchases.copy()
-        data = data.sort_values("Innkjøp eks mva", ascending=False).head(topn)
-        rows: List[Tuple[str, str, int, float]] = []
-        for _, row in data.iterrows():
-            number = row.get("Leverandørnr")
-            number_text = self._normalize_supplier_key(number)
-            if not number_text and isinstance(number, str):
-                number_text = number.strip() or None
-            name = row.get("Leverandørnavn") or self._lookup_supplier_name(number, number)
-            count_val = row.get("Transaksjoner", 0)
-            try:
-                count_int = int(count_val)
-            except (TypeError, ValueError):
-                count_int = 0
-            rows.append(
-                (
-                    number_text or "—",
-                    (name or "").strip() or "—",
-                    count_int,
-                    self._safe_float(row.get("Innkjøp eks mva")),
-                )
-            )
         self.statusBar().showMessage(
             f"Innkjøp per leverandør (kostnadskonti 4xxx–8xxx) beregnet. N={topn}."
         )
         return rows
 
     def on_export(self) -> None:
-        if self._saft_df is None:
+        saft_df = self._data_manager.saft_df
+        if saft_df is None:
             QMessageBox.warning(self, "Ingenting å eksportere", "Last inn SAF-T først.")
             return
         file_name, _ = QFileDialog.getSaveFileName(
@@ -1769,17 +1377,29 @@ class NordlysWindow(QMainWindow):
             return
         try:
             with pd.ExcelWriter(file_name, engine="xlsxwriter") as writer:
-                self._saft_df.to_excel(writer, sheet_name="Saldobalanse", index=False)
-                if self._saft_summary:
-                    summary_df = pd.DataFrame([self._saft_summary]).T.reset_index()
+                saft_df.to_excel(writer, sheet_name="Saldobalanse", index=False)
+                summary = self._data_manager.saft_summary
+                if summary:
+                    summary_df = pd.DataFrame([summary]).T.reset_index()
                     summary_df.columns = ["Nøkkel", "Beløp"]
-                    summary_df.to_excel(writer, sheet_name="NS4102_Sammendrag", index=False)
-                if self._customer_sales is not None:
-                    self._customer_sales.to_excel(writer, sheet_name="Sales_by_customer", index=False)
-                if self._brreg_json:
-                    pd.json_normalize(self._brreg_json).to_excel(writer, sheet_name="Brreg_JSON", index=False)
-                if self._brreg_map:
-                    map_df = pd.DataFrame(list(self._brreg_map.items()), columns=["Felt", "Verdi"])
+                    summary_df.to_excel(
+                        writer, sheet_name="NS4102_Sammendrag", index=False
+                    )
+                customer_sales = self._data_manager.customer_sales
+                if customer_sales is not None:
+                    customer_sales.to_excel(
+                        writer, sheet_name="Sales_by_customer", index=False
+                    )
+                brreg_json = self._data_manager.brreg_json
+                if brreg_json:
+                    pd.json_normalize(brreg_json).to_excel(
+                        writer, sheet_name="Brreg_JSON", index=False
+                    )
+                brreg_map = self._data_manager.brreg_map
+                if brreg_map:
+                    map_df = pd.DataFrame(
+                        list(brreg_map.items()), columns=["Felt", "Verdi"]
+                    )
                     map_df.to_excel(writer, sheet_name="Brreg_Mapping", index=False)
             self.statusBar().showMessage(f"Eksportert: {file_name}")
             self._log_import_event(f"Rapport eksportert: {Path(file_name).name}")
@@ -1790,7 +1410,9 @@ class NordlysWindow(QMainWindow):
     # endregion
 
     # region Navigasjon
-    def _on_navigation_changed(self, current: Optional[QTreeWidgetItem], _previous: Optional[QTreeWidgetItem]) -> None:
+    def _on_navigation_changed(
+        self, current: Optional[QTreeWidgetItem], _previous: Optional[QTreeWidgetItem]
+    ) -> None:
         if current is None:
             return
         key = current.data(0, Qt.UserRole)
@@ -1809,11 +1431,12 @@ class NordlysWindow(QMainWindow):
 
     # region Hjelpere
     def _update_header_fields(self) -> None:
-        if not self._header:
+        header = self._data_manager.header
+        if not header:
             return
-        self.lbl_company.setText(f"Selskap: {self._header.company_name or '–'}")
-        self.lbl_orgnr.setText(f"Org.nr: {self._header.orgnr or '–'}")
-        per = f"{self._header.fiscal_year or '–'} P{self._header.period_start or '?'}–P{self._header.period_end or '?'}"
+        self.lbl_company.setText(f"Selskap: {header.company_name or '–'}")
+        self.lbl_orgnr.setText(f"Org.nr: {header.orgnr or '–'}")
+        per = f"{header.fiscal_year or '–'} P{header.period_start or '?'}–P{header.period_end or '?'}"
         self.lbl_period.setText(f"Periode: {per}")
 
     # endregion
