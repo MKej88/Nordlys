@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Sequence, Tuple
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Sequence, Tuple
 
 from PySide6.QtWidgets import QMessageBox, QStatusBar, QWidget
 
@@ -13,24 +13,23 @@ from ..utils import format_currency
 from .config import REVISION_TASKS
 from .data_manager import DataUnavailableError, SaftAnalytics, SaftDatasetStore
 from .header_bar import HeaderBar
-from .pages import (
-    ComparisonPage,
-    RegnskapsanalysePage,
-    SammenstillingsanalysePage,
-    SummaryPage,
-)
-from .pages.dashboard_page import DashboardPage
-from .pages.dataframe_page import DataFramePage
-from .pages.import_page import ImportPage
-from .pages.revision_pages import (
-    ChecklistPage,
-    CostVoucherReviewPage,
-    PurchasesApPage,
-    SalesArPage,
-)
+from .page_state_handler import ComparisonRows, PageStateHandler
 
-
-ComparisonRows = Sequence[Tuple[str, Optional[float], Optional[float], Optional[float]]]
+if TYPE_CHECKING:
+    from .pages import (
+        ComparisonPage,
+        RegnskapsanalysePage,
+        SammenstillingsanalysePage,
+        SummaryPage,
+    )
+    from .pages.dashboard_page import DashboardPage
+    from .pages.dataframe_page import DataFramePage
+    from .pages.import_page import ImportPage
+    from .pages.revision_pages import (
+        CostVoucherReviewPage,
+        PurchasesApPage,
+        SalesArPage,
+    )
 
 
 class SaftDataController:
@@ -51,75 +50,104 @@ class SaftDataController:
         self._header_bar = header_bar
         self._status_bar = status_bar
         self._parent = parent
-        self._schedule_responsive_update = schedule_responsive_update
         self._update_header_fields = update_header_fields
+        self._pages = PageStateHandler(
+            dataset_store,
+            REVISION_TASKS,
+            schedule_responsive_update,
+        )
 
-        self.import_page: Optional[ImportPage] = None
-        self.dashboard_page: Optional[DashboardPage] = None
-        self.saldobalanse_page: Optional[DataFramePage] = None
-        self.kontroll_page: Optional[ComparisonPage] = None
-        self.regnskap_page: Optional[RegnskapsanalysePage] = None
-        self.vesentlig_page: Optional[SummaryPage] = None
-        self.sammenstilling_page: Optional[SammenstillingsanalysePage] = None
-        self.sales_ar_page: Optional[SalesArPage] = None
-        self.purchases_ap_page: Optional[PurchasesApPage] = None
-        self.cost_review_page: Optional[CostVoucherReviewPage] = None
-        self.revision_pages: Dict[str, QWidget] = {}
+    @property
+    def import_page(self) -> Optional["ImportPage"]:
+        return self._pages.import_page
 
-        self._latest_comparison_rows: Optional[ComparisonRows] = None
+    @import_page.setter
+    def import_page(self, widget: Optional["ImportPage"]) -> None:
+        self._pages.import_page = widget
+
+    @property
+    def dashboard_page(self) -> Optional["DashboardPage"]:
+        return self._pages.dashboard_page
+
+    @dashboard_page.setter
+    def dashboard_page(self, widget: Optional["DashboardPage"]) -> None:
+        self._pages.dashboard_page = widget
+
+    @property
+    def saldobalanse_page(self) -> Optional["DataFramePage"]:
+        return self._pages.saldobalanse_page
+
+    @saldobalanse_page.setter
+    def saldobalanse_page(self, widget: Optional["DataFramePage"]) -> None:
+        self._pages.saldobalanse_page = widget
+
+    @property
+    def kontroll_page(self) -> Optional["ComparisonPage"]:
+        return self._pages.kontroll_page
+
+    @kontroll_page.setter
+    def kontroll_page(self, widget: Optional["ComparisonPage"]) -> None:
+        self._pages.kontroll_page = widget
+
+    @property
+    def regnskap_page(self) -> Optional["RegnskapsanalysePage"]:
+        return self._pages.regnskap_page
+
+    @regnskap_page.setter
+    def regnskap_page(self, widget: Optional["RegnskapsanalysePage"]) -> None:
+        self._pages.regnskap_page = widget
+
+    @property
+    def vesentlig_page(self) -> Optional["SummaryPage"]:
+        return self._pages.vesentlig_page
+
+    @vesentlig_page.setter
+    def vesentlig_page(self, widget: Optional["SummaryPage"]) -> None:
+        self._pages.vesentlig_page = widget
+
+    @property
+    def sammenstilling_page(self) -> Optional["SammenstillingsanalysePage"]:
+        return self._pages.sammenstilling_page
+
+    @sammenstilling_page.setter
+    def sammenstilling_page(
+        self, widget: Optional["SammenstillingsanalysePage"]
+    ) -> None:
+        self._pages.sammenstilling_page = widget
+
+    @property
+    def sales_ar_page(self) -> Optional["SalesArPage"]:
+        return self._pages.sales_ar_page
+
+    @sales_ar_page.setter
+    def sales_ar_page(self, widget: Optional["SalesArPage"]) -> None:
+        self._pages.sales_ar_page = widget
+
+    @property
+    def purchases_ap_page(self) -> Optional["PurchasesApPage"]:
+        return self._pages.purchases_ap_page
+
+    @purchases_ap_page.setter
+    def purchases_ap_page(self, widget: Optional["PurchasesApPage"]) -> None:
+        self._pages.purchases_ap_page = widget
+
+    @property
+    def cost_review_page(self) -> Optional["CostVoucherReviewPage"]:
+        return self._pages.cost_review_page
+
+    @cost_review_page.setter
+    def cost_review_page(self, widget: Optional["CostVoucherReviewPage"]) -> None:
+        self._pages.cost_review_page = widget
+
+    @property
+    def revision_pages(self) -> Dict[str, QWidget]:
+        return self._pages.revision_pages
 
     # region Sider og oppdatering
     def apply_page_state(self, key: str, widget: QWidget) -> None:
         """Oppdaterer en side med gjeldende data når den opprettes."""
 
-        if key == "import" and isinstance(widget, ImportPage):
-            self.import_page = widget
-        if key in REVISION_TASKS:
-            self.revision_pages[key] = widget
-        if key == "dashboard" and isinstance(widget, DashboardPage):
-            self.dashboard_page = widget
-            widget.update_summary(self._dataset_store.saft_summary)
-        elif key == "plan.saldobalanse" and isinstance(widget, DataFramePage):
-            self.saldobalanse_page = widget
-            widget.set_dataframe(self._dataset_store.saft_df)
-        elif key == "plan.kontroll" and isinstance(widget, ComparisonPage):
-            self.kontroll_page = widget
-            widget.update_comparison(self._latest_comparison_rows)
-        elif key == "plan.regnskapsanalyse" and isinstance(
-            widget, RegnskapsanalysePage
-        ):
-            self.regnskap_page = widget
-            header = self._dataset_store.header
-            fiscal_year = header.fiscal_year if header else None
-            widget.set_dataframe(self._dataset_store.saft_df, fiscal_year)
-            widget.update_comparison(self._latest_comparison_rows)
-        elif key == "plan.vesentlighet" and isinstance(widget, SummaryPage):
-            self.vesentlig_page = widget
-            widget.update_summary(self._dataset_store.saft_summary)
-        elif key == "plan.sammenstilling" and isinstance(
-            widget, SammenstillingsanalysePage
-        ):
-            self.sammenstilling_page = widget
-            header = self._dataset_store.header
-            fiscal_year = header.fiscal_year if header else None
-            widget.set_dataframe(self._dataset_store.saft_df, fiscal_year)
-        elif key == "rev.salg" and isinstance(widget, SalesArPage):
-            self.sales_ar_page = widget
-            widget.set_checklist_items(REVISION_TASKS.get("rev.salg", []))
-            widget.set_controls_enabled(self._dataset_store.has_customer_data)
-            if not self._dataset_store.has_customer_data:
-                widget.clear_top_customers()
-        elif key == "rev.innkjop" and isinstance(widget, PurchasesApPage):
-            self.purchases_ap_page = widget
-            widget.set_controls_enabled(self._dataset_store.has_supplier_data)
-            if not self._dataset_store.has_supplier_data:
-                widget.clear_top_suppliers()
-        elif key == "rev.kostnad" and isinstance(widget, CostVoucherReviewPage):
-            self.cost_review_page = widget
-            widget.set_vouchers(self._dataset_store.cost_vouchers)
-        elif key in REVISION_TASKS and isinstance(widget, ChecklistPage):
-            widget.set_items(REVISION_TASKS.get(key, []))
-        self._schedule_responsive_update()
+        self._pages.apply_page_state(key, widget)
 
     # endregion
 
@@ -136,38 +164,38 @@ class SaftDataController:
             self._header_bar.set_dataset_enabled(
                 bool(self._dataset_store.dataset_order)
             )
-        if self.sales_ar_page:
+        if self._pages.sales_ar_page:
             if loading:
-                self.sales_ar_page.set_controls_enabled(False)
+                self._pages.sales_ar_page.set_controls_enabled(False)
             else:
-                self.sales_ar_page.set_controls_enabled(
+                self._pages.sales_ar_page.set_controls_enabled(
                     self._dataset_store.has_customer_data
                 )
-        if self.purchases_ap_page:
+        if self._pages.purchases_ap_page:
             if loading:
-                self.purchases_ap_page.set_controls_enabled(False)
+                self._pages.purchases_ap_page.set_controls_enabled(False)
             else:
-                self.purchases_ap_page.set_controls_enabled(
+                self._pages.purchases_ap_page.set_controls_enabled(
                     self._dataset_store.has_supplier_data
                 )
         if status_message:
             self._status_bar.showMessage(status_message)
 
     def log_import_event(self, message: str, *, reset: bool = False) -> None:
-        if not self.import_page:
+        if not self._pages.import_page:
             return
         if reset:
-            self.import_page.reset_log()
-            self.import_page.reset_errors()
-        self.import_page.append_log(message)
+            self._pages.import_page.reset_log()
+            self._pages.import_page.reset_errors()
+        self._pages.import_page.append_log(message)
 
     def apply_saft_batch(self, results: Sequence[SaftLoadResult]) -> None:
         if not results:
             self._dataset_store.reset()
             self._update_dataset_selector()
-            if self.import_page:
-                self.import_page.update_invoice_count(None)
-                self.import_page.update_misc_info(None)
+            if self._pages.import_page:
+                self._pages.import_page.update_invoice_count(None)
+                self._pages.import_page.update_misc_info(None)
             return
 
         self._dataset_store.apply_batch(results)
@@ -202,8 +230,8 @@ class SaftDataController:
         if result is None:
             return
 
-        if self.import_page:
-            self.import_page.update_invoice_count(
+        if self._pages.import_page:
+            self._pages.import_page.update_invoice_count(
                 len(self._dataset_store.cost_vouchers)
             )
 
@@ -211,13 +239,11 @@ class SaftDataController:
         if saft_df is None:
             saft_df = result.dataframe
         self._update_header_fields()
-        if self.saldobalanse_page:
-            self.saldobalanse_page.set_dataframe(saft_df)
-        self._latest_comparison_rows = None
-        if self.kontroll_page:
-            self.kontroll_page.update_comparison(None)
-        if self.dashboard_page:
-            self.dashboard_page.update_summary(self._dataset_store.saft_summary)
+        if self._pages.saldobalanse_page:
+            self._pages.saldobalanse_page.set_dataframe(saft_df)
+        self._pages.clear_comparison_tables()
+        if self._pages.dashboard_page:
+            self._pages.dashboard_page.update_summary(self._dataset_store.saft_summary)
 
         header = self._dataset_store.header
         company = header.company_name if header else None
@@ -244,7 +270,7 @@ class SaftDataController:
             f"Datasett: {dataset_label}",
         ]
         status_message = " · ".join(bit for bit in status_bits if bit)
-        if self.import_page:
+        if self._pages.import_page:
             misc_entries: List[Tuple[str, str]] = [
                 ("Datasett", dataset_label or Path(result.file_path).name),
                 ("Filnavn", Path(result.file_path).name),
@@ -261,8 +287,8 @@ class SaftDataController:
             misc_entries.append(
                 ("Oppdatert", datetime.now().strftime("%d.%m.%Y %H:%M"))
             )
-            self.import_page.update_misc_info(misc_entries)
-            self.import_page.update_status(status_message)
+            self._pages.import_page.update_misc_info(misc_entries)
+            self._pages.import_page.update_status(status_message)
         if log_event:
             self.log_import_event(
                 f"{dataset_label or Path(result.file_path).name}: SAF-T lesing fullført. "
@@ -270,8 +296,8 @@ class SaftDataController:
             )
 
         validation = self._dataset_store.validation_result
-        if self.import_page:
-            self.import_page.update_validation_status(validation)
+        if self._pages.import_page:
+            self._pages.import_page.update_validation_status(validation)
         if log_event and validation is not None:
             if validation.is_valid is True:
                 self.log_import_event("XSD-validering fullført: OK.")
@@ -282,13 +308,13 @@ class SaftDataController:
                     "XSD-validering: detaljer tilgjengelig, se importstatus."
                 )
         if validation and validation.is_valid is False:
-            if self.import_page:
+            if self._pages.import_page:
                 detail = (
                     validation.details.strip().splitlines()[0]
                     if validation.details and validation.details.strip()
                     else "Valideringen mot XSD feilet."
                 )
-                self.import_page.record_error(f"XSD-validering: {detail}")
+                self._pages.import_page.record_error(f"XSD-validering: {detail}")
             QMessageBox.warning(
                 self._parent,
                 "XSD-validering feilet",
@@ -298,27 +324,27 @@ class SaftDataController:
         elif validation and validation.is_valid is None and validation.details:
             QMessageBox.information(self._parent, "XSD-validering", validation.details)
 
-        if self.sales_ar_page:
-            self.sales_ar_page.set_controls_enabled(
+        if self._pages.sales_ar_page:
+            self._pages.sales_ar_page.set_controls_enabled(
                 self._dataset_store.has_customer_data
             )
-            self.sales_ar_page.clear_top_customers()
-        if self.purchases_ap_page:
-            self.purchases_ap_page.set_controls_enabled(
+            self._pages.sales_ar_page.clear_top_customers()
+        if self._pages.purchases_ap_page:
+            self._pages.purchases_ap_page.set_controls_enabled(
                 self._dataset_store.has_supplier_data
             )
-            self.purchases_ap_page.clear_top_suppliers()
-        if self.cost_review_page:
-            self.cost_review_page.set_vouchers(self._dataset_store.cost_vouchers)
+            self._pages.purchases_ap_page.clear_top_suppliers()
+        if self._pages.cost_review_page:
+            self._pages.cost_review_page.set_vouchers(self._dataset_store.cost_vouchers)
 
-        if self.vesentlig_page:
-            self.vesentlig_page.update_summary(self._dataset_store.saft_summary)
-        if self.regnskap_page:
+        if self._pages.vesentlig_page:
+            self._pages.vesentlig_page.update_summary(self._dataset_store.saft_summary)
+        if self._pages.regnskap_page:
             fiscal_year = header.fiscal_year if header else None
-            self.regnskap_page.set_dataframe(saft_df, fiscal_year)
-        if self.sammenstilling_page:
+            self._pages.regnskap_page.set_dataframe(saft_df, fiscal_year)
+        if self._pages.sammenstilling_page:
             fiscal_year = header.fiscal_year if header else None
-            self.sammenstilling_page.set_dataframe(saft_df, fiscal_year)
+            self._pages.sammenstilling_page.set_dataframe(saft_df, fiscal_year)
         brreg_status = self._process_brreg_result(result)
 
         self._header_bar.set_export_enabled(True)
@@ -348,8 +374,8 @@ class SaftDataController:
 
     # region Brreg og analyser
     def _process_brreg_result(self, result: SaftLoadResult) -> str:
-        if self.import_page:
-            self.import_page.update_industry(
+        if self._pages.import_page:
+            self._pages.import_page.update_industry(
                 self._dataset_store.industry, self._dataset_store.industry_error
             )
 
@@ -366,9 +392,9 @@ class SaftDataController:
                 message = "Regnskapsregister: import feilet."
             else:
                 message = "Regnskapsregister: ikke tilgjengelig (mangler org.nr.)."
-            if self.import_page:
-                self.import_page.update_brreg_status(message)
-                self.import_page.record_error(message)
+            if self._pages.import_page:
+                self._pages.import_page.update_brreg_status(message)
+                self._pages.import_page.record_error(message)
             self.log_import_event(message)
             return message
 
@@ -379,80 +405,34 @@ class SaftDataController:
                 "Regnskapsregister: import vellykket, men ingen SAF-T-oppsummering å "
                 "sammenligne."
             )
-            if self.import_page:
-                self.import_page.update_brreg_status(message)
+            if self._pages.import_page:
+                self._pages.import_page.update_brreg_status(message)
             self.log_import_event(message)
             return message
 
         comparison_rows = self.build_brreg_comparison_rows()
         self.update_comparison_tables(comparison_rows)
         message = "Regnskapsregister: import vellykket."
-        if self.import_page:
-            self.import_page.update_brreg_status(message)
+        if self._pages.import_page:
+            self._pages.import_page.update_brreg_status(message)
         self.log_import_event(message)
         return message
 
     def update_comparison_tables(self, rows: Optional[ComparisonRows]) -> None:
-        self._latest_comparison_rows = list(rows) if rows is not None else None
-        if self.kontroll_page:
-            self.kontroll_page.update_comparison(rows)
-        if self.regnskap_page:
-            self.regnskap_page.update_comparison(rows)
+        self._pages.update_comparison_tables(rows)
 
     def build_brreg_comparison_rows(
         self,
     ) -> Optional[List[Tuple[str, Optional[float], Optional[float], Optional[float]]]]:
-        summary = self._dataset_store.saft_summary
-        brreg_map = self._dataset_store.brreg_map
-        if not summary or not brreg_map:
-            return None
-
-        return [
-            (
-                "Driftsinntekter",
-                summary.get("driftsinntekter"),
-                brreg_map.get("driftsinntekter"),
-                None,
-            ),
-            (
-                "EBIT",
-                summary.get("ebit"),
-                brreg_map.get("ebit"),
-                None,
-            ),
-            (
-                "Årsresultat",
-                summary.get("arsresultat"),
-                brreg_map.get("arsresultat"),
-                None,
-            ),
-            (
-                "Eiendeler (UB)",
-                summary.get("eiendeler_UB_brreg"),
-                brreg_map.get("eiendeler_UB"),
-                None,
-            ),
-            (
-                "Egenkapital (UB)",
-                summary.get("egenkapital_UB"),
-                brreg_map.get("egenkapital_UB"),
-                None,
-            ),
-            (
-                "Gjeld (UB)",
-                summary.get("gjeld_UB_brreg"),
-                brreg_map.get("gjeld_UB"),
-                None,
-            ),
-        ]
+        return self._pages.build_brreg_comparison_rows()
 
     # endregion
 
     # region Hendelser
     def on_load_error(self, message: str) -> None:
         self.log_import_event(f"Feil ved lesing av SAF-T: {message}")
-        if self.import_page:
-            self.import_page.record_error(f"Lesing av SAF-T: {message}")
+        if self._pages.import_page:
+            self._pages.import_page.record_error(f"Lesing av SAF-T: {message}")
         QMessageBox.critical(self._parent, "Feil ved lesing av SAF-T", message)
 
     def on_calc_top_customers(
