@@ -97,32 +97,76 @@ Testene genererer alle nødvendige SAF-T- og regnskapsdata programmatisk ved kj�
 
 ## Struktur
 
+Tabellen under viser hvordan prosjektet nå er delt inn. Målet er å gjøre det
+enkelt å finne riktig sted når du skal feilsøke, legge til analyser eller
+justere brukergrensesnittet.
+
 ```
 Nordlys/
-├── main.py                # Inngangspunkt som starter PySide6-applikasjonen
+├── main.py                     # Starter hele PySide6-applikasjonen
 ├── nordlys/
-│   ├── brreg.py                 # Høyere nivå-funksjoner for Brønnøysund-data
-│   ├── constants.py             # Konstanter som brukes på tvers av modulene
 │   ├── core/
-│   │   └── task_runner.py       # Felles logikk for bakgrunnsoppgaver og fremdrift
-│   ├── industry_groups.py       # Bransjeklassifisering og caching
-│   ├── industry_groups_cli.py   # Kommandolinjegrensesnitt for klassifisering
+│   │   └── task_runner.py      # Oppgavekø som holder tunge jobber unna UI-tråden
+│   ├── helpers/
+│   │   ├── formatting.py       # Felles regler for tall- og tekstformatering
+│   │   ├── lazy_imports.py     # Hjelper med å laste tunge biblioteker ved behov
+│   │   ├── number_parsing.py   # Tolkning av tall fra SAF-T og CSV
+│   │   └── xml_helpers.py      # Små verktøy for trygg XML-lesing
 │   ├── integrations/
-│   │   └── brreg_service.py     # HTTP-klient med caching mot Brønnøysund
-│   ├── regnskap/               # Forberedelse og analyser av saldobalanse
-│   │   ├── __init__.py         # Offentlig API for regnskapsanalyse
-│   │   ├── analysis.py         # Logikk for balanse- og resultatrapport
-│   │   └── prep.py             # Normalisering og summering av saldobalanse
+│   │   └── brreg_service.py    # HTTP-klient med cache mot Brønnøysundregistrene
+│   ├── regnskap/
+│   │   ├── analysis.py         # Beregner nøkkeltall og revisjonskort
+│   │   └── prep.py             # Gjør saldobalansen klar for analyse
 │   ├── saft/
-│   │   └── parsing.py           # Kjernefunksjoner for å lese SAF-T XML
-│   ├── saft_customers.py        # Kunde- og leverandøranalyse + eksport
-│   ├── ui/
-│   │   ├── models/              # Qt-modeller for tabeller og lister
-│   │   └── pyside_app.py        # GUI-komponenter, datasettvelger og interaksjon
-│   ├── helpers/                # Oppdeling av tidligere utils.py
-│   └── resources/               # Ikoner og cachefiler brukt i grensesnittet
-└── tests/                 # Pytest-tester som genererer data programmatisk
+│   │   ├── loader.py           # Leser SAF-T-filer og bygger datastrukturen
+│   │   ├── parsing.py          # Strømmer XML og validerer innhold
+│   │   ├── analytics.py        # Temaanalyser av hovedbok og bilag
+│   │   └── export.py           # Utskrift til CSV og Excel
+│   ├── saft_customers.py       # Samler kunde- og leverandørinformasjon
+│   ├── industry_groups.py      # Bransjekoder og grupperinger med cache
+│   ├── industry_groups_cli.py  # Lite CLI for å teste bransjeklassifisering
+│   ├── brreg.py                # Høyere nivå-funksjoner for oppslag i Brønnøysund
+│   ├── constants.py            # Samlede konstanter og typer brukt i hele appen
+│   ├── settings.py             # Leser miljøvariabler og andre innstillinger
+│   ├── utils.py                # Mindre hjelpefunksjoner som gjenbrukes flere steder
+│   └── ui/
+│       ├── config.py           # Konfigurasjon for tema, skrifttyper og farger
+│       ├── data_controller/    # Laster datasett og holder styr på statusmeldinger
+│       ├── data_manager/       # Deling av datasett mellom ulike sider i UI-et
+│       ├── models/             # Qt-modeller for tabeller, lister og analyser
+│       ├── navigation.py       # Felles navigasjonslogikk for sider og kort
+│       ├── navigation_builder.py # Definerer hvilke sider og kort som vises
+│       ├── pages/              # Selve sidene (import, dashboard, analyser m.m.)
+│       ├── pyside_app.py       # Starter Qt-applikasjonen og hovedvinduet
+│       ├── widgets.py          # Egendefinerte Qt-widgets for tabeller og kort
+│       └── styles.py           # Samler QSS-stiler for et enhetlig uttrykk
+├── tests/
+│   ├── conftest.py             # Testdata og felles fiksturer
+│   └── test_*.py               # Dekker SAF-T-parsing, analyser og integrasjoner
+└── requirements.txt, pyproject.toml osv.
 ```
+
+### Samspillet mellom modulene
+
+- **SAF-T-flyten** starter i `nordlys/saft/loader.py`. Filene leses inn,
+  valideres og sendes videre til `regnskap/` for tallknusing.
+- **Analyse og revisjonskort** bygges i `nordlys/regnskap/analysis.py`, som
+  bruker helper-modulene for avrunding, gruppering og visning.
+- **Brønnøysund-oppdateringer** går gjennom `nordlys/brreg.py`, som igjen
+  bruker `integrations/brreg_service.py` for selve HTTP-kallene og caching.
+- **Brukergrensesnittet** styres fra `nordlys/ui/pyside_app.py`. Her kobles
+  `data_controller/` og `page_manager.py` sammen slik at hver side får riktig
+  datasett og status. Sidene i `ui/pages/` leser data fra modeller i
+  `ui/models/` og viser dem i komponenter fra `ui/widgets.py`.
+- **Bakgrunnsjobber** håndteres av `core/task_runner.py`, slik at store filer
+  ikke fryser brukeropplevelsen.
+
+### Ressurser og testdata
+
+- Ikoner og XSD-filer ligger i `nordlys/resources/`. Disse pakkes inn med
+  applikasjonen slik at alt fungerer også uten nett.
+- Testpakken i `tests/` bygger nødvendige SAF-T-eksempler automatisk. Du kan
+  derfor kjøre `pytest` uten å finne egne datafiler.
 
 ## Nyttige tips for videre utvikling
 
