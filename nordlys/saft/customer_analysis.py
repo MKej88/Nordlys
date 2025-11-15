@@ -87,29 +87,29 @@ def build_customer_supplier_analysis(
     supplier_purchases: Optional["pd.DataFrame"] = None
     cost_vouchers: List["saft_customers.CostVoucher"] = []
 
-    if analysis_year is None:
-        period_start = _parse_date(header.period_start) if header else None
-        period_end = _parse_date(header.period_end) if header else None
-        if period_start or period_end:
-            if parent_map is None:
-                parent_map = saft_customers.build_parent_map(root)
-            customer_sales, supplier_purchases = (
-                saft_customers.compute_customer_supplier_totals(
-                    root,
-                    ns,
-                    date_from=period_start,
-                    date_to=period_end,
-                    parent_map=parent_map,
-                )
-            )
-            cost_vouchers = saft_customers.extract_cost_vouchers(
+    period_start = _parse_date(header.period_start) if header else None
+    period_end = _parse_date(header.period_end) if header else None
+
+    if period_start or period_end:
+        if parent_map is None:
+            parent_map = saft_customers.build_parent_map(root)
+        customer_sales, supplier_purchases = (
+            saft_customers.compute_customer_supplier_totals(
                 root,
                 ns,
                 date_from=period_start,
                 date_to=period_end,
                 parent_map=parent_map,
             )
-    else:
+        )
+        cost_vouchers = saft_customers.extract_cost_vouchers(
+            root,
+            ns,
+            date_from=period_start,
+            date_to=period_end,
+            parent_map=parent_map,
+        )
+    elif analysis_year is not None:
         if parent_map is None:
             parent_map = saft_customers.build_parent_map(root)
         customer_sales, supplier_purchases = (

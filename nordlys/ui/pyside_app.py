@@ -164,3 +164,11 @@ def create_app() -> Tuple[QApplication, NordlysWindow]:
         app = QApplication(sys.argv)
     window = NordlysWindow()
     return app, window
+
+
+def run() -> None:
+    """Start GUI-applikasjonen."""
+
+    app, window = create_app()
+    window.show()
+    sys.exit(app.exec())
