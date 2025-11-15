@@ -3,28 +3,12 @@
 from __future__ import annotations
 
 import sys
-from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    Dict,
-    List,
-    Optional,
-    Sequence,
-    Set,
-    Tuple,
-    cast,
-)
-from PySide6.QtCore import Qt, Slot, QTimer
-from PySide6.QtGui import QBrush, QColor, QFont
+from typing import Callable, Dict, List, Optional, Sequence, Set, Tuple, cast
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QApplication,
-    QComboBox,
-    QFileDialog,
-    QFrame,
     QGridLayout,
     QHeaderView,
     QHBoxLayout,
@@ -32,13 +16,11 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QProgressBar,
-    QPushButton,
     QSizePolicy,
     QStackedWidget,
     QStatusBar,
     QTableWidget,
     QTabWidget,
-    QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
@@ -51,11 +33,14 @@ except ImportError:  # PySide6 < 6.7
 
 from ..constants import APP_TITLE
 from ..core.task_runner import TaskRunner
-from ..saft.loader import SaftLoadResult, load_saft_files
+from ..saft.loader import SaftLoadResult
 from ..utils import format_currency, lazy_pandas
-from .config import PRIMARY_UI_FONT_FAMILY, REVISION_TASKS, icon_for_navigation
-from .data_manager import DataUnavailableError, SaftDataManager
-from .pages.analysis_pages import (
+from .config import REVISION_TASKS
+from .data_manager import DataUnavailableError, SaftAnalytics, SaftDatasetStore
+from .header_bar import HeaderBar
+from .import_export import ImportExportController
+from .navigation import NavigationPanel
+from .pages import (
     ComparisonPage,
     RegnskapsanalysePage,
     SammenstillingsanalysePage,
@@ -70,102 +55,12 @@ from .pages.revision_pages import (
     PurchasesApPage,
     SalesArPage,
 )
-from .widgets import CardFrame, TaskProgressDialog
+from .widgets import CardFrame
 
 pd = lazy_pandas()
 
-if TYPE_CHECKING:  # pragma: no cover - kun for typekontroll
-    import pandas as pd
-
-
 TOP_BORDER_ROLE = Qt.UserRole + 41
 BOTTOM_BORDER_ROLE = Qt.UserRole + 42
-
-
-@dataclass
-@dataclass
-class NavigationItem:
-    key: str
-    item: QTreeWidgetItem
-
-
-class NavigationPanel(QFrame):
-    """Sidepanel med navigasjonsstruktur."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.setObjectName("navPanel")
-        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 32, 24, 32)
-        layout.setSpacing(24)
-
-        self.logo_label = QLabel("Nordlys")
-        self.logo_label.setObjectName("logoLabel")
-        logo_font = self.logo_label.font()
-        logo_font.setFamily(PRIMARY_UI_FONT_FAMILY)
-        self.logo_label.setFont(logo_font)
-        layout.addWidget(self.logo_label)
-
-        self.tree = QTreeWidget()
-        self.tree.setObjectName("navTree")
-        self.tree.setHeaderHidden(True)
-        self.tree.setExpandsOnDoubleClick(False)
-        self.tree.setIndentation(12)
-        self.tree.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.tree.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.tree.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.tree.setRootIsDecorated(False)
-        self.tree.setItemsExpandable(False)
-        self.tree.setFocusPolicy(Qt.NoFocus)
-        layout.addWidget(self.tree, 1)
-
-    def add_root(self, title: str, key: str | None = None) -> NavigationItem:
-        item = QTreeWidgetItem([title])
-        if key:
-            item.setData(0, Qt.UserRole, key)
-            font = item.font(0)
-            font.setFamily(PRIMARY_UI_FONT_FAMILY)
-            font.setPointSize(font.pointSize() + 1)
-            font.setWeight(QFont.DemiBold)
-            item.setFont(0, font)
-            item.setForeground(0, QBrush(QColor("#f8fafc")))
-            icon = icon_for_navigation(key)
-            if icon:
-                item.setIcon(0, icon)
-        else:
-            font = item.font(0)
-            font.setFamily(PRIMARY_UI_FONT_FAMILY)
-            font.setPointSize(max(font.pointSize() - 1, 9))
-            font.setWeight(QFont.DemiBold)
-            font.setCapitalization(QFont.AllUppercase)
-            font.setLetterSpacing(QFont.PercentageSpacing, 115)
-            item.setFont(0, font)
-            item.setForeground(0, QBrush(QColor("#94a3b8")))
-            item.setFlags(
-                item.flags()
-                & ~Qt.ItemIsSelectable
-                & ~Qt.ItemIsDragEnabled
-                & ~Qt.ItemIsDropEnabled
-            )
-        self.tree.addTopLevelItem(item)
-        self.tree.expandItem(item)
-        return NavigationItem(key or title.lower(), item)
-
-    def add_child(self, parent: NavigationItem, title: str, key: str) -> NavigationItem:
-        item = QTreeWidgetItem([title])
-        item.setData(0, Qt.UserRole, key)
-        font = item.font(0)
-        font.setFamily(PRIMARY_UI_FONT_FAMILY)
-        font.setWeight(QFont.Medium)
-        item.setFont(0, font)
-        item.setForeground(0, QBrush(QColor("#e2e8f0")))
-        icon = icon_for_navigation(key)
-        if icon:
-            item.setIcon(0, icon)
-        parent.item.addChild(item)
-        parent.item.setExpanded(True)
-        return NavigationItem(key, item)
 
 
 class NordlysWindow(QMainWindow):
@@ -187,20 +82,13 @@ class NordlysWindow(QMainWindow):
         self.setMinimumSize(1024, 680)
         self.setMaximumSize(16777215, 16777215)
 
-        self._data_manager = SaftDataManager()
-        self._loading_files: List[str] = []
+        self._dataset_store = SaftDatasetStore()
+        self._analytics = SaftAnalytics(self._dataset_store)
 
         self._task_runner = TaskRunner(self)
-        self._task_runner.sig_started.connect(self._on_task_started)
-        self._task_runner.sig_progress.connect(self._on_task_progress)
-        self._task_runner.sig_done.connect(self._on_task_done)
-        self._task_runner.sig_error.connect(self._on_task_error)
 
-        self._current_task_id: Optional[str] = None
-        self._current_task_meta: Dict[str, Any] = {}
         self._status_progress_label: Optional[QLabel] = None
         self._status_progress_bar: Optional[QProgressBar] = None
-        self._progress_dialog: Optional[TaskProgressDialog] = None
 
         self._page_map: Dict[str, QWidget] = {}
         self._page_factories: Dict[str, Callable[[], QWidget]] = {}
@@ -226,6 +114,23 @@ class NordlysWindow(QMainWindow):
         self._setup_ui()
         self._apply_styles()
 
+        self._import_controller = ImportExportController(
+            parent=self,
+            data_manager=self._dataset_store,
+            task_runner=self._task_runner,
+            apply_results=self._apply_saft_batch,
+            set_loading_state=self._set_loading_state,
+            status_callback=self.statusBar().showMessage,
+            log_import_event=self._log_import_event,
+            load_error_handler=self._on_load_error,
+        )
+        if self._status_progress_label and self._status_progress_bar:
+            self._import_controller.register_status_widgets(
+                self._status_progress_label, self._status_progress_bar
+            )
+        self.header_bar.open_requested.connect(self._import_controller.handle_open)
+        self.header_bar.export_requested.connect(self._import_controller.handle_export)
+
     # region UI
     def _setup_ui(self) -> None:
         central = QWidget()
@@ -245,34 +150,9 @@ class NordlysWindow(QMainWindow):
         root_layout.addWidget(content_wrapper, 1)
         self._content_layout = content_layout
 
-        header_layout = QHBoxLayout()
-        header_layout.setSpacing(16)
-
-        self.title_label = QLabel("Import")
-        self.title_label.setObjectName("pageTitle")
-        header_layout.addWidget(self.title_label, 1)
-
-        self.dataset_combo = QComboBox()
-        self.dataset_combo.setObjectName("datasetCombo")
-        self.dataset_combo.setSizeAdjustPolicy(QComboBox.AdjustToContents)
-        self.dataset_combo.setPlaceholderText("Velg datasett")
-        self.dataset_combo.setToolTip(
-            "Når du har importert flere SAF-T-filer kan du raskt bytte aktive data her."
-        )
-        self.dataset_combo.setVisible(False)
-        self.dataset_combo.currentIndexChanged.connect(self._on_dataset_changed)
-        header_layout.addWidget(self.dataset_combo)
-
-        self.btn_open = QPushButton("Åpne SAF-T XML …")
-        self.btn_open.clicked.connect(self.on_open)
-        header_layout.addWidget(self.btn_open)
-
-        self.btn_export = QPushButton("Eksporter rapport (Excel)")
-        self.btn_export.clicked.connect(self.on_export)
-        self.btn_export.setEnabled(False)
-        header_layout.addWidget(self.btn_export)
-
-        content_layout.addLayout(header_layout)
+        self.header_bar = HeaderBar()
+        self.header_bar.dataset_changed.connect(self._on_dataset_changed)
+        content_layout.addWidget(self.header_bar)
 
         self.info_card = CardFrame("Selskapsinformasjon")
         info_grid = QGridLayout()
@@ -471,37 +351,37 @@ class NordlysWindow(QMainWindow):
         if key in REVISION_TASKS:
             self.revision_pages[key] = widget
         if key == "dashboard" and isinstance(widget, DashboardPage):
-            widget.update_summary(self._data_manager.saft_summary)
+            widget.update_summary(self._dataset_store.saft_summary)
         elif key == "plan.saldobalanse" and isinstance(widget, DataFramePage):
-            widget.set_dataframe(self._data_manager.saft_df)
+            widget.set_dataframe(self._dataset_store.saft_df)
         elif key == "plan.kontroll" and isinstance(widget, ComparisonPage):
             widget.update_comparison(self._latest_comparison_rows)
         elif key == "plan.regnskapsanalyse" and isinstance(
             widget, RegnskapsanalysePage
         ):
-            header = self._data_manager.header
+            header = self._dataset_store.header
             fiscal_year = header.fiscal_year if header else None
-            widget.set_dataframe(self._data_manager.saft_df, fiscal_year)
+            widget.set_dataframe(self._dataset_store.saft_df, fiscal_year)
             widget.update_comparison(self._latest_comparison_rows)
         elif key == "plan.vesentlighet" and isinstance(widget, SummaryPage):
-            widget.update_summary(self._data_manager.saft_summary)
+            widget.update_summary(self._dataset_store.saft_summary)
         elif key == "plan.sammenstilling" and isinstance(
             widget, SammenstillingsanalysePage
         ):
-            header = self._data_manager.header
+            header = self._dataset_store.header
             fiscal_year = header.fiscal_year if header else None
-            widget.set_dataframe(self._data_manager.saft_df, fiscal_year)
+            widget.set_dataframe(self._dataset_store.saft_df, fiscal_year)
         elif key == "rev.salg" and isinstance(widget, SalesArPage):
             widget.set_checklist_items(REVISION_TASKS.get(key, []))
-            widget.set_controls_enabled(self._data_manager.has_customer_data)
-            if not self._data_manager.has_customer_data:
+            widget.set_controls_enabled(self._dataset_store.has_customer_data)
+            if not self._dataset_store.has_customer_data:
                 widget.clear_top_customers()
         elif key == "rev.innkjop" and isinstance(widget, PurchasesApPage):
-            widget.set_controls_enabled(self._data_manager.has_supplier_data)
-            if not self._data_manager.has_supplier_data:
+            widget.set_controls_enabled(self._dataset_store.has_supplier_data)
+            if not self._dataset_store.has_supplier_data:
                 widget.clear_top_suppliers()
         elif key == "rev.kostnad" and isinstance(widget, CostVoucherReviewPage):
-            widget.set_vouchers(self._data_manager.cost_vouchers)
+            widget.set_vouchers(self._dataset_store.cost_vouchers)
         elif key in REVISION_TASKS and isinstance(widget, ChecklistPage):
             widget.set_items(REVISION_TASKS.get(key, []))
         self._schedule_responsive_update()
@@ -540,21 +420,21 @@ class NordlysWindow(QMainWindow):
     def _build_sales_page(self, title: str, subtitle: str) -> SalesArPage:
         page = SalesArPage(title, subtitle, self._on_calc_top_customers)
         page.set_checklist_items(REVISION_TASKS.get("rev.salg", []))
-        page.set_controls_enabled(self._data_manager.has_customer_data)
-        if not self._data_manager.has_customer_data:
+        page.set_controls_enabled(self._dataset_store.has_customer_data)
+        if not self._dataset_store.has_customer_data:
             page.clear_top_customers()
         return page
 
     def _build_purchases_page(self, title: str, subtitle: str) -> "PurchasesApPage":
         page = PurchasesApPage(title, subtitle, self._on_calc_top_suppliers)
-        page.set_controls_enabled(self._data_manager.has_supplier_data)
-        if not self._data_manager.has_supplier_data:
+        page.set_controls_enabled(self._dataset_store.has_supplier_data)
+        if not self._dataset_store.has_supplier_data:
             page.clear_top_suppliers()
         return page
 
     def _build_cost_page(self, title: str, subtitle: str) -> "CostVoucherReviewPage":
         page = CostVoucherReviewPage(title, subtitle)
-        page.set_vouchers(self._data_manager.cost_vouchers)
+        page.set_vouchers(self._dataset_store.cost_vouchers)
         return page
 
     def _build_checklist_page(
@@ -804,108 +684,29 @@ class NordlysWindow(QMainWindow):
     # endregion
 
     # region Handlinger
-    def on_open(self) -> None:
-        if self._current_task_id is not None:
-            QMessageBox.information(
-                self,
-                "Laster allerede",
-                "En SAF-T-jobb kjører allerede i bakgrunnen. Vent til prosessen er ferdig.",
-            )
-            return
-        file_names, _ = QFileDialog.getOpenFileNames(
-            self,
-            "Åpne SAF-T XML",
-            str(Path.home()),
-            "SAF-T XML (*.xml);;Alle filer (*)",
-        )
-        if not file_names:
-            return
-        self._loading_files = list(file_names)
-        summary = (
-            "Starter import av 1 SAF-T-fil"
-            if len(file_names) == 1
-            else f"Starter import av {len(file_names)} SAF-T-filer"
-        )
-        self._log_import_event(summary, reset=True)
-        for name in file_names:
-            self._log_import_event(f"Forbereder: {Path(name).name}")
-        description = "Importer SAF-T"
-        task_id = self._task_runner.run(
-            load_saft_files,
-            file_names,
-            description=description,
-        )
-        self._current_task_id = task_id
-        self._current_task_meta = {
-            "type": "saft_import",
-            "files": list(file_names),
-            "description": description,
-        }
-
-    def _show_status_progress(self, message: str, value: int) -> None:
-        if self._status_progress_label is not None:
-            self._status_progress_label.setText(message)
-            self._status_progress_label.setVisible(True)
-        if self._status_progress_bar is not None:
-            clamped = max(0, min(100, int(value)))
-            self._status_progress_bar.setValue(clamped)
-            self._status_progress_bar.setVisible(True)
-        self._update_progress_dialog(message, value)
-
-    def _hide_status_progress(self) -> None:
-        if self._status_progress_label is not None:
-            self._status_progress_label.clear()
-            self._status_progress_label.setVisible(False)
-        if self._status_progress_bar is not None:
-            self._status_progress_bar.setValue(0)
-            self._status_progress_bar.setVisible(False)
-        self._close_progress_dialog()
-
-    def _ensure_progress_dialog(self) -> TaskProgressDialog:
-        if self._progress_dialog is None:
-            self._progress_dialog = TaskProgressDialog(self)
-        return self._progress_dialog
-
-    def _update_progress_dialog(self, message: str, value: int) -> None:
-        dialog = self._ensure_progress_dialog()
-        dialog.set_files(self._loading_files)
-        dialog.update_status(message, value)
-        if not dialog.isVisible():
-            dialog.show()
-        dialog.raise_()
-
-    def _close_progress_dialog(self) -> None:
-        if self._progress_dialog is None:
-            return
-        dialog = self._progress_dialog
-        self._progress_dialog = None
-        dialog.hide()
-        dialog.deleteLater()
-
     def _set_loading_state(
         self, loading: bool, status_message: Optional[str] = None
     ) -> None:
-        self.btn_open.setEnabled(not loading)
-        has_data = self._data_manager.saft_df is not None
-        self.btn_export.setEnabled(False if loading else has_data)
-        if hasattr(self, "dataset_combo"):
-            if loading:
-                self.dataset_combo.setEnabled(False)
-            else:
-                self.dataset_combo.setEnabled(bool(self._data_manager.dataset_order))
+        self.header_bar.set_open_enabled(not loading)
+        has_data = self._dataset_store.saft_df is not None
+        self.header_bar.set_export_enabled(False if loading else has_data)
+        if loading:
+            self.header_bar.set_dataset_enabled(False)
+        else:
+            self.header_bar.set_dataset_enabled(bool(self._dataset_store.dataset_order))
         if self.sales_ar_page:
             if loading:
                 self.sales_ar_page.set_controls_enabled(False)
             else:
                 self.sales_ar_page.set_controls_enabled(
-                    self._data_manager.has_customer_data
+                    self._dataset_store.has_customer_data
                 )
         if self.purchases_ap_page:
             if loading:
                 self.purchases_ap_page.set_controls_enabled(False)
             else:
                 self.purchases_ap_page.set_controls_enabled(
-                    self._data_manager.has_supplier_data
+                    self._dataset_store.has_supplier_data
                 )
         if status_message:
             self.statusBar().showMessage(status_message)
@@ -918,93 +719,19 @@ class NordlysWindow(QMainWindow):
             self.import_page.reset_errors()
         self.import_page.append_log(message)
 
-    def _finalize_loading(self, status_message: Optional[str] = None) -> None:
-        self._hide_status_progress()
-        self._set_loading_state(False)
-        if status_message:
-            self.statusBar().showMessage(status_message)
-        else:
-            self.statusBar().showMessage("Klar.")
-        self._loading_files = []
-        self._current_task_id = None
-        self._current_task_meta = {}
-
-    @Slot(str)
-    def _on_task_started(self, task_id: str) -> None:
-        if task_id != self._current_task_id:
-            return
-        if len(self._loading_files) == 1:
-            message = f"Laster SAF-T: {Path(self._loading_files[0]).name} …"
-        elif len(self._loading_files) > 1:
-            message = f"Laster {len(self._loading_files)} SAF-T-filer …"
-        else:
-            message = "Laster SAF-T …"
-        self._set_loading_state(True, message)
-        self._show_status_progress(message, 0)
-
-    @Slot(str, int, str)
-    def _on_task_progress(self, task_id: str, percent: int, message: str) -> None:
-        if task_id != self._current_task_id:
-            return
-        clean_message = message.strip() if message else ""
-        if not clean_message:
-            clean_message = self._current_task_meta.get("description", "Arbeid pågår …")
-        self._show_status_progress(clean_message, percent)
-        self.statusBar().showMessage(clean_message)
-
-    @Slot(str, object)
-    def _on_task_done(self, task_id: str, result: object) -> None:
-        if task_id != self._current_task_id:
-            return
-        task_type = self._current_task_meta.get("type")
-        if task_type == "saft_import":
-            self._on_load_finished(result)
-        else:
-            self._finalize_loading()
-
-    @Slot(str, str)
-    def _on_task_error(self, task_id: str, exc_str: str) -> None:
-        if task_id != self._current_task_id:
-            return
-        message = self._format_task_error(exc_str)
-        task_type = self._current_task_meta.get("type")
-        if task_type == "saft_import":
-            self._on_load_error(message)
-        else:
-            self._finalize_loading(message)
-
-    def _format_task_error(self, exc_str: str) -> str:
-        text = exc_str.strip()
-        if not text:
-            return "Ukjent feil"
-        lines = [line.strip() for line in text.splitlines() if line.strip()]
-        if not lines:
-            return "Ukjent feil"
-        return lines[-1]
-
-    @Slot(object)
-    def _on_load_finished(self, result_obj: object) -> None:
-        results: List[SaftLoadResult]
-        if isinstance(result_obj, list):
-            results = [cast(SaftLoadResult, item) for item in result_obj]
-        else:
-            results = [cast(SaftLoadResult, result_obj)]
-        self._apply_saft_batch(results)
-        self._finalize_loading()
-
     def _apply_saft_batch(self, results: Sequence[SaftLoadResult]) -> None:
         if not results:
-            self._data_manager.reset()
+            self._dataset_store.reset()
             self._update_dataset_selector()
             if getattr(self, "import_page", None):
                 self.import_page.update_invoice_count(None)
                 self.import_page.update_misc_info(None)
             return
 
-        self._data_manager.apply_batch(results)
+        self._dataset_store.apply_batch(results)
         self._update_dataset_selector()
 
-        default_key = self._data_manager.select_default_key()
+        default_key = self._dataset_store.select_default_key()
         if default_key is None:
             return
 
@@ -1015,66 +742,47 @@ class NordlysWindow(QMainWindow):
             )
 
     def _update_dataset_selector(self) -> None:
-        if not hasattr(self, "dataset_combo"):
-            return
-        combo = self.dataset_combo
-        combo.blockSignals(True)
-        combo.clear()
-        dataset_items = self._data_manager.dataset_items()
+        dataset_items = self._dataset_store.dataset_items()
         if not dataset_items:
-            combo.setVisible(False)
-            combo.blockSignals(False)
+            self.header_bar.clear_datasets()
             return
-        for item in dataset_items:
-            combo.addItem(
-                self._data_manager.dataset_label(item.result), userData=item.key
-            )
-        combo.setVisible(True)
-        combo.setEnabled(bool(dataset_items))
-        current_key = self._data_manager.current_key
-        if current_key:
-            keys = [item.key for item in dataset_items]
-            if current_key in keys:
-                combo.setCurrentIndex(keys.index(current_key))
-        combo.blockSignals(False)
+        entries = [
+            (item.key, self._dataset_store.dataset_label(item.result))
+            for item in dataset_items
+        ]
+        self.header_bar.set_dataset_items(entries, self._dataset_store.current_key)
+        self.header_bar.set_dataset_enabled(True)
 
     def _activate_dataset(self, key: str, *, log_event: bool = False) -> None:
-        if not self._data_manager.activate(key):
+        if not self._dataset_store.activate(key):
             return
-        if hasattr(self, "dataset_combo"):
-            dataset_items = self._data_manager.dataset_items()
-            keys = [item.key for item in dataset_items]
-            if key in keys:
-                combo = self.dataset_combo
-                combo.blockSignals(True)
-                combo.setCurrentIndex(keys.index(key))
-                combo.blockSignals(False)
+        dataset_items = self._dataset_store.dataset_items()
+        keys = [item.key for item in dataset_items]
+        if key in keys:
+            self.header_bar.select_dataset(key)
         self._apply_saft_result(key, log_event=log_event)
         if not log_event:
-            current_result = self._data_manager.current_result
+            current_result = self._dataset_store.current_result
             if current_result is not None:
-                label = self._data_manager.dataset_label(current_result)
+                label = self._dataset_store.dataset_label(current_result)
                 self._log_import_event(f"Viser datasett: {label}")
 
-    def _on_dataset_changed(self, index: int) -> None:
-        if index < 0 or index >= self.dataset_combo.count():
-            return
-        key = self.dataset_combo.itemData(index)
+    def _on_dataset_changed(self, key: str) -> None:
         if not isinstance(key, str):
             return
-        if key == self._data_manager.current_key:
+        if key == self._dataset_store.current_key:
             return
         self._activate_dataset(key)
 
     def _apply_saft_result(self, key: str, *, log_event: bool = False) -> None:
-        result = self._data_manager.current_result
+        result = self._dataset_store.current_result
         if result is None:
             return
 
         if getattr(self, "import_page", None):
-            self.import_page.update_invoice_count(len(self._data_manager.cost_vouchers))
+            self.import_page.update_invoice_count(len(self._dataset_store.cost_vouchers))
 
-        saft_df = self._data_manager.saft_df
+        saft_df = self._dataset_store.saft_df
         if saft_df is not None:
             df = saft_df
         else:
@@ -1095,21 +803,21 @@ class NordlysWindow(QMainWindow):
             Optional[DashboardPage], getattr(self, "dashboard_page", None)
         )
         if dashboard_page:
-            dashboard_page.update_summary(self._data_manager.saft_summary)
+            dashboard_page.update_summary(self._dataset_store.saft_summary)
 
-        header = self._data_manager.header
+        header = self._dataset_store.header
         company = header.company_name if header else None
         orgnr = header.orgnr if header else None
         period = None
         if header:
             period = f"{header.fiscal_year or '—'} P{header.period_start or '?'}–P{header.period_end or '?'}"
-        summary = self._data_manager.saft_summary or {}
+        summary = self._dataset_store.saft_summary or {}
         revenue_value = summary.get("driftsinntekter")
         revenue_txt = (
             format_currency(revenue_value) if revenue_value is not None else "—"
         )
         account_count = len(df.index)
-        dataset_label = self._data_manager.dataset_label(result)
+        dataset_label = self._dataset_store.dataset_label(result)
         status_bits = [
             company or "Ukjent selskap",
             f"Org.nr: {orgnr}" if orgnr else "Org.nr: –",
@@ -1143,7 +851,7 @@ class NordlysWindow(QMainWindow):
                 f"{dataset_label or Path(result.file_path).name}: SAF-T lesing fullført. {account_count} konti analysert."
             )
 
-        validation = self._data_manager.validation_result
+        validation = self._dataset_store.validation_result
         if getattr(self, "import_page", None):
             self.import_page.update_validation_status(validation)
         if log_event and validation is not None:
@@ -1174,22 +882,22 @@ class NordlysWindow(QMainWindow):
 
         if self.sales_ar_page:
             self.sales_ar_page.set_controls_enabled(
-                self._data_manager.has_customer_data
+                self._dataset_store.has_customer_data
             )
             self.sales_ar_page.clear_top_customers()
         if self.purchases_ap_page:
             self.purchases_ap_page.set_controls_enabled(
-                self._data_manager.has_supplier_data
+                self._dataset_store.has_supplier_data
             )
             self.purchases_ap_page.clear_top_suppliers()
         if self.cost_review_page:
-            self.cost_review_page.set_vouchers(self._data_manager.cost_vouchers)
+            self.cost_review_page.set_vouchers(self._dataset_store.cost_vouchers)
 
         vesentlig_page = cast(
             Optional[SummaryPage], getattr(self, "vesentlig_page", None)
         )
         if vesentlig_page:
-            vesentlig_page.update_summary(self._data_manager.saft_summary)
+            vesentlig_page.update_summary(self._dataset_store.saft_summary)
         regnskap_page = cast(
             Optional[RegnskapsanalysePage], getattr(self, "regnskap_page", None)
         )
@@ -1205,8 +913,8 @@ class NordlysWindow(QMainWindow):
             sammenstilling_page.set_dataframe(df, fiscal_year)
         brreg_status = self._process_brreg_result(result)
 
-        self.btn_export.setEnabled(True)
-        dataset_count = len(self._data_manager.dataset_order)
+        self.header_bar.set_export_enabled(True)
+        dataset_count = len(self._dataset_store.dataset_order)
         status_parts = [
             f"Datasett aktivt: {dataset_label or Path(result.file_path).name}."
         ]
@@ -1221,10 +929,10 @@ class NordlysWindow(QMainWindow):
 
         if getattr(self, "import_page", None):
             self.import_page.update_industry(
-                self._data_manager.industry, self._data_manager.industry_error
+                self._dataset_store.industry, self._dataset_store.industry_error
             )
 
-        brreg_json = self._data_manager.brreg_json
+        brreg_json = self._dataset_store.brreg_json
 
         if brreg_json is None:
             self._update_comparison_tables(None)
@@ -1243,7 +951,7 @@ class NordlysWindow(QMainWindow):
             self._log_import_event(message)
             return message
 
-        summary = self._data_manager.saft_summary
+        summary = self._dataset_store.saft_summary
         if not summary:
             self._update_comparison_tables(None)
             message = "Regnskapsregister: import vellykket, men ingen SAF-T-oppsummering å sammenligne."
@@ -1285,8 +993,8 @@ class NordlysWindow(QMainWindow):
     ) -> Optional[List[Tuple[str, Optional[float], Optional[float], Optional[float]]]]:
         """Konstruerer rader for sammenligning mot Regnskapsregisteret."""
 
-        summary = self._data_manager.saft_summary
-        brreg_map = self._data_manager.brreg_map
+        summary = self._dataset_store.saft_summary
+        brreg_map = self._dataset_store.brreg_map
         if not summary or not brreg_map:
             return None
 
@@ -1330,7 +1038,6 @@ class NordlysWindow(QMainWindow):
         ]
 
     def _on_load_error(self, message: str) -> None:
-        self._finalize_loading("Feil ved lesing av SAF-T.")
         self._log_import_event(f"Feil ved lesing av SAF-T: {message}")
         if getattr(self, "import_page", None):
             self.import_page.record_error(f"Lesing av SAF-T: {message}")
@@ -1341,7 +1048,7 @@ class NordlysWindow(QMainWindow):
     ) -> Optional[List[Tuple[str, str, int, float]]]:
         _ = source  # kilde er alltid 3xxx-transaksjoner
         try:
-            rows = self._data_manager.top_customers(topn)
+            rows = self._analytics.top_customers(topn)
         except DataUnavailableError as exc:
             QMessageBox.information(self, "Ingen inntektslinjer", str(exc))
             return None
@@ -1353,7 +1060,7 @@ class NordlysWindow(QMainWindow):
     ) -> Optional[List[Tuple[str, str, int, float]]]:
         _ = source  # kilde er alltid kostnadskonti
         try:
-            rows = self._data_manager.top_suppliers(topn)
+            rows = self._analytics.top_suppliers(topn)
         except DataUnavailableError as exc:
             QMessageBox.information(self, "Ingen innkjøpslinjer", str(exc))
             return None
@@ -1361,51 +1068,6 @@ class NordlysWindow(QMainWindow):
             f"Innkjøp per leverandør (kostnadskonti 4xxx–8xxx) beregnet. N={topn}."
         )
         return rows
-
-    def on_export(self) -> None:
-        saft_df = self._data_manager.saft_df
-        if saft_df is None:
-            QMessageBox.warning(self, "Ingenting å eksportere", "Last inn SAF-T først.")
-            return
-        file_name, _ = QFileDialog.getSaveFileName(
-            self,
-            "Eksporter rapport",
-            str(Path.home() / "SAFT_rapport.xlsx"),
-            "Excel (*.xlsx)",
-        )
-        if not file_name:
-            return
-        try:
-            with pd.ExcelWriter(file_name, engine="xlsxwriter") as writer:
-                saft_df.to_excel(writer, sheet_name="Saldobalanse", index=False)
-                summary = self._data_manager.saft_summary
-                if summary:
-                    summary_df = pd.DataFrame([summary]).T.reset_index()
-                    summary_df.columns = ["Nøkkel", "Beløp"]
-                    summary_df.to_excel(
-                        writer, sheet_name="NS4102_Sammendrag", index=False
-                    )
-                customer_sales = self._data_manager.customer_sales
-                if customer_sales is not None:
-                    customer_sales.to_excel(
-                        writer, sheet_name="Sales_by_customer", index=False
-                    )
-                brreg_json = self._data_manager.brreg_json
-                if brreg_json:
-                    pd.json_normalize(brreg_json).to_excel(
-                        writer, sheet_name="Brreg_JSON", index=False
-                    )
-                brreg_map = self._data_manager.brreg_map
-                if brreg_map:
-                    map_df = pd.DataFrame(
-                        list(brreg_map.items()), columns=["Felt", "Verdi"]
-                    )
-                    map_df.to_excel(writer, sheet_name="Brreg_Mapping", index=False)
-            self.statusBar().showMessage(f"Eksportert: {file_name}")
-            self._log_import_event(f"Rapport eksportert: {Path(file_name).name}")
-        except Exception as exc:  # pragma: no cover - vises i GUI
-            self._log_import_event(f"Feil ved eksport: {exc}")
-            QMessageBox.critical(self, "Feil ved eksport", str(exc))
 
     # endregion
 
@@ -1422,7 +1084,7 @@ class NordlysWindow(QMainWindow):
         if widget is None:
             return
         self.stack.setCurrentWidget(widget)
-        self.title_label.setText(current.text(0))
+        self.header_bar.set_title(current.text(0))
         if hasattr(self, "info_card"):
             self.info_card.setVisible(key in {"dashboard", "import"})
         self._schedule_responsive_update()
@@ -1431,7 +1093,7 @@ class NordlysWindow(QMainWindow):
 
     # region Hjelpere
     def _update_header_fields(self) -> None:
-        header = self._data_manager.header
+        header = self._dataset_store.header
         if not header:
             return
         self.lbl_company.setText(f"Selskap: {header.company_name or '–'}")

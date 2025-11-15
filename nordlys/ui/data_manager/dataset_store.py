@@ -1,17 +1,19 @@
-"""Håndtering av SAF-T-data for Nordlys sitt GUI."""
+"""Cache og hjelpefunksjoner for SAF-T datasett."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Sequence, Tuple
 
-from ..industry_groups import IndustryClassification
-from ..saft.loader import SaftLoadResult
-from ..utils import lazy_import, lazy_pandas
+from ...industry_groups import IndustryClassification
+from ...saft.loader import SaftLoadResult
+from ...utils import lazy_import, lazy_pandas
 
 pd = lazy_pandas()
 saft = lazy_import("nordlys.saft")
 saft_customers = lazy_import("nordlys.saft_customers")
+
+__all__ = ["DatasetMetadata", "SaftDatasetStore"]
 
 
 @dataclass(frozen=True)
@@ -22,12 +24,8 @@ class DatasetMetadata:
     result: SaftLoadResult
 
 
-class DataUnavailableError(ValueError):
-    """Feil som signaliserer at ønsket data ikke er tilgjengelig."""
-
-
-class SaftDataManager:
-    """Holder oversikt over innleste SAF-T-data og hjelpestrukturer."""
+class SaftDatasetStore:
+    """Holder oversikt over innleste SAF-T-data og hjelpe-tabeller."""
 
     def __init__(self) -> None:
         self._results: Dict[str, SaftLoadResult] = {}
@@ -155,68 +153,6 @@ class SaftDataManager:
                 return key
         return self._order[-1]
 
-    def top_customers(self, topn: int) -> List[Tuple[str, str, int, float]]:
-        if self._customer_sales is None or self._customer_sales.empty:
-            raise DataUnavailableError(
-                "Fant ingen inntektslinjer på 3xxx-konti i SAF-T-filen."
-            )
-        data = self._customer_sales.sort_values(
-            "Omsetning eks mva", ascending=False
-        ).head(topn)
-        rows: List[Tuple[str, str, int, float]] = []
-        for _, row in data.iterrows():
-            number = row.get("Kundenr")
-            number_text = self._normalize_customer_key(number)
-            if not number_text and isinstance(number, str):
-                number_text = number.strip() or None
-            name = row.get("Kundenavn") or self._lookup_customer_name(number, number)
-            count_val = row.get("Transaksjoner", 0)
-            try:
-                count_int = int(count_val)
-            except (TypeError, ValueError):
-                count_int = 0
-            rows.append(
-                (
-                    number_text or "—",
-                    (name or "").strip() or "—",
-                    count_int,
-                    self._safe_float(row.get("Omsetning eks mva")),
-                )
-            )
-        return rows
-
-    def top_suppliers(self, topn: int) -> List[Tuple[str, str, int, float]]:
-        if self._supplier_purchases is None or self._supplier_purchases.empty:
-            raise DataUnavailableError(
-                "Fant ingen innkjøpslinjer på kostnadskonti (4xxx–8xxx) i SAF-T-filen."
-            )
-        data = self._supplier_purchases.sort_values(
-            "Innkjøp eks mva", ascending=False
-        ).head(topn)
-        rows: List[Tuple[str, str, int, float]] = []
-        for _, row in data.iterrows():
-            number = row.get("Leverandørnr")
-            number_text = self._normalize_supplier_key(number)
-            if not number_text and isinstance(number, str):
-                number_text = number.strip() or None
-            name = row.get("Leverandørnavn") or self._lookup_supplier_name(
-                number, number
-            )
-            count_val = row.get("Transaksjoner", 0)
-            try:
-                count_int = int(count_val)
-            except (TypeError, ValueError):
-                count_int = 0
-            rows.append(
-                (
-                    number_text or "—",
-                    (name or "").strip() or "—",
-                    count_int,
-                    self._safe_float(row.get("Innkjøp eks mva")),
-                )
-            )
-        return rows
-
     # endregion
 
     # region Egenskaper
@@ -289,6 +225,62 @@ class SaftDataManager:
     @property
     def dataset_order(self) -> List[str]:
         return list(self._order)
+
+    # endregion
+
+    # region Delte hjelpefunksjoner
+    def normalize_customer_key(self, value: object) -> Optional[str]:
+        return self._normalize_identifier(value)
+
+    def normalize_supplier_key(self, value: object) -> Optional[str]:
+        return self._normalize_identifier(value)
+
+    def lookup_customer_name(
+        self, number: object, customer_id: object
+    ) -> Optional[str]:
+        number_key = self.normalize_customer_key(number)
+        if number_key:
+            name = self._cust_name_by_nr.get(number_key)
+            if name:
+                return name
+        cid_key = self.normalize_customer_key(customer_id)
+        if cid_key:
+            info = self._customers.get(cid_key)
+            if info and info.name:
+                return info.name
+            name = self._cust_name_by_nr.get(cid_key)
+            if name:
+                return name
+        return None
+
+    def lookup_supplier_name(
+        self, number: object, supplier_id: object
+    ) -> Optional[str]:
+        number_key = self.normalize_supplier_key(number)
+        if number_key:
+            name = self._sup_name_by_nr.get(number_key)
+            if name:
+                return name
+        sid_key = self.normalize_supplier_key(supplier_id)
+        if sid_key:
+            info = self._suppliers.get(sid_key)
+            if info and info.name:
+                return info.name
+            name = self._sup_name_by_nr.get(sid_key)
+            if name:
+                return name
+        return None
+
+    def safe_float(self, value: object) -> float:
+        try:
+            if pd.isna(value):  # type: ignore[arg-type]
+                return 0.0
+        except Exception:
+            pass
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return 0.0
 
     # endregion
 
@@ -369,39 +361,61 @@ class SaftDataManager:
         return closest_key
 
     def _prepare_dataframe_with_previous(
-        self,
-        current_df: pd.DataFrame,
-        previous_df: Optional[pd.DataFrame],
+        self, dataframe: pd.DataFrame, previous: Optional[pd.DataFrame]
     ) -> pd.DataFrame:
-        work = current_df.copy()
-        if previous_df is None:
-            return work
-        if "Konto" not in work.columns or "UB_netto" not in previous_df.columns:
-            return work
+        if previous is None or previous.empty:
+            return dataframe
 
-        def _konto_key(value: object) -> str:
-            if value is None:
-                return ""
-            try:
-                if pd.isna(value):  # type: ignore[arg-type]
-                    return ""
-            except Exception:
-                pass
-            return str(value).strip()
+        df = dataframe.copy()
+        prev = previous.copy()
 
-        prev_work = previous_df.copy()
-        if "Konto" not in prev_work.columns:
-            return work
-        prev_work["_konto_key"] = prev_work["Konto"].map(_konto_key)
-        mapping = (
-            prev_work.loc[prev_work["_konto_key"] != ""]
-            .drop_duplicates("_konto_key")
-            .set_index("_konto_key")["UB_netto"]
-            .fillna(0.0)
-        )
+        def _konto_series(frame: pd.DataFrame) -> Optional[pd.Series]:
+            for column in ("Konto", "Kontonr", "Kontonummer", "AccountID", "Konto_int"):
+                if column in frame.columns:
+                    series = frame[column]
+                    if column == "Konto_int":
+                        # Konto_int er numerisk, men vi ønsker strengrepresentasjon for mappingen.
+                        return series.apply(self._normalize_identifier)
+                    return series.apply(self._normalize_identifier)
+            return None
 
-        work["forrige"] = work["Konto"].map(_konto_key).map(mapping).fillna(0.0)
-        return work
+        current_keys = _konto_series(df)
+        previous_keys = _konto_series(prev)
+
+        previous_map: Optional[pd.Series] = None
+        if previous_keys is not None:
+            previous_ub = prev.get("UB_netto")
+            if previous_ub is not None:
+                previous_ub = pd.to_numeric(previous_ub, errors="coerce")
+            else:
+                debit = (
+                    pd.to_numeric(prev["UB Debet"], errors="coerce").fillna(0.0)
+                    if "UB Debet" in prev.columns
+                    else pd.Series(0.0, index=prev.index, dtype=float)
+                )
+                credit = (
+                    pd.to_numeric(prev["UB Kredit"], errors="coerce").fillna(0.0)
+                    if "UB Kredit" in prev.columns
+                    else pd.Series(0.0, index=prev.index, dtype=float)
+                )
+                previous_ub = debit - credit
+
+            mapping_frame = pd.DataFrame(
+                {
+                    "_key": previous_keys,
+                    "_value": previous_ub,
+                }
+            )
+            mapping_frame = mapping_frame.dropna(subset=["_key"])
+            if not mapping_frame.empty:
+                previous_map = mapping_frame.groupby("_key")["_value"].sum()
+
+        if current_keys is not None and previous_map is not None:
+            df["forrige"] = current_keys.map(previous_map)
+
+        prev = prev.add_prefix("Forrige ")
+        df = pd.concat([df, prev], axis=1)
+        return df
 
     def _prepare_customer_sales(
         self, dataframe: Optional[pd.DataFrame]
@@ -413,11 +427,11 @@ class SaftDataManager:
             mask = work["Kundenavn"].astype(str).str.strip() == ""
             if mask.any():
                 work.loc[mask, "Kundenavn"] = work.loc[mask, "Kundenr"].apply(
-                    lambda value: self._lookup_customer_name(value, value) or value
+                    lambda value: self.lookup_customer_name(value, value) or value
                 )
         else:
             work["Kundenavn"] = work["Kundenr"].apply(
-                lambda value: self._lookup_customer_name(value, value) or value
+                lambda value: self.lookup_customer_name(value, value) or value
             )
         ordered_cols = ["Kundenr", "Kundenavn", "Omsetning eks mva"]
         ordered_cols += [col for col in ["Transaksjoner"] if col in work.columns]
@@ -434,11 +448,11 @@ class SaftDataManager:
             mask = work["Leverandørnavn"].astype(str).str.strip() == ""
             if mask.any():
                 work.loc[mask, "Leverandørnavn"] = work.loc[mask, "Leverandørnr"].apply(
-                    lambda value: self._lookup_supplier_name(value, value) or value
+                    lambda value: self.lookup_supplier_name(value, value) or value
                 )
         else:
             work["Leverandørnavn"] = work["Leverandørnr"].apply(
-                lambda value: self._lookup_supplier_name(value, value) or value
+                lambda value: self.lookup_supplier_name(value, value) or value
             )
         ordered_cols = ["Leverandørnr", "Leverandørnavn", "Innkjøp eks mva"]
         ordered_cols += [col for col in ["Transaksjoner"] if col in work.columns]
@@ -456,12 +470,6 @@ class SaftDataManager:
         text = str(value).strip()
         return text or None
 
-    def _normalize_customer_key(self, value: object) -> Optional[str]:
-        return self._normalize_identifier(value)
-
-    def _normalize_supplier_key(self, value: object) -> Optional[str]:
-        return self._normalize_identifier(value)
-
     def _ingest_customers(self, customers: Dict[str, "saft.CustomerInfo"]) -> None:
         self._customers = {}
         self._cust_name_by_nr = {}
@@ -470,10 +478,10 @@ class SaftDataManager:
             name = (info.name or "").strip()
             raw_id = info.customer_id
             raw_number = info.customer_number or info.customer_id
-            norm_id = self._normalize_customer_key(raw_id)
-            norm_number = self._normalize_customer_key(raw_number)
+            norm_id = self.normalize_customer_key(raw_id)
+            norm_number = self.normalize_customer_key(raw_number)
             resolved_number = (
-                norm_number or norm_id or self._normalize_customer_key(raw_id)
+                norm_number or norm_id or self.normalize_customer_key(raw_id)
             )
             if (
                 not resolved_number
@@ -498,20 +506,20 @@ class SaftDataManager:
             keys = {key for key in keys if isinstance(key, str) and key}
 
             if resolved_number:
-                norm_resolved = self._normalize_customer_key(resolved_number)
+                norm_resolved = self.normalize_customer_key(resolved_number)
                 all_number_keys = set(keys)
                 if norm_resolved:
                     all_number_keys.add(norm_resolved)
                 all_number_keys.add(resolved_number)
                 for key in all_number_keys:
-                    norm_key = self._normalize_customer_key(key)
+                    norm_key = self.normalize_customer_key(key)
                     if norm_key:
                         self._cust_id_to_nr[norm_key] = resolved_number
                     self._cust_id_to_nr[key] = resolved_number
 
             if name:
                 for key in keys:
-                    norm_key = self._normalize_customer_key(key)
+                    norm_key = self.normalize_customer_key(key)
                     if norm_key:
                         self._cust_name_by_nr[norm_key] = name
                     self._cust_name_by_nr[key] = name
@@ -524,10 +532,10 @@ class SaftDataManager:
             name = (info.name or "").strip()
             raw_id = info.supplier_id
             raw_number = info.supplier_number or info.supplier_id
-            norm_id = self._normalize_supplier_key(raw_id)
-            norm_number = self._normalize_supplier_key(raw_number)
+            norm_id = self.normalize_supplier_key(raw_id)
+            norm_number = self.normalize_supplier_key(raw_number)
             resolved_number = (
-                norm_number or norm_id or self._normalize_supplier_key(raw_id)
+                norm_number or norm_id or self.normalize_supplier_key(raw_id)
             )
             if (
                 not resolved_number
@@ -552,72 +560,22 @@ class SaftDataManager:
             keys = {key for key in keys if isinstance(key, str) and key}
 
             if resolved_number:
-                norm_resolved = self._normalize_supplier_key(resolved_number)
+                norm_resolved = self.normalize_supplier_key(resolved_number)
                 all_number_keys = set(keys)
                 if norm_resolved:
                     all_number_keys.add(norm_resolved)
                 all_number_keys.add(resolved_number)
                 for key in all_number_keys:
-                    norm_key = self._normalize_supplier_key(key)
+                    norm_key = self.normalize_supplier_key(key)
                     if norm_key:
                         self._sup_id_to_nr[norm_key] = resolved_number
                     self._sup_id_to_nr[key] = resolved_number
 
             if name:
                 for key in keys:
-                    norm_key = self._normalize_supplier_key(key)
+                    norm_key = self.normalize_supplier_key(key)
                     if norm_key:
                         self._sup_name_by_nr[norm_key] = name
                     self._sup_name_by_nr[key] = name
 
-    def _lookup_customer_name(
-        self, number: object, customer_id: object
-    ) -> Optional[str]:
-        number_key = self._normalize_customer_key(number)
-        if number_key:
-            name = self._cust_name_by_nr.get(number_key)
-            if name:
-                return name
-        cid_key = self._normalize_customer_key(customer_id)
-        if cid_key:
-            info = self._customers.get(cid_key)
-            if info and info.name:
-                return info.name
-            name = self._cust_name_by_nr.get(cid_key)
-            if name:
-                return name
-        return None
-
-    def _lookup_supplier_name(
-        self, number: object, supplier_id: object
-    ) -> Optional[str]:
-        number_key = self._normalize_supplier_key(number)
-        if number_key:
-            name = self._sup_name_by_nr.get(number_key)
-            if name:
-                return name
-        sid_key = self._normalize_supplier_key(supplier_id)
-        if sid_key:
-            info = self._suppliers.get(sid_key)
-            if info and info.name:
-                return info.name
-            name = self._sup_name_by_nr.get(sid_key)
-            if name:
-                return name
-        return None
-
-    def _safe_float(self, value: object) -> float:
-        try:
-            if pd.isna(value):  # type: ignore[arg-type]
-                return 0.0
-        except Exception:
-            pass
-        try:
-            return float(value)
-        except (TypeError, ValueError):
-            return 0.0
-
     # endregion
-
-
-__all__ = ["DataUnavailableError", "DatasetMetadata", "SaftDataManager"]
