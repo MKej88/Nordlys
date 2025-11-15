@@ -10,7 +10,6 @@ from ..constants import NS
 from ..helpers import lazy_pandas, text_or_none, to_float
 
 if TYPE_CHECKING:  # pragma: no cover - kun for typekontroll
-    import numpy as np
     import pandas as pd
 
 __all__ = ["parse_saldobalanse", "ns4102_summary_from_tb"]
