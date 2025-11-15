@@ -2,22 +2,16 @@
 
 from __future__ import annotations
 
-import math
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import List, Optional, Sequence, Tuple
 
-from PySide6.QtCore import QSortFilterProxyModel, Qt, QTimer
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
-    QAbstractItemView,
-    QDoubleSpinBox,
     QFrame,
     QHeaderView,
     QHBoxLayout,
     QLabel,
-    QPushButton,
     QSizePolicy,
-    QStyle,
-    QTableView,
     QTableWidget,
     QVBoxLayout,
     QWidget,
@@ -29,15 +23,8 @@ except ImportError:  # PySide6 < 6.7
     QWIDGETSIZE_MAX = 16777215
 
 from ... import regnskap
-from ...utils import format_currency, format_difference, lazy_pandas
-from ..delegates import (
-    AnalysisTableDelegate,
-    CompactRowDelegate,
-    BOTTOM_BORDER_ROLE,
-    TOP_BORDER_ROLE,
-)
-from ..helpers import SignalBlocker
-from ..models import SaftTableCell, SaftTableModel, SaftTableSource
+from ...utils import lazy_pandas
+from ..delegates import BOTTOM_BORDER_ROLE, TOP_BORDER_ROLE
 from ..tables import (
     apply_compact_row_heights,
     compact_row_base_height,
@@ -373,4 +360,3 @@ class RegnskapsanalysePage(QWidget):
         ],
     ) -> None:
         return
-

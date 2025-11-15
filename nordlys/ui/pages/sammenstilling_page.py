@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import math
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Tuple
 
-from PySide6.QtCore import QSortFilterProxyModel, Qt, QTimer
+from PySide6.QtCore import QSortFilterProxyModel, Qt
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDoubleSpinBox,
-    QFrame,
     QHeaderView,
     QHBoxLayout,
     QLabel,
@@ -18,7 +17,6 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QStyle,
     QTableView,
-    QTableWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -29,21 +27,10 @@ except ImportError:  # PySide6 < 6.7
     QWIDGETSIZE_MAX = 16777215
 
 from ... import regnskap
-from ...utils import format_currency, format_difference, lazy_pandas
-from ..delegates import (
-    AnalysisTableDelegate,
-    CompactRowDelegate,
-    BOTTOM_BORDER_ROLE,
-    TOP_BORDER_ROLE,
-)
+from ...utils import format_currency, lazy_pandas
 from ..helpers import SignalBlocker
 from ..models import SaftTableCell, SaftTableModel, SaftTableSource
-from ..tables import (
-    apply_compact_row_heights,
-    compact_row_base_height,
-    create_table_widget,
-    suspend_table_updates,
-)
+from ..tables import apply_compact_row_heights
 from ..widgets import CardFrame
 
 pd = lazy_pandas()

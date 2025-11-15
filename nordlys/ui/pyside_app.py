@@ -5,22 +5,10 @@ from __future__ import annotations
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    Dict,
-    List,
-    Optional,
-    Sequence,
-    Set,
-    Tuple,
-    cast,
-)
+from typing import Callable, Dict, List, Optional, Sequence, Set, Tuple, cast
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QApplication,
-    QFrame,
     QGridLayout,
     QHeaderView,
     QHBoxLayout,
@@ -33,7 +21,6 @@ from PySide6.QtWidgets import (
     QStatusBar,
     QTableWidget,
     QTabWidget,
-    QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
@@ -48,11 +35,11 @@ from ..constants import APP_TITLE
 from ..core.task_runner import TaskRunner
 from ..saft.loader import SaftLoadResult
 from ..utils import format_currency, lazy_pandas
-from .config import PRIMARY_UI_FONT_FAMILY, REVISION_TASKS, icon_for_navigation
+from .config import REVISION_TASKS
 from .data_manager import DataUnavailableError, SaftAnalytics, SaftDatasetStore
 from .header_bar import HeaderBar
 from .import_export import ImportExportController
-from .navigation import NavigationItem, NavigationPanel
+from .navigation import NavigationPanel
 from .pages import (
     ComparisonPage,
     RegnskapsanalysePage,
@@ -71,10 +58,6 @@ from .pages.revision_pages import (
 from .widgets import CardFrame
 
 pd = lazy_pandas()
-
-if TYPE_CHECKING:  # pragma: no cover - kun for typekontroll
-    import pandas as pd
-
 
 TOP_BORDER_ROLE = Qt.UserRole + 41
 BOTTOM_BORDER_ROLE = Qt.UserRole + 42
