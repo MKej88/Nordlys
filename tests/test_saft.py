@@ -30,7 +30,7 @@ from nordlys.saft_customers import (
     parse_saft,
     save_outputs,
 )
-from nordlys.utils import format_currency, format_difference
+from nordlys.helpers.formatting import format_currency, format_difference
 
 
 def build_sample_root() -> ET.Element:

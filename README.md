@@ -106,15 +106,20 @@ Nordlys/
 │   ├── core/
 │   │   └── task_runner.py       # Felles logikk for bakgrunnsoppgaver og fremdrift
 │   ├── industry_groups.py       # Bransjeklassifisering og caching
+│   ├── industry_groups_cli.py   # Kommandolinjegrensesnitt for klassifisering
 │   ├── integrations/
 │   │   └── brreg_service.py     # HTTP-klient med caching mot Brønnøysund
-│   ├── regnskap.py              # Beregninger for resultat- og balanseanalyse
+│   ├── regnskap/               # Forberedelse og analyser av saldobalanse
+│   │   ├── __init__.py         # Offentlig API for regnskapsanalyse
+│   │   ├── analysis.py         # Logikk for balanse- og resultatrapport
+│   │   └── prep.py             # Normalisering og summering av saldobalanse
 │   ├── saft/
 │   │   └── parsing.py           # Kjernefunksjoner for å lese SAF-T XML
 │   ├── saft_customers.py        # Kunde- og leverandøranalyse + eksport
 │   ├── ui/
 │   │   ├── models/              # Qt-modeller for tabeller og lister
 │   │   └── pyside_app.py        # GUI-komponenter, datasettvelger og interaksjon
+│   ├── helpers/                # Oppdeling av tidligere utils.py
 │   └── resources/               # Ikoner og cachefiler brukt i grensesnittet
 └── tests/                 # Pytest-tester som genererer data programmatisk
 ```

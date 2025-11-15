@@ -27,7 +27,8 @@ except ImportError:  # PySide6 < 6.7
     QWIDGETSIZE_MAX = 16777215
 
 from ... import regnskap
-from ...utils import format_currency, lazy_pandas
+from ...helpers.formatting import format_currency
+from ...helpers.lazy_imports import lazy_pandas
 from ..delegates import CompactRowDelegate
 from ..helpers import SignalBlocker
 from ..models import SaftTableCell, SaftTableModel, SaftTableSource

@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
 )
 
-from ..utils import lazy_pandas
+from ..helpers.lazy_imports import lazy_pandas
 from .delegates import CompactRowDelegate
 
 __all__ = [

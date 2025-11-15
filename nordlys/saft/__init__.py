@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, cast
 
 from ..constants import NS
-from ..utils import lazy_pandas, text_or_none, to_float
+from ..helpers import lazy_pandas, text_or_none, to_float
 from .parsing import check_trial_balance, iter_saft_entries
 
 if TYPE_CHECKING:  # pragma: no cover - kun for typekontroll

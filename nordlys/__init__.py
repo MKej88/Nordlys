@@ -17,6 +17,7 @@ __all__ = [
     "industry_groups",
     "saft",
     "utils",
+    "helpers",
 ]
 
 _MODULE_MAP = {
@@ -25,6 +26,7 @@ _MODULE_MAP = {
     "industry_groups": "nordlys.industry_groups",
     "saft": "nordlys.saft",
     "utils": "nordlys.utils",
+    "helpers": "nordlys.helpers",
 }
 
 

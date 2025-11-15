@@ -17,8 +17,8 @@ from ..industry_groups import (
     classify_from_orgnr,
     load_cached_brreg,
 )
+from ..helpers.lazy_imports import lazy_import, lazy_pandas
 from ..settings import SAFT_STREAMING_ENABLED, SAFT_STREAMING_VALIDATE
-from ..utils import lazy_import, lazy_pandas
 
 if TYPE_CHECKING:
     import pandas as pd

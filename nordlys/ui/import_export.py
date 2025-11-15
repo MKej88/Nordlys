@@ -10,7 +10,7 @@ from PySide6.QtWidgets import QFileDialog, QLabel, QMessageBox, QProgressBar, QW
 
 from ..core.task_runner import TaskRunner
 from ..saft.loader import SaftLoadResult, load_saft_files
-from ..utils import lazy_pandas
+from ..helpers.lazy_imports import lazy_pandas
 from .data_manager import SaftDatasetStore
 from .widgets import TaskProgressDialog
 
