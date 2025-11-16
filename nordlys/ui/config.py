@@ -101,5 +101,16 @@ def icon_for_navigation(key: str) -> Optional[QIcon]:
         return None
 
     icon = QIcon(str(icon_path))
+    if icon.isNull():
+        _ICON_CACHE[key] = None
+        return None
+
+    # Opprett et lite pixmap en gang slik at eventuelle manglende SVG-plugins
+    # fanges tidlig i stedet for å spamme konsollen med QPainter-varsler.
+    test_pixmap = icon.pixmap(24, 24)
+    if test_pixmap.isNull():
+        _ICON_CACHE[key] = None
+        return None
+
     _ICON_CACHE[key] = icon
     return icon

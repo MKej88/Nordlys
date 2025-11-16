@@ -43,7 +43,11 @@ class AnalysisTableDelegate(CompactRowDelegate):
     """Tegner egendefinerte grenser for analysene."""
 
     def paint(self, painter, option, index) -> None:  # type: ignore[override]
+        if painter is None or not painter.isActive():
+            return
         super().paint(painter, option, index)
+        if not painter.isActive():
+            return
         if index.data(TOP_BORDER_ROLE):
             painter.save()
             pen = QPen(QColor(15, 23, 42))
