@@ -667,6 +667,60 @@ def test_compute_customer_supplier_totals_matches_individual():
     pd.testing.assert_frame_equal(purchases, expected_purchases)
 
 
+def test_compute_customer_supplier_totals_respects_last_period_for_suppliers():
+    xml = """
+    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <GeneralLedgerEntries>
+        <Journal>
+          <Transaction>
+            <Period>
+              <PeriodYear>2023</PeriodYear>
+              <PeriodNumber>4</PeriodNumber>
+            </Period>
+            <TransactionDate>2023-04-15</TransactionDate>
+            <Line>
+              <AccountID>4000</AccountID>
+              <DebitAmount>500</DebitAmount>
+            </Line>
+            <Line>
+              <AccountID>2400</AccountID>
+              <CreditAmount>500</CreditAmount>
+              <SupplierID>EARLY</SupplierID>
+            </Line>
+          </Transaction>
+          <Transaction>
+            <Period>
+              <PeriodYear>2023</PeriodYear>
+              <PeriodNumber>9</PeriodNumber>
+            </Period>
+            <TransactionDate>2023-09-15</TransactionDate>
+            <Line>
+              <AccountID>4000</AccountID>
+              <DebitAmount>900</DebitAmount>
+            </Line>
+            <Line>
+              <AccountID>2400</AccountID>
+              <CreditAmount>900</CreditAmount>
+              <SupplierID>LATE</SupplierID>
+            </Line>
+          </Transaction>
+        </Journal>
+      </GeneralLedgerEntries>
+    </AuditFile>
+    """
+    root = ET.fromstring(xml)
+    ns = {"n1": root.tag.split("}")[0][1:]}
+
+    _, purchases_all = compute_customer_supplier_totals(root, ns, year=2023)
+    assert set(purchases_all["Leverandørnr"]) == {"EARLY", "LATE"}
+
+    _, purchases_limited = compute_customer_supplier_totals(
+        root, ns, year=2023, last_period=6
+    )
+    assert list(purchases_limited["Leverandørnr"]) == ["EARLY"]
+    assert purchases_limited.iloc[0]["Innkjøp eks mva"] == pytest.approx(500.0)
+
+
 def test_compute_customer_supplier_totals_empty_results_and_export(tmp_path):
     xml = """
     <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">

@@ -319,15 +319,26 @@ def compute_customer_supplier_totals(
 
         date_element = _find(transaction, "n1:TransactionDate", ns)
         tx_date = _ensure_date(date_element.text if date_element is not None else None)
-        if tx_date is None:
-            continue
         if use_range:
+            if tx_date is None:
+                continue
             if start_date and tx_date < start_date:
                 continue
             if end_date and tx_date > end_date:
                 continue
-        elif year is not None and tx_date.year != year:
-            continue
+        else:
+            if year is None:
+                continue
+            period_year, period_number = _extract_transaction_period(transaction, ns)
+            if period_year is None and tx_date is not None:
+                period_year = tx_date.year
+            if period_year is None or period_year != year:
+                continue
+            if last_period is not None:
+                if period_number is None and tx_date is not None:
+                    period_number = tx_date.month
+                if period_number is None or period_number > last_period:
+                    continue
 
         purchase_total = Decimal("0")
         has_purchase = False
