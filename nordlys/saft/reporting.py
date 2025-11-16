@@ -117,36 +117,45 @@ def _build_description_customer_map(
     return mapping
 
 
-def _extract_transaction_description(
+def _extract_transaction_descriptions(
     transaction: ET.Element, ns: NamespaceMap
-) -> Optional[str]:
-    """Henter beskrivelsen fra bilaget, inkludert eventuell VoucherDescription."""
+) -> Tuple[Optional[str], Optional[str]]:
+    """Returnerer både VoucherDescription og Description fra bilaget."""
 
-    for path in ("n1:VoucherDescription", "n1:Description"):
-        element = _find(transaction, path, ns)
-        description = _clean_text(element.text if element is not None else None)
-        if description:
-            return description
-    return None
+    voucher_element = _find(transaction, "n1:VoucherDescription", ns)
+    voucher_description = _clean_text(
+        voucher_element.text if voucher_element is not None else None
+    )
+    description_element = _find(transaction, "n1:Description", ns)
+    description = _clean_text(
+        description_element.text if description_element is not None else None
+    )
+    return voucher_description, description
 
 
 def _lookup_description_customer(
-    description: Optional[str], mapping: Dict[str, str]
+    voucher_description: Optional[str],
+    description: Optional[str],
+    mapping: Dict[str, str],
 ) -> Optional[str]:
-    """Returnerer kunde-ID for en kjent beskrivelse."""
+    """Returnerer kunde-ID for kjente VoucherDescription- eller Description-verdier."""
 
-    if not description:
-        return None
-    normalized = description.strip().lower()
-    if not normalized:
-        return None
-    direct_match = mapping.get(normalized)
-    if direct_match:
-        return direct_match
+    def _normalize(value: Optional[str]) -> Optional[str]:
+        if not value:
+            return None
+        normalized_value = value.strip().lower()
+        return normalized_value or None
 
-    for keyword, customer_id in mapping.items():
-        if keyword in normalized:
-            return customer_id
+    normalized_voucher = _normalize(voucher_description)
+    if normalized_voucher:
+        direct = mapping.get(normalized_voucher)
+        if direct:
+            return direct
+
+    normalized_description = _normalize(description)
+    if normalized_description:
+        return mapping.get(normalized_description)
+
     return None
 
 
@@ -212,7 +221,9 @@ def _compute_customer_sales_map(
 
         date_element = _find(transaction, "n1:TransactionDate", ns)
         tx_date = _ensure_date(date_element.text if date_element is not None else None)
-        transaction_description = _extract_transaction_description(transaction, ns)
+        voucher_description, transaction_description = _extract_transaction_descriptions(
+            transaction, ns
+        )
 
         if use_range:
             if tx_date is None:
@@ -246,7 +257,7 @@ def _compute_customer_sales_map(
         )
         if not transaction_customer_id:
             transaction_customer_id = _lookup_description_customer(
-                transaction_description, description_customer_map
+                voucher_description, transaction_description, description_customer_map
             )
         fallback_customer_id: Optional[str] = transaction_customer_id
         line_summaries: List[Tuple[str, Optional[str], Decimal, Decimal]] = []
@@ -283,7 +294,9 @@ def _compute_customer_sales_map(
                         fallback_customer_id = transaction_customer_id
                         if fallback_customer_id is None:
                             fallback_customer_id = _lookup_description_customer(
-                                transaction_description, description_customer_map
+                                voucher_description,
+                                transaction_description,
+                                description_customer_map,
                             )
                     if fallback_customer_id is None:
                         fallback_customer_id = get_tx_customer_id(
