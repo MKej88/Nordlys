@@ -89,6 +89,143 @@ def _normalize_account_key(account: str) -> Optional[str]:
     return digits or None
 
 
+def _extract_transaction_period(
+    transaction: ET.Element, ns: NamespaceMap
+) -> Tuple[Optional[int], Optional[int]]:
+    """Henter periodeår og -nummer fra et bilag hvis mulig."""
+
+    def _read_int(element: Optional[ET.Element]) -> Optional[int]:
+        if element is None:
+            return None
+        text = _clean_text(element.text if element is not None else None)
+        if not text:
+            return None
+        try:
+            return int(text)
+        except ValueError:
+            return None
+
+    period_element = _find(transaction, "n1:Period", ns)
+    if period_element is not None:
+        period_year = _read_int(_find(period_element, "n1:PeriodYear", ns))
+        period_number = _read_int(_find(period_element, "n1:PeriodNumber", ns))
+        if period_year is not None or period_number is not None:
+            return period_year, period_number
+
+    period_year = _read_int(_find(transaction, "n1:PeriodYear", ns))
+    period_number = _read_int(_find(transaction, "n1:PeriodNumber", ns))
+    return period_year, period_number
+
+
+def _extract_line_customer_id(line: ET.Element, ns: NamespaceMap) -> Optional[str]:
+    """Henter CustomerID fra en linje om den finnes."""
+
+    for path in ("n1:CustomerID", "n1:Customer/n1:CustomerID"):
+        element = _find(line, path, ns)
+        identifier = _clean_text(element.text if element is not None else None)
+        if identifier:
+            return identifier
+    return None
+
+
+def _compute_customer_sales_map(
+    root: ET.Element,
+    ns: NamespaceMap,
+    *,
+    start_date: Optional[date],
+    end_date: Optional[date],
+    year: Optional[int],
+    last_period: Optional[int],
+) -> Tuple[Dict[str, Decimal], Dict[str, int]]:
+    """Returnerer netto salg per kunde basert på 1500- og 27xx-linjer."""
+
+    totals: Dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
+    counts: Dict[str, int] = defaultdict(int)
+    use_range = start_date is not None or end_date is not None
+
+    for transaction in _iter_transactions(root, ns):
+        lines_list = list(_findall(transaction, "n1:Line", ns))
+        if not lines_list:
+            continue
+
+        date_element = _find(transaction, "n1:TransactionDate", ns)
+        tx_date = _ensure_date(date_element.text if date_element is not None else None)
+
+        if use_range:
+            if tx_date is None:
+                continue
+            if start_date and tx_date < start_date:
+                continue
+            if end_date and tx_date > end_date:
+                continue
+        else:
+            if year is None:
+                continue
+            period_year, period_number = _extract_transaction_period(transaction, ns)
+            if period_year is None and tx_date is not None:
+                period_year = tx_date.year
+            if period_year is None or period_year != year:
+                continue
+            if last_period is not None:
+                if period_number is None and tx_date is not None:
+                    period_number = tx_date.month
+                if period_number is None or period_number > last_period:
+                    continue
+
+        gross_per_customer: Dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
+        vat_total = Decimal("0")
+        vat_found = False
+
+        for line in lines_list:
+            account_element = _find(line, "n1:AccountID", ns)
+            account_text = _clean_text(
+                account_element.text if account_element is not None else None
+            )
+            if not account_text:
+                continue
+
+            normalized = _normalize_account_key(account_text) or account_text
+            debit = get_amount(line, "DebitAmount", ns)
+            credit = get_amount(line, "CreditAmount", ns)
+
+            if normalized == "1500":
+                customer_id = _extract_line_customer_id(line, ns)
+                if not customer_id:
+                    continue
+                amount = debit - credit
+                if amount == 0:
+                    continue
+                gross_per_customer[customer_id] += amount
+            elif normalized.startswith("27"):
+                vat_found = True
+                vat_total += credit - debit
+
+        if not vat_found:
+            continue
+
+        gross_per_customer = {
+            customer_id: amount
+            for customer_id, amount in gross_per_customer.items()
+            if amount != 0
+        }
+        if not gross_per_customer:
+            continue
+
+        gross_total = sum(gross_per_customer.values(), Decimal("0"))
+        if gross_total == 0:
+            continue
+
+        for customer_id, gross_amount in gross_per_customer.items():
+            share = gross_amount / gross_total
+            net_amount = gross_amount - (vat_total * share)
+            if net_amount == 0:
+                continue
+            totals[customer_id] += net_amount
+            counts[customer_id] += 1
+
+    return totals, counts
+
+
 def build_account_name_map(
     root: ET.Element, ns: NamespaceMap
 ) -> Dict[str, Optional[str]]:
@@ -139,6 +276,7 @@ def compute_customer_supplier_totals(
     ns: NamespaceMap,
     *,
     year: Optional[int] = None,
+    last_period: Optional[int] = None,
     date_from: Optional[object] = None,
     date_to: Optional[object] = None,
     parent_map: Optional[Dict[ET.Element, Optional[ET.Element]]] = None,
@@ -156,8 +294,14 @@ def compute_customer_supplier_totals(
     elif year is None:
         raise ValueError("Angi enten year eller date_from/date_to.")
 
-    customer_totals: Dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
-    customer_counts: Dict[str, int] = defaultdict(int)
+    customer_totals, customer_counts = _compute_customer_sales_map(
+        root,
+        ns,
+        start_date=start_date,
+        end_date=end_date,
+        year=year,
+        last_period=last_period if not use_range else None,
+    )
     supplier_totals: Dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
     supplier_counts: Dict[str, int] = defaultdict(int)
 
@@ -178,9 +322,7 @@ def compute_customer_supplier_totals(
         elif year is not None and tx_date.year != year:
             continue
 
-        sale_total = Decimal("0")
         purchase_total = Decimal("0")
-        has_income = False
         has_purchase = False
 
         for line in lines_list:
@@ -191,24 +333,12 @@ def compute_customer_supplier_totals(
             if not account_text:
                 continue
 
-            digits = "".join(ch for ch in account_text if ch.isdigit())
-            normalized = digits or account_text
             credit = get_amount(line, "CreditAmount", ns)
             debit = get_amount(line, "DebitAmount", ns)
-
-            if normalized.startswith("3"):
-                has_income = True
-                sale_total += credit - debit
 
             if _is_cost_account(account_text):
                 has_purchase = True
                 purchase_total += debit - credit
-
-        if has_income:
-            customer_id = get_tx_customer_id(transaction, ns, lines=lines_list)
-            if customer_id:
-                customer_totals[customer_id] += sale_total
-                customer_counts[customer_id] += 1
 
         if has_purchase:
             supplier_id = get_tx_supplier_id(transaction, ns, lines=lines_list)
@@ -229,6 +359,8 @@ def compute_customer_supplier_totals(
         customer_names = build_customer_name_map(root, ns, parent_map=lookup_map)
         customer_rows = []
         for customer_id, amount in customer_totals.items():
+            if amount == 0:
+                continue
             rounded = amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
             customer_rows.append(
                 {
@@ -238,8 +370,12 @@ def compute_customer_supplier_totals(
                     "Transaksjoner": customer_counts.get(customer_id, 0),
                 }
             )
-        customer_df = pandas_module.DataFrame(customer_rows)
-        if not customer_df.empty:
+        if not customer_rows:
+            customer_df = pandas_module.DataFrame(
+                columns=["Kundenr", "Kundenavn", "Omsetning eks mva"]
+            )
+        else:
+            customer_df = pandas_module.DataFrame(customer_rows)
             customer_df["Omsetning eks mva"] = (
                 customer_df["Omsetning eks mva"].astype(float).round(2)
             )
@@ -281,10 +417,11 @@ def compute_sales_per_customer(
     ns: NamespaceMap,
     *,
     year: Optional[int] = None,
+    last_period: Optional[int] = None,
     date_from: Optional[object] = None,
     date_to: Optional[object] = None,
 ) -> "pd.DataFrame":
-    """Beregner omsetning eksklusiv mva per kunde basert på alle 3xxx-konti."""
+    """Beregner netto omsetning per kunde basert på konto 1500 og mva-linjer."""
 
     pandas = _require_pandas()
 
@@ -297,51 +434,14 @@ def compute_sales_per_customer(
     elif year is None:
         raise ValueError("Angi enten year eller date_from/date_to.")
 
-    totals: Dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
-    counts: Dict[str, int] = defaultdict(int)
-
-    transactions = _findall(
-        root, ".//n1:GeneralLedgerEntries/n1:Journal/n1:Transaction", ns
+    totals, counts = _compute_customer_sales_map(
+        root,
+        ns,
+        start_date=start_date,
+        end_date=end_date,
+        year=year,
+        last_period=last_period if not use_range else None,
     )
-    for transaction in transactions:
-        date_element = _find(transaction, "n1:TransactionDate", ns)
-        tx_date = _ensure_date(date_element.text if date_element is not None else None)
-        if tx_date is None:
-            continue
-        if use_range:
-            if start_date and tx_date < start_date:
-                continue
-            if end_date and tx_date > end_date:
-                continue
-        elif year is not None and tx_date.year != year:
-            continue
-
-        customer_id = get_tx_customer_id(transaction, ns)
-        if not customer_id:
-            continue
-
-        lines = _findall(transaction, "n1:Line", ns)
-        transaction_total = Decimal("0")
-        has_income = False
-        for line in lines:
-            account_element = _find(line, "n1:AccountID", ns)
-            account = _clean_text(
-                account_element.text if account_element is not None else None
-            )
-            if not account:
-                continue
-            digits = "".join(ch for ch in account if ch.isdigit())
-            normalized = digits or account
-            if not normalized.startswith("3"):
-                continue
-            has_income = True
-            credit = get_amount(line, "CreditAmount", ns)
-            debit = get_amount(line, "DebitAmount", ns)
-            transaction_total += credit - debit
-
-        if has_income:
-            totals[customer_id] += transaction_total
-            counts[customer_id] += 1
 
     if not totals:
         return pandas.DataFrame(columns=["Kundenr", "Kundenavn", "Omsetning eks mva"])
@@ -349,6 +449,8 @@ def compute_sales_per_customer(
     name_map = build_customer_name_map(root, ns)
     rows = []
     for customer_id, amount in totals.items():
+        if amount == 0:
+            continue
         rounded = amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         rows.append(
             {
@@ -359,9 +461,10 @@ def compute_sales_per_customer(
             }
         )
 
+    if not rows:
+        return pandas.DataFrame(columns=["Kundenr", "Kundenavn", "Omsetning eks mva"])
+
     df = pandas.DataFrame(rows)
-    if df.empty:
-        return df
     df["Omsetning eks mva"] = df["Omsetning eks mva"].astype(float).round(2)
     return df.sort_values("Omsetning eks mva", ascending=False).reset_index(drop=True)
 

@@ -113,14 +113,22 @@ def build_sample_root() -> ET.Element:
       <GeneralLedgerEntries>
         <Journal>
           <Transaction>
+            <Period>
+              <PeriodYear>2023</PeriodYear>
+              <PeriodNumber>5</PeriodNumber>
+            </Period>
             <TransactionDate>2023-05-02</TransactionDate>
             <Line>
               <AccountID>3000</AccountID>
               <CreditAmount>1000</CreditAmount>
             </Line>
             <Line>
+              <AccountID>2700</AccountID>
+              <CreditAmount>250</CreditAmount>
+            </Line>
+            <Line>
               <AccountID>1500</AccountID>
-              <DebitAmount>1000</DebitAmount>
+              <DebitAmount>1250</DebitAmount>
               <CustomerID>K1</CustomerID>
             </Line>
           </Transaction>
@@ -216,13 +224,13 @@ def test_iter_saft_entries_streams_lines(tmp_path):
 
     entries = list(iter_saft_entries(xml_path))
 
-    assert len(entries) == 4
+    assert len(entries) == 5
     assert entries[0]["account_id"] == "3000"
     assert entries[0]["kredit"] == Decimal("1000")
     total_debet = sum(item["debet"] for item in entries)
     total_kredit = sum(item["kredit"] for item in entries)
-    assert total_debet == Decimal("1600")
-    assert total_kredit == Decimal("1600")
+    assert total_debet == Decimal("1850")
+    assert total_kredit == Decimal("1850")
 
 
 def test_iter_saft_entries_handles_amount_wrapper(tmp_path):
@@ -265,8 +273,8 @@ def test_check_trial_balance_balanced(tmp_path):
 
     result = check_trial_balance(xml_path)
 
-    assert result["debet"] == Decimal("1600")
-    assert result["kredit"] == Decimal("1600")
+    assert result["debet"] == Decimal("1850")
+    assert result["kredit"] == Decimal("1850")
     assert result["diff"] == Decimal("0")
 
 
@@ -393,6 +401,194 @@ def test_compute_sales_per_customer_date_filter():
     df = compute_sales_per_customer(
         root, ns, date_from="2023-06-01", date_to="2023-12-31"
     )
+    assert df.empty
+
+
+def test_compute_sales_per_customer_distributes_vat():
+    xml = """
+    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <GeneralLedgerEntries>
+        <Journal>
+          <Transaction>
+            <Period>
+              <PeriodYear>2023</PeriodYear>
+              <PeriodNumber>4</PeriodNumber>
+            </Period>
+            <TransactionDate>2023-04-15</TransactionDate>
+            <Line>
+              <AccountID>3000</AccountID>
+              <CreditAmount>1200</CreditAmount>
+            </Line>
+            <Line>
+              <AccountID>2700</AccountID>
+              <CreditAmount>300</CreditAmount>
+            </Line>
+            <Line>
+              <AccountID>1500</AccountID>
+              <DebitAmount>500</DebitAmount>
+              <CustomerID>C1</CustomerID>
+            </Line>
+            <Line>
+              <AccountID>1500</AccountID>
+              <DebitAmount>1000</DebitAmount>
+              <CustomerID>C2</CustomerID>
+            </Line>
+          </Transaction>
+        </Journal>
+      </GeneralLedgerEntries>
+    </AuditFile>
+    """
+    root = ET.fromstring(xml)
+    ns = {"n1": root.tag.split("}")[0][1:]}
+    df = compute_sales_per_customer(root, ns, year=2023)
+    assert set(df["Kundenr"]) == {"C1", "C2"}
+    totals = dict(zip(df["Kundenr"], df["Omsetning eks mva"]))
+    assert totals["C1"] == pytest.approx(400.0)
+    assert totals["C2"] == pytest.approx(800.0)
+    counts = dict(zip(df["Kundenr"], df["Transaksjoner"]))
+    assert counts["C1"] == 1
+    assert counts["C2"] == 1
+
+
+def test_compute_sales_per_customer_ignores_payments_without_vat():
+    xml = """
+    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <GeneralLedgerEntries>
+        <Journal>
+          <Transaction>
+            <Period>
+              <PeriodYear>2023</PeriodYear>
+              <PeriodNumber>3</PeriodNumber>
+            </Period>
+            <TransactionDate>2023-03-01</TransactionDate>
+            <Line>
+              <AccountID>1500</AccountID>
+              <DebitAmount>200</DebitAmount>
+              <CustomerID>PAY</CustomerID>
+            </Line>
+            <Line>
+              <AccountID>1920</AccountID>
+              <CreditAmount>200</CreditAmount>
+            </Line>
+          </Transaction>
+        </Journal>
+      </GeneralLedgerEntries>
+    </AuditFile>
+    """
+    root = ET.fromstring(xml)
+    ns = {"n1": root.tag.split("}")[0][1:]}
+    df = compute_sales_per_customer(root, ns, year=2023)
+    assert df.empty
+
+
+def test_compute_sales_per_customer_last_period_filter():
+    xml = """
+    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <GeneralLedgerEntries>
+        <Journal>
+          <Transaction>
+            <Period>
+              <PeriodYear>2023</PeriodYear>
+              <PeriodNumber>5</PeriodNumber>
+            </Period>
+            <TransactionDate>2023-05-20</TransactionDate>
+            <Line>
+              <AccountID>3000</AccountID>
+              <CreditAmount>800</CreditAmount>
+            </Line>
+            <Line>
+              <AccountID>2700</AccountID>
+              <CreditAmount>200</CreditAmount>
+            </Line>
+            <Line>
+              <AccountID>1500</AccountID>
+              <DebitAmount>1000</DebitAmount>
+              <CustomerID>PER</CustomerID>
+            </Line>
+          </Transaction>
+          <Transaction>
+            <Period>
+              <PeriodYear>2023</PeriodYear>
+              <PeriodNumber>11</PeriodNumber>
+            </Period>
+            <TransactionDate>2023-11-10</TransactionDate>
+            <Line>
+              <AccountID>3000</AccountID>
+              <CreditAmount>1000</CreditAmount>
+            </Line>
+            <Line>
+              <AccountID>2700</AccountID>
+              <CreditAmount>250</CreditAmount>
+            </Line>
+            <Line>
+              <AccountID>1500</AccountID>
+              <DebitAmount>1250</DebitAmount>
+              <CustomerID>PER</CustomerID>
+            </Line>
+          </Transaction>
+        </Journal>
+      </GeneralLedgerEntries>
+    </AuditFile>
+    """
+    root = ET.fromstring(xml)
+    ns = {"n1": root.tag.split("}")[0][1:]}
+    df = compute_sales_per_customer(root, ns, year=2023, last_period=6)
+    assert list(df["Kundenr"]) == ["PER"]
+    assert df.iloc[0]["Omsetning eks mva"] == pytest.approx(800.0)
+
+
+def test_compute_sales_per_customer_excludes_zero_net_customers():
+    xml = """
+    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <GeneralLedgerEntries>
+        <Journal>
+          <Transaction>
+            <Period>
+              <PeriodYear>2023</PeriodYear>
+              <PeriodNumber>2</PeriodNumber>
+            </Period>
+            <TransactionDate>2023-02-01</TransactionDate>
+            <Line>
+              <AccountID>3000</AccountID>
+              <CreditAmount>1000</CreditAmount>
+            </Line>
+            <Line>
+              <AccountID>2700</AccountID>
+              <CreditAmount>250</CreditAmount>
+            </Line>
+            <Line>
+              <AccountID>1500</AccountID>
+              <DebitAmount>1250</DebitAmount>
+              <CustomerID>ZERO</CustomerID>
+            </Line>
+          </Transaction>
+          <Transaction>
+            <Period>
+              <PeriodYear>2023</PeriodYear>
+              <PeriodNumber>3</PeriodNumber>
+            </Period>
+            <TransactionDate>2023-03-01</TransactionDate>
+            <Line>
+              <AccountID>3000</AccountID>
+              <DebitAmount>1000</DebitAmount>
+            </Line>
+            <Line>
+              <AccountID>2700</AccountID>
+              <DebitAmount>250</DebitAmount>
+            </Line>
+            <Line>
+              <AccountID>1500</AccountID>
+              <CreditAmount>1250</CreditAmount>
+              <CustomerID>ZERO</CustomerID>
+            </Line>
+          </Transaction>
+        </Journal>
+      </GeneralLedgerEntries>
+    </AuditFile>
+    """
+    root = ET.fromstring(xml)
+    ns = {"n1": root.tag.split("}")[0][1:]}
+    df = compute_sales_per_customer(root, ns, year=2023)
     assert df.empty
 
 
