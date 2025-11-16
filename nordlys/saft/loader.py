@@ -168,6 +168,7 @@ def load_saft_files(
     results: List[Optional[SaftLoadResult]] = [None] * total
 
     failed_files: List[str] = []
+    first_exception: Optional[BaseException] = None
 
     if progress_callback is not None:
         progress_lock = Lock()
@@ -221,9 +222,11 @@ def load_saft_files(
             except Exception as exc:  # noqa: BLE001 - vi vil logge og fortsette
                 file_label = Path(paths[index]).name
                 _LOGGER.exception("Feil ved import av %s", file_label)
+                failed_files.append(file_label)
+                if first_exception is None:
+                    first_exception = exc
                 if progress_callback is not None:
                     error_message = f"Feil ved import av {file_label}: {exc}"
-                    failed_files.append(file_label)
                     with progress_lock:
                         progress_values[index] = 100
                         last_messages[index] = error_message
@@ -233,8 +236,6 @@ def load_saft_files(
                         else:
                             overall_progress = overall
                     progress_callback(overall, error_message)
-                else:
-                    raise
 
     if progress_callback is not None:
         if failed_files:
@@ -244,4 +245,9 @@ def load_saft_files(
             final_message = "Import fullført."
         progress_callback(100, final_message)
 
-    return [result for result in results if result is not None]
+    successful_results = [result for result in results if result is not None]
+
+    if first_exception is not None:
+        raise first_exception
+
+    return successful_results
