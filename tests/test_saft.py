@@ -222,6 +222,55 @@ def build_sales_dedup_root() -> ET.Element:
     return ET.fromstring(xml)
 
 
+def build_sales_credit_note_root() -> ET.Element:
+    xml = """
+    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <MasterFiles>
+        <Customer>
+          <CustomerID>K1</CustomerID>
+          <CustomerNumber>1001</CustomerNumber>
+          <Name>Kunde 1</Name>
+        </Customer>
+      </MasterFiles>
+      <GeneralLedgerEntries>
+        <Journal>
+          <Transaction>
+            <TransactionDate>2023-04-01</TransactionDate>
+            <DocumentReference>
+              <ReferenceNumber>INV-77</ReferenceNumber>
+            </DocumentReference>
+            <Line>
+              <AccountID>3000</AccountID>
+              <CreditAmount>1000</CreditAmount>
+            </Line>
+            <Line>
+              <AccountID>1500</AccountID>
+              <DebitAmount>1000</DebitAmount>
+              <CustomerID>K1</CustomerID>
+            </Line>
+          </Transaction>
+          <Transaction>
+            <TransactionDate>2023-04-04</TransactionDate>
+            <DocumentReference>
+              <ReferenceNumber>INV-77</ReferenceNumber>
+            </DocumentReference>
+            <Line>
+              <AccountID>3000</AccountID>
+              <DebitAmount>200</DebitAmount>
+            </Line>
+            <Line>
+              <AccountID>1500</AccountID>
+              <CreditAmount>200</CreditAmount>
+              <CustomerID>K1</CustomerID>
+            </Line>
+          </Transaction>
+        </Journal>
+      </GeneralLedgerEntries>
+    </AuditFile>
+    """
+    return ET.fromstring(xml)
+
+
 def build_purchase_dedup_root() -> ET.Element:
     xml = """
     <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
@@ -682,6 +731,21 @@ def test_compute_sales_per_customer_deduplicates_reference():
     totals_row = sales_df.iloc[0]
     assert totals_row["Omsetning eks mva"] == pytest.approx(800.0)
     assert totals_row["Transaksjoner"] == 1
+
+
+def test_reference_dedup_keeps_credit_notes():
+    root = build_sales_credit_note_root()
+    ns = {"n1": root.tag.split("}")[0][1:]}
+    df = compute_sales_per_customer(root, ns, year=2023)
+    assert len(df) == 1
+    row = df.iloc[0]
+    assert row["Omsetning eks mva"] == pytest.approx(800.0)
+    assert row["Transaksjoner"] == 2
+
+    sales_df, _ = compute_customer_supplier_totals(root, ns, year=2023)
+    totals_row = sales_df.iloc[0]
+    assert totals_row["Omsetning eks mva"] == pytest.approx(800.0)
+    assert totals_row["Transaksjoner"] == 2
 
 
 def test_parse_suppliers_and_compute_purchases():

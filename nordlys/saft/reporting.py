@@ -322,12 +322,18 @@ def _collect_supplier_transactions(
 def _deduplicate_by_reference(
     transactions: List[_CounterpartyTransaction],
 ) -> List[_CounterpartyTransaction]:
-    grouped: Dict[Tuple[str, str], List[_CounterpartyTransaction]] = defaultdict(list)
+    grouped: Dict[Tuple[str, str, int], List[_CounterpartyTransaction]] = defaultdict(list)
     unique: List[_CounterpartyTransaction] = []
 
     for transaction in transactions:
         if transaction.reference:
-            grouped[(transaction.party_id, transaction.reference)].append(transaction)
+            grouped[
+                (
+                    transaction.party_id,
+                    transaction.reference,
+                    _amount_sign(transaction.amount),
+                )
+            ].append(transaction)
         else:
             unique.append(transaction)
 
@@ -375,6 +381,14 @@ def _collapse_reference_group(
         collapsed.append(current_bucket)
 
     return [_pick_latest_record(bucket) for bucket in collapsed]
+
+
+def _amount_sign(amount: Decimal) -> int:
+    if amount > 0:
+        return 1
+    if amount < 0:
+        return -1
+    return 0
 
 
 def _dates_within_dedup_window(
