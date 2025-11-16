@@ -28,6 +28,15 @@ class AnalyticsEventHandler:
             )
             return None
         self._context.status_bar.showMessage(f"Topp kunder (3xxx) beregnet. N={topn}.")
+        if rows is not None and len(rows) < topn:
+            QMessageBox.information(
+                self._context.parent,
+                "Færre kunder enn ønsket",
+                (
+                    "Datasettet inneholder færre kunder enn etterspurt. "
+                    f"Viser {len(rows)} av {topn}."
+                ),
+            )
         return rows
 
     def on_calc_top_suppliers(
@@ -44,4 +53,13 @@ class AnalyticsEventHandler:
         self._context.status_bar.showMessage(
             f"Innkjøp per leverandør (kostnadskonti 4xxx–8xxx) beregnet. N={topn}."
         )
+        if rows is not None and len(rows) < topn:
+            QMessageBox.information(
+                self._context.parent,
+                "Færre leverandører enn ønsket",
+                (
+                    "Datasettet inneholder færre leverandører enn etterspurt. "
+                    f"Viser {len(rows)} av {topn}."
+                ),
+            )
         return rows
