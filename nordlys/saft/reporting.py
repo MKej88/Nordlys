@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import xml.etree.ElementTree as ET
 from collections import defaultdict
-from datetime import date, datetime
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple, TYPE_CHECKING
 
@@ -30,6 +31,18 @@ __all__ = [
 ]
 
 _pd: Optional["pd"] = None
+_REFERENCE_DEDUP_WINDOW_DAYS = 7
+
+
+@dataclass
+class _CounterpartyTransaction:
+    """Liten hjelpecontainer for summeringer per kunde/leverandør."""
+
+    party_id: str
+    amount: Decimal
+    date: Optional[date]
+    reference: Optional[str]
+    order: int
 
 
 def _require_pandas() -> "pd":
@@ -89,6 +102,30 @@ def _normalize_account_key(account: str) -> Optional[str]:
     return digits or None
 
 
+def _get_transaction_reference(
+    transaction: ET.Element, ns: NamespaceMap
+) -> Optional[str]:
+    """Prøver flere felt for å finne en felles referanse for bilaget."""
+
+    paths = (
+        "n1:ReferenceNumber",
+        "n1:DocumentReference/n1:ReferenceNumber",
+        "n1:DocumentReference/n1:DocumentNumber",
+        "n1:DocumentReference/n1:ID",
+        "n1:DocumentNumber",
+        "n1:SourceDocumentID",
+        "n1:TransactionID",
+    )
+    for path in paths:
+        element = _find(transaction, path, ns)
+        if element is None:
+            continue
+        text = _clean_text(element.text)
+        if text:
+            return text
+    return None
+
+
 def build_account_name_map(
     root: ET.Element, ns: NamespaceMap
 ) -> Dict[str, Optional[str]]:
@@ -134,19 +171,11 @@ def _extract_vat_code(line: ET.Element, ns: NamespaceMap) -> Optional[str]:
     return ", ".join(codes)
 
 
-def compute_customer_supplier_totals(
-    root: ET.Element,
-    ns: NamespaceMap,
-    *,
-    year: Optional[int] = None,
-    date_from: Optional[object] = None,
-    date_to: Optional[object] = None,
-    parent_map: Optional[Dict[ET.Element, Optional[ET.Element]]] = None,
-) -> Tuple["pd.DataFrame", "pd.DataFrame"]:
-    """Beregner kundesalg og leverandørkjøp i ett pass gjennom transaksjonene."""
-
-    pandas = _require_pandas()
-
+def _resolve_period(
+    year: Optional[int],
+    date_from: Optional[object],
+    date_to: Optional[object],
+) -> Tuple[Optional[date], Optional[date], bool]:
     start_date = _ensure_date(date_from)
     end_date = _ensure_date(date_to)
     use_range = start_date is not None or end_date is not None
@@ -155,11 +184,20 @@ def compute_customer_supplier_totals(
             start_date, end_date = end_date, start_date
     elif year is None:
         raise ValueError("Angi enten year eller date_from/date_to.")
+    return start_date, end_date, use_range
 
-    customer_totals: Dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
-    customer_counts: Dict[str, int] = defaultdict(int)
-    supplier_totals: Dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
-    supplier_counts: Dict[str, int] = defaultdict(int)
+
+def _collect_customer_transactions(
+    root: ET.Element,
+    ns: NamespaceMap,
+    *,
+    year: Optional[int] = None,
+    date_from: Optional[object] = None,
+    date_to: Optional[object] = None,
+) -> List[_CounterpartyTransaction]:
+    start_date, end_date, use_range = _resolve_period(year, date_from, date_to)
+    transactions: List[_CounterpartyTransaction] = []
+    order = 0
 
     for transaction in _iter_transactions(root, ns):
         lines_list = list(_findall(transaction, "n1:Line", ns))
@@ -178,43 +216,190 @@ def compute_customer_supplier_totals(
         elif year is not None and tx_date.year != year:
             continue
 
-        sale_total = Decimal("0")
-        purchase_total = Decimal("0")
-        has_income = False
-        has_purchase = False
+        customer_id = get_tx_customer_id(transaction, ns, lines=lines_list)
+        if not customer_id:
+            continue
 
+        transaction_total = Decimal("0")
+        has_income = False
         for line in lines_list:
             account_element = _find(line, "n1:AccountID", ns)
-            account_text = _clean_text(
+            account = _clean_text(
                 account_element.text if account_element is not None else None
             )
-            if not account_text:
+            if not account:
                 continue
-
-            digits = "".join(ch for ch in account_text if ch.isdigit())
-            normalized = digits or account_text
+            digits = "".join(ch for ch in account if ch.isdigit())
+            normalized = digits or account
+            if not normalized.startswith("3"):
+                continue
+            has_income = True
             credit = get_amount(line, "CreditAmount", ns)
             debit = get_amount(line, "DebitAmount", ns)
+            transaction_total += credit - debit
 
-            if normalized.startswith("3"):
-                has_income = True
-                sale_total += credit - debit
+        if not has_income:
+            continue
 
-            if _is_cost_account(account_text):
-                has_purchase = True
-                purchase_total += debit - credit
+        transactions.append(
+            _CounterpartyTransaction(
+                party_id=customer_id,
+                amount=transaction_total,
+                date=tx_date,
+                reference=_get_transaction_reference(transaction, ns),
+                order=order,
+            )
+        )
+        order += 1
 
-        if has_income:
-            customer_id = get_tx_customer_id(transaction, ns, lines=lines_list)
-            if customer_id:
-                customer_totals[customer_id] += sale_total
-                customer_counts[customer_id] += 1
+    return transactions
 
-        if has_purchase:
-            supplier_id = get_tx_supplier_id(transaction, ns, lines=lines_list)
-            if supplier_id:
-                supplier_totals[supplier_id] += purchase_total
-                supplier_counts[supplier_id] += 1
+
+def _collect_supplier_transactions(
+    root: ET.Element,
+    ns: NamespaceMap,
+    *,
+    year: Optional[int] = None,
+    date_from: Optional[object] = None,
+    date_to: Optional[object] = None,
+) -> List[_CounterpartyTransaction]:
+    start_date, end_date, use_range = _resolve_period(year, date_from, date_to)
+    transactions: List[_CounterpartyTransaction] = []
+    order = 0
+
+    for transaction in _iter_transactions(root, ns):
+        lines_list = list(_findall(transaction, "n1:Line", ns))
+        if not lines_list:
+            continue
+
+        date_element = _find(transaction, "n1:TransactionDate", ns)
+        tx_date = _ensure_date(date_element.text if date_element is not None else None)
+        if tx_date is None:
+            continue
+        if use_range:
+            if start_date and tx_date < start_date:
+                continue
+            if end_date and tx_date > end_date:
+                continue
+        elif year is not None and tx_date.year != year:
+            continue
+
+        supplier_id = get_tx_supplier_id(transaction, ns, lines=lines_list)
+        if not supplier_id:
+            continue
+
+        transaction_total = Decimal("0")
+        has_cost = False
+        for line in lines_list:
+            account_element = _find(line, "n1:AccountID", ns)
+            account = _clean_text(
+                account_element.text if account_element is not None else None
+            )
+            if not account or not _is_cost_account(account):
+                continue
+            has_cost = True
+            debit = get_amount(line, "DebitAmount", ns)
+            credit = get_amount(line, "CreditAmount", ns)
+            transaction_total += debit - credit
+
+        if not has_cost:
+            continue
+
+        transactions.append(
+            _CounterpartyTransaction(
+                party_id=supplier_id,
+                amount=transaction_total,
+                date=tx_date,
+                reference=_get_transaction_reference(transaction, ns),
+                order=order,
+            )
+        )
+        order += 1
+
+    return transactions
+
+
+def _deduplicate_by_reference(
+    transactions: List[_CounterpartyTransaction],
+) -> List[_CounterpartyTransaction]:
+    grouped: Dict[Tuple[str, str], List[_CounterpartyTransaction]] = defaultdict(list)
+    unique: List[_CounterpartyTransaction] = []
+
+    for transaction in transactions:
+        if transaction.reference:
+            grouped[(transaction.party_id, transaction.reference)].append(transaction)
+        else:
+            unique.append(transaction)
+
+    for group in grouped.values():
+        if len(group) == 1:
+            unique.append(group[0])
+            continue
+        unique.extend(_collapse_reference_group(group))
+
+    return unique
+
+
+def _collapse_reference_group(
+    group: List[_CounterpartyTransaction],
+) -> List[_CounterpartyTransaction]:
+    dates = [tx.date for tx in group if tx.date is not None]
+    if len(dates) >= 2:
+        if (max(dates) - min(dates)) <= timedelta(days=_REFERENCE_DEDUP_WINDOW_DAYS):
+            return [_pick_latest_record(group)]
+        return group
+    # Manglende datoer tolkes som korrigerende bilag på samme referanse
+    return [_pick_latest_record(group)]
+
+
+def _pick_latest_record(group: List[_CounterpartyTransaction]) -> _CounterpartyTransaction:
+    base_date = date.min
+    return max(
+        group,
+        key=lambda tx: (
+            tx.date or base_date,
+            abs(tx.amount),
+            tx.order,
+        ),
+    )
+
+
+def compute_customer_supplier_totals(
+    root: ET.Element,
+    ns: NamespaceMap,
+    *,
+    year: Optional[int] = None,
+    date_from: Optional[object] = None,
+    date_to: Optional[object] = None,
+    parent_map: Optional[Dict[ET.Element, Optional[ET.Element]]] = None,
+) -> Tuple["pd.DataFrame", "pd.DataFrame"]:
+    """Beregner kundesalg og leverandørkjøp i ett pass gjennom transaksjonene."""
+
+    pandas = _require_pandas()
+
+    customer_transactions = _deduplicate_by_reference(
+        _collect_customer_transactions(
+            root, ns, year=year, date_from=date_from, date_to=date_to
+        )
+    )
+    supplier_transactions = _deduplicate_by_reference(
+        _collect_supplier_transactions(
+            root, ns, year=year, date_from=date_from, date_to=date_to
+        )
+    )
+
+    customer_totals: Dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
+    customer_counts: Dict[str, int] = defaultdict(int)
+    supplier_totals: Dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
+    supplier_counts: Dict[str, int] = defaultdict(int)
+
+    for transaction in customer_transactions:
+        customer_totals[transaction.party_id] += transaction.amount
+        customer_counts[transaction.party_id] += 1
+
+    for transaction in supplier_transactions:
+        supplier_totals[transaction.party_id] += transaction.amount
+        supplier_counts[transaction.party_id] += 1
 
     lookup_map = parent_map
     if (customer_totals or supplier_totals) and lookup_map is None:
@@ -288,63 +473,20 @@ def compute_sales_per_customer(
 
     pandas = _require_pandas()
 
-    start_date = _ensure_date(date_from)
-    end_date = _ensure_date(date_to)
-    use_range = start_date is not None or end_date is not None
-    if use_range:
-        if start_date and end_date and start_date > end_date:
-            start_date, end_date = end_date, start_date
-    elif year is None:
-        raise ValueError("Angi enten year eller date_from/date_to.")
+    transactions = _deduplicate_by_reference(
+        _collect_customer_transactions(
+            root, ns, year=year, date_from=date_from, date_to=date_to
+        )
+    )
+    if not transactions:
+        return pandas.DataFrame(columns=["Kundenr", "Kundenavn", "Omsetning eks mva"])
 
     totals: Dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
     counts: Dict[str, int] = defaultdict(int)
 
-    transactions = _findall(
-        root, ".//n1:GeneralLedgerEntries/n1:Journal/n1:Transaction", ns
-    )
     for transaction in transactions:
-        date_element = _find(transaction, "n1:TransactionDate", ns)
-        tx_date = _ensure_date(date_element.text if date_element is not None else None)
-        if tx_date is None:
-            continue
-        if use_range:
-            if start_date and tx_date < start_date:
-                continue
-            if end_date and tx_date > end_date:
-                continue
-        elif year is not None and tx_date.year != year:
-            continue
-
-        customer_id = get_tx_customer_id(transaction, ns)
-        if not customer_id:
-            continue
-
-        lines = _findall(transaction, "n1:Line", ns)
-        transaction_total = Decimal("0")
-        has_income = False
-        for line in lines:
-            account_element = _find(line, "n1:AccountID", ns)
-            account = _clean_text(
-                account_element.text if account_element is not None else None
-            )
-            if not account:
-                continue
-            digits = "".join(ch for ch in account if ch.isdigit())
-            normalized = digits or account
-            if not normalized.startswith("3"):
-                continue
-            has_income = True
-            credit = get_amount(line, "CreditAmount", ns)
-            debit = get_amount(line, "DebitAmount", ns)
-            transaction_total += credit - debit
-
-        if has_income:
-            totals[customer_id] += transaction_total
-            counts[customer_id] += 1
-
-    if not totals:
-        return pandas.DataFrame(columns=["Kundenr", "Kundenavn", "Omsetning eks mva"])
+        totals[transaction.party_id] += transaction.amount
+        counts[transaction.party_id] += 1
 
     name_map = build_customer_name_map(root, ns)
     rows = []
@@ -392,63 +534,22 @@ def compute_purchases_per_supplier(
 
     pandas = _require_pandas()
 
-    start_date = _ensure_date(date_from)
-    end_date = _ensure_date(date_to)
-    use_range = start_date is not None or end_date is not None
-    if use_range:
-        if start_date and end_date and start_date > end_date:
-            start_date, end_date = end_date, start_date
-    elif year is None:
-        raise ValueError("Angi enten year eller date_from/date_to.")
+    transactions = _deduplicate_by_reference(
+        _collect_supplier_transactions(
+            root, ns, year=year, date_from=date_from, date_to=date_to
+        )
+    )
+    if not transactions:
+        return pandas.DataFrame(
+            columns=["Leverandørnr", "Leverandørnavn", "Innkjøp eks mva"]
+        )
 
     totals: Dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
     counts: Dict[str, int] = defaultdict(int)
 
-    transactions = _findall(
-        root, ".//n1:GeneralLedgerEntries/n1:Journal/n1:Transaction", ns
-    )
     for transaction in transactions:
-        date_element = _find(transaction, "n1:TransactionDate", ns)
-        tx_date = _ensure_date(date_element.text if date_element is not None else None)
-        if tx_date is None:
-            continue
-        if use_range:
-            if start_date and tx_date < start_date:
-                continue
-            if end_date and tx_date > end_date:
-                continue
-        elif year is not None and tx_date.year != year:
-            continue
-
-        supplier_id = get_tx_supplier_id(transaction, ns)
-        if not supplier_id:
-            continue
-
-        lines = _findall(transaction, "n1:Line", ns)
-        transaction_total = Decimal("0")
-        has_cost = False
-        for line in lines:
-            account_element = _find(line, "n1:AccountID", ns)
-            account = _clean_text(
-                account_element.text if account_element is not None else None
-            )
-            if not account:
-                continue
-            if not _is_cost_account(account):
-                continue
-            has_cost = True
-            debit = get_amount(line, "DebitAmount", ns)
-            credit = get_amount(line, "CreditAmount", ns)
-            transaction_total += debit - credit
-
-        if has_cost:
-            totals[supplier_id] += transaction_total
-            counts[supplier_id] += 1
-
-    if not totals:
-        return pandas.DataFrame(
-            columns=["Leverandørnr", "Leverandørnavn", "Innkjøp eks mva"]
-        )
+        totals[transaction.party_id] += transaction.amount
+        counts[transaction.party_id] += 1
 
     name_map = build_supplier_name_map(root, ns)
     rows = []
