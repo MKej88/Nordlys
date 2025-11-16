@@ -5,7 +5,9 @@ from __future__ import annotations
 import sys
 from typing import Optional, Tuple
 
-from PySide6.QtCore import Qt
+import os
+
+from PySide6.QtCore import Qt, QtMsgType, qInstallMessageHandler
 from PySide6.QtWidgets import QApplication, QMainWindow, QTreeWidgetItem
 
 from .import_export import ImportExportController
@@ -160,10 +162,38 @@ class NordlysWindow(QMainWindow):
 def create_app() -> Tuple[QApplication, NordlysWindow]:
     """Fabrikkfunksjon for å opprette QApplication og hovedvindu."""
     app = QApplication.instance()
+    _install_qt_warning_filter()
     if app is None:
+        # Enkel failsafe: tving programvaren til å bruke raster-basert renderering
+        # i tilfeller der GPU-driver eller OpenGL skaper problemer.
+        os.environ.setdefault("QT_OPENGL", "software")
+        QApplication.setAttribute(Qt.AA_UseSoftwareOpenGL)
         app = QApplication(sys.argv)
     window = NordlysWindow()
     return app, window
+
+
+def _install_qt_warning_filter() -> None:
+    """Fjerner støyende QPainter-advarsler fra konsollen."""
+
+    ignored = (
+        "qpaint device returned engine",
+        "painter not active",
+    )
+
+    def _handler(
+        _mode: QtMsgType,
+        _context,  # type: ignore[override]
+        message: str,
+    ) -> None:
+        if any(fragment in message.lower() for fragment in ignored):
+            return
+        sys.stderr.write(f"{message}\n")
+
+    try:
+        qInstallMessageHandler(_handler)  # type: ignore[arg-type]
+    except Exception:
+        return
 
 
 def run() -> None:
