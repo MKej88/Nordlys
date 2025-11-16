@@ -230,8 +230,8 @@ def _compute_customer_sales_map(
 
         date_element = _find(transaction, "n1:TransactionDate", ns)
         tx_date = _ensure_date(date_element.text if date_element is not None else None)
-        voucher_description, transaction_description = _extract_transaction_descriptions(
-            transaction, ns
+        voucher_description, transaction_description = (
+            _extract_transaction_descriptions(transaction, ns)
         )
 
         if use_range:
@@ -261,9 +261,7 @@ def _compute_customer_sales_map(
         has_revenue_account = False
         vat_share_per_customer: Dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
         revenue_total = Decimal("0")
-        transaction_customer_id = get_tx_customer_id(
-            transaction, ns, lines=lines_list
-        )
+        transaction_customer_id = get_tx_customer_id(transaction, ns, lines=lines_list)
         if not transaction_customer_id:
             transaction_customer_id = _lookup_description_customer(
                 voucher_description, transaction_description, description_customer_map
