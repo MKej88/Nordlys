@@ -230,6 +230,8 @@ def load_saft_files(
                         else:
                             overall_progress = overall
                     progress_callback(overall, error_message)
+                else:
+                    raise
 
     if progress_callback is not None:
         progress_callback(100, "Import fullført.")
