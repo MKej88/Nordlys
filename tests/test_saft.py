@@ -591,6 +591,45 @@ def test_compute_sales_per_customer_assigns_voucher_description_buckets(
     assert df.loc[0, "Transaksjoner"] == 1
 
 
+def test_compute_sales_per_customer_creates_missing_bucket_customers() -> None:
+    xml = """
+    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <GeneralLedgerEntries>
+        <Journal>
+          <Transaction>
+            <Period>
+              <PeriodYear>2023</PeriodYear>
+              <PeriodNumber>6</PeriodNumber>
+            </Period>
+            <TransactionDate>2023-06-15</TransactionDate>
+            <VoucherDescription>Annet</VoucherDescription>
+            <Line>
+              <AccountID>3000</AccountID>
+              <CreditAmount>1000</CreditAmount>
+            </Line>
+            <Line>
+              <AccountID>2700</AccountID>
+              <CreditAmount>250</CreditAmount>
+            </Line>
+            <Line>
+              <AccountID>1920</AccountID>
+              <DebitAmount>1250</DebitAmount>
+            </Line>
+          </Transaction>
+        </Journal>
+      </GeneralLedgerEntries>
+    </AuditFile>
+    """
+    root = ET.fromstring(xml)
+    ns = {"n1": root.tag.split("}")[0][1:]}
+
+    df = compute_sales_per_customer(root, ns, year=2023)
+
+    assert list(df["Kundenr"]) == ["A"]
+    assert df.loc[0, "Kundenavn"] == "Annet"
+    assert df.loc[0, "Omsetning eks mva"] == pytest.approx(1000.0)
+
+
 def test_compute_sales_per_customer_does_not_use_general_description_buckets() -> None:
     xml = """
     <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
@@ -1359,6 +1398,30 @@ def test_build_customer_name_map_fallback():
     ns = {"n1": root.tag.split("}")[0][1:]}
     names = build_customer_name_map(root, ns)
     assert names["CU1"] == "Fallback Navn"
+
+
+def test_build_customer_name_map_includes_bucket_names():
+    xml = """
+    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <GeneralLedgerEntries>
+        <Journal>
+          <Transaction>
+            <Line>
+              <AccountID>3000</AccountID>
+              <CreditAmount>500</CreditAmount>
+            </Line>
+          </Transaction>
+        </Journal>
+      </GeneralLedgerEntries>
+    </AuditFile>
+    """
+    root = ET.fromstring(xml)
+    ns = {"n1": root.tag.split("}")[0][1:]}
+
+    names = build_customer_name_map(root, ns)
+
+    assert names["A"] == "Annet"
+    assert names["D"] == "Diverse"
 
 
 def test_save_outputs(tmp_path):

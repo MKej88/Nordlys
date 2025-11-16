@@ -5,6 +5,7 @@ from __future__ import annotations
 import xml.etree.ElementTree as ET
 from typing import Dict, Optional
 
+from .customer_buckets import DESCRIPTION_BUCKET_MAP
 from .xml_helpers import _clean_text, _find, _findall, _local_name, NamespaceMap
 
 __all__ = [
@@ -78,6 +79,10 @@ def build_customer_name_map(
         name = lookup_name(element)
         if name:
             names[cid] = name
+
+    for keyword, bucket_id in DESCRIPTION_BUCKET_MAP.items():
+        if bucket_id not in names:
+            names[bucket_id] = keyword.capitalize()
 
     return names
 

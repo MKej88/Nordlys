@@ -9,6 +9,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple, TYPE_CHECKING
 
 from ..helpers.lazy_imports import lazy_pandas
+from .customer_buckets import DESCRIPTION_BUCKET_MAP
 from .entry_stream import get_amount, get_tx_customer_id, get_tx_supplier_id
 from .models import CostVoucher, VoucherLine
 from .name_lookup import (
@@ -31,7 +32,7 @@ __all__ = [
 
 _pd: Optional["pd"] = None
 
-_DESCRIPTION_BUCKET_NAMES: Set[str] = {"annet", "diverse"}
+_DESCRIPTION_BUCKET_NAMES: Set[str] = set(DESCRIPTION_BUCKET_MAP)
 
 
 def _require_pandas() -> "pd":
@@ -114,6 +115,9 @@ def _build_description_customer_map(
         normalized = name.strip().lower()
         if normalized in _DESCRIPTION_BUCKET_NAMES and normalized not in mapping:
             mapping[normalized] = customer_id
+    for bucket_name in _DESCRIPTION_BUCKET_NAMES:
+        if bucket_name not in mapping:
+            mapping[bucket_name] = DESCRIPTION_BUCKET_MAP[bucket_name]
     return mapping
 
 
