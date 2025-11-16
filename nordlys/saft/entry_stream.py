@@ -155,9 +155,14 @@ def get_tx_customer_id(
     if first_analysis_id:
         return first_analysis_id
 
-    customer_info = _find(transaction, "n1:CustomerInfo/n1:CustomerID", ns)
-    if customer_info is not None:
-        customer_id = _clean_text(customer_info.text)
+    fallback_paths = (
+        "n1:CustomerInfo/n1:CustomerID",
+        "n1:Customer/n1:CustomerID",
+        "n1:CustomerID",
+    )
+    for path in fallback_paths:
+        element = _find(transaction, path, ns)
+        customer_id = _clean_text(element.text if element is not None else None)
         if customer_id:
             return customer_id
 

@@ -384,6 +384,29 @@ def test_get_tx_customer_id_priority():
     assert get_tx_customer_id(transaction_analysis, ns) == "ANAL-CUST"
 
 
+@pytest.mark.parametrize(
+    "customer_block",
+    [
+        "<CustomerInfo><CustomerID>TX-CUST</CustomerID></CustomerInfo>",
+        "<Customer><CustomerID>TX-CUST</CustomerID></Customer>",
+        "<CustomerID>TX-CUST</CustomerID>",
+    ],
+)
+def test_get_tx_customer_id_reads_transaction_level_blocks(customer_block: str) -> None:
+    ns = {"n1": "urn:StandardAuditFile-Taxation-Financial:NO"}
+    xml = f"""
+    <Transaction xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      {customer_block}
+      <Line>
+        <AccountID>3000</AccountID>
+        <CreditAmount>100</CreditAmount>
+      </Line>
+    </Transaction>
+    """
+    transaction = ET.fromstring(xml)
+    assert get_tx_customer_id(transaction, ns) == "TX-CUST"
+
+
 def test_compute_sales_per_customer():
     root = build_sample_root()
     ns = {"n1": root.tag.split("}")[0][1:]}
@@ -451,8 +474,18 @@ def test_compute_sales_per_customer_distributes_vat():
     assert counts["C2"] == 1
 
 
-def test_compute_sales_per_customer_includes_cash_sale_with_tx_customer():
-    xml = """
+@pytest.mark.parametrize(
+    "customer_block",
+    [
+        "<CustomerInfo><CustomerID>CASH1</CustomerID></CustomerInfo>",
+        "<Customer><CustomerID>CASH1</CustomerID></Customer>",
+        "<CustomerID>CASH1</CustomerID>",
+    ],
+)
+def test_compute_sales_per_customer_includes_cash_sale_with_tx_customer(
+    customer_block: str,
+) -> None:
+    xml = f"""
     <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
       <GeneralLedgerEntries>
         <Journal>
@@ -462,9 +495,7 @@ def test_compute_sales_per_customer_includes_cash_sale_with_tx_customer():
               <PeriodNumber>5</PeriodNumber>
             </Period>
             <TransactionDate>2023-05-05</TransactionDate>
-            <CustomerInfo>
-              <CustomerID>CASH1</CustomerID>
-            </CustomerInfo>
+            {customer_block}
             <Line>
               <AccountID>3000</AccountID>
               <CreditAmount>1000</CreditAmount>
