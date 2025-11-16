@@ -72,6 +72,9 @@ def _is_correction_transaction(transaction: ET.Element, ns: NamespaceMap) -> boo
     candidate_paths = (
         "n1:TransactionType",
         "n1:SourceDocumentID/n1:DocumentType",
+        "n1:SourceDocumentID/n1:VoucherDescription",
+        "n1:VoucherDescription",
+        "n1:VoucherType",
         "n1:DocumentType",
     )
     for candidate_path in candidate_paths:
@@ -79,7 +82,9 @@ def _is_correction_transaction(transaction: ET.Element, ns: NamespaceMap) -> boo
             return True
 
     description_element = _find(transaction, "n1:Description", ns)
-    description = _clean_text(description_element.text if description_element else None)
+    description = _clean_text(
+        description_element.text if description_element is not None else None
+    )
     if description:
         lower = description.lower()
         return any(keyword in lower for keyword in _CORRECTION_KEYWORDS)
