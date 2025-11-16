@@ -343,13 +343,47 @@ def _deduplicate_by_reference(
 def _collapse_reference_group(
     group: List[_CounterpartyTransaction],
 ) -> List[_CounterpartyTransaction]:
-    dates = [tx.date for tx in group if tx.date is not None]
-    if len(dates) >= 2:
-        if (max(dates) - min(dates)) <= timedelta(days=_REFERENCE_DEDUP_WINDOW_DAYS):
-            return [_pick_latest_record(group)]
+    if len(group) <= 1:
         return group
-    # Manglende datoer tolkes som korrigerende bilag på samme referanse
-    return [_pick_latest_record(group)]
+
+    sorted_group = sorted(
+        group,
+        key=lambda tx: (
+            tx.date is None,
+            tx.date or date.min,
+            tx.order,
+        ),
+    )
+
+    collapsed: List[List[_CounterpartyTransaction]] = []
+    current_bucket: List[_CounterpartyTransaction] = []
+
+    for transaction in sorted_group:
+        if not current_bucket:
+            current_bucket.append(transaction)
+            continue
+
+        previous = current_bucket[-1]
+        if _dates_within_dedup_window(previous.date, transaction.date):
+            current_bucket.append(transaction)
+            continue
+
+        collapsed.append(current_bucket)
+        current_bucket = [transaction]
+
+    if current_bucket:
+        collapsed.append(current_bucket)
+
+    return [_pick_latest_record(bucket) for bucket in collapsed]
+
+
+def _dates_within_dedup_window(
+    previous: Optional[date],
+    current: Optional[date],
+) -> bool:
+    if previous is None or current is None:
+        return True
+    return (current - previous) <= timedelta(days=_REFERENCE_DEDUP_WINDOW_DAYS)
 
 
 def _pick_latest_record(group: List[_CounterpartyTransaction]) -> _CounterpartyTransaction:

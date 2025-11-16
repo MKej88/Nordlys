@@ -350,6 +350,70 @@ def build_far_apart_sales_root() -> ET.Element:
     return ET.fromstring(xml)
 
 
+def build_mixed_window_sales_root() -> ET.Element:
+    xml = """
+    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <MasterFiles>
+        <Customer>
+          <CustomerID>K1</CustomerID>
+          <CustomerNumber>1001</CustomerNumber>
+          <Name>Kunde 1</Name>
+        </Customer>
+      </MasterFiles>
+      <GeneralLedgerEntries>
+        <Journal>
+          <Transaction>
+            <TransactionDate>2023-01-01</TransactionDate>
+            <DocumentReference>
+              <ReferenceNumber>INV-5</ReferenceNumber>
+            </DocumentReference>
+            <Line>
+              <AccountID>3000</AccountID>
+              <CreditAmount>1000</CreditAmount>
+            </Line>
+            <Line>
+              <AccountID>1500</AccountID>
+              <DebitAmount>1000</DebitAmount>
+              <CustomerID>K1</CustomerID>
+            </Line>
+          </Transaction>
+          <Transaction>
+            <TransactionDate>2023-01-03</TransactionDate>
+            <DocumentReference>
+              <ReferenceNumber>INV-5</ReferenceNumber>
+            </DocumentReference>
+            <Line>
+              <AccountID>3000</AccountID>
+              <CreditAmount>1200</CreditAmount>
+            </Line>
+            <Line>
+              <AccountID>1500</AccountID>
+              <DebitAmount>1200</DebitAmount>
+              <CustomerID>K1</CustomerID>
+            </Line>
+          </Transaction>
+          <Transaction>
+            <TransactionDate>2023-01-20</TransactionDate>
+            <DocumentReference>
+              <ReferenceNumber>INV-5</ReferenceNumber>
+            </DocumentReference>
+            <Line>
+              <AccountID>3000</AccountID>
+              <CreditAmount>900</CreditAmount>
+            </Line>
+            <Line>
+              <AccountID>1500</AccountID>
+              <DebitAmount>900</DebitAmount>
+              <CustomerID>K1</CustomerID>
+            </Line>
+          </Transaction>
+        </Journal>
+      </GeneralLedgerEntries>
+    </AuditFile>
+    """
+    return ET.fromstring(xml)
+
+
 def test_parse_header_and_customers():
     root = build_sample_root()
     header = parse_saft_header(root)
@@ -680,6 +744,16 @@ def test_reference_dedup_keeps_far_apart_transactions():
     assert len(df) == 1
     row = df.iloc[0]
     assert row["Omsetning eks mva"] == pytest.approx(1700.0)
+    assert row["Transaksjoner"] == 2
+
+
+def test_reference_dedup_collapses_nearby_even_if_late_change_exists():
+    root = build_mixed_window_sales_root()
+    ns = {"n1": root.tag.split("}")[0][1:]}
+    df = compute_sales_per_customer(root, ns, year=2023)
+    assert len(df) == 1
+    row = df.iloc[0]
+    assert row["Omsetning eks mva"] == pytest.approx(2100.0)
     assert row["Transaksjoner"] == 2
 
 
