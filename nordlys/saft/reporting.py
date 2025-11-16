@@ -187,7 +187,8 @@ def _compute_customer_sales_map(
             if not account_text:
                 continue
 
-            normalized = _normalize_account_key(account_text) or account_text
+            normalized_digits = _normalize_account_key(account_text)
+            normalized = normalized_digits or account_text
 
             if _is_revenue_account(normalized):
                 has_revenue_account = True
@@ -195,10 +196,15 @@ def _compute_customer_sales_map(
             credit = get_amount(line, "CreditAmount", ns)
 
             customer_id = _extract_line_customer_id(line, ns)
-            is_customer_balance_account = normalized.startswith("1")
+            is_receivable_account = bool(
+                normalized_digits and normalized_digits.startswith("15")
+            )
+            should_include_line = is_receivable_account or customer_id is not None
 
-            if normalized == "1500" or is_customer_balance_account:
+            if should_include_line:
                 if not customer_id:
+                    if not is_receivable_account:
+                        continue
                     if fallback_customer_id is None:
                         fallback_customer_id = get_tx_customer_id(
                             transaction, ns, lines=lines_list
