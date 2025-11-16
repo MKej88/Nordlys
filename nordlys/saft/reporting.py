@@ -257,8 +257,6 @@ def _compute_customer_sales_map(
 
         gross_per_customer: Dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
         vat_total = Decimal("0")
-        vat_positive_total = Decimal("0")
-        vat_negative_total = Decimal("0")
         vat_found = False
         has_revenue_account = False
         vat_share_per_customer: Dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
@@ -322,12 +320,7 @@ def _compute_customer_sales_map(
                     vat_share_per_customer[customer_id] += debit
             elif normalized.startswith("27"):
                 vat_found = True
-                vat_change = credit - debit
-                vat_total += vat_change
-                if vat_change > 0:
-                    vat_positive_total += vat_change
-                elif vat_change < 0:
-                    vat_negative_total += vat_change
+                vat_total += credit - debit
 
         if not vat_found and not has_revenue_account:
             continue
@@ -377,75 +370,33 @@ def _compute_customer_sales_map(
             if share > 0 and customer_id in gross_per_customer
         }
 
-        positive_customers = {
-            customer_id: gross
-            for customer_id, gross in gross_per_customer.items()
-            if gross > 0
-        }
-        negative_customers = {
-            customer_id: gross
-            for customer_id, gross in gross_per_customer.items()
-            if gross < 0
-        }
+        vat_share_total = sum(vat_share_per_customer.values(), Decimal("0"))
+        share_basis_per_customer: Dict[str, Decimal]
+        share_total: Decimal
+        if vat_share_total > 0:
+            share_basis_per_customer = dict(vat_share_per_customer)
+            share_total = vat_share_total
+            for customer_id, gross_amount in gross_per_customer.items():
+                if customer_id in share_basis_per_customer:
+                    continue
+                fallback_share = abs(gross_amount)
+                if fallback_share == 0:
+                    continue
+                share_basis_per_customer[customer_id] = fallback_share
+                share_total += fallback_share
+        else:
+            share_basis_per_customer = gross_per_customer
+            share_total = sum(gross_per_customer.values(), Decimal("0"))
 
-        share_basis_positive: Dict[str, Decimal] = {}
-        share_total_positive = Decimal("0")
-        if vat_positive_total > 0 and positive_customers:
-            share_basis_positive = {
-                customer_id: share
-                for customer_id, share in vat_share_per_customer.items()
-                if customer_id in positive_customers
-            }
-            share_total_positive = sum(share_basis_positive.values(), Decimal("0"))
-            if share_total_positive == 0:
-                share_basis_positive = dict(positive_customers)
-                share_total_positive = sum(
-                    share_basis_positive.values(), Decimal("0")
-                )
-
-        share_basis_negative: Dict[str, Decimal] = {}
-        share_total_negative = Decimal("0")
-        if vat_negative_total < 0 and negative_customers:
-            share_basis_negative = {
-                customer_id: abs(gross)
-                for customer_id, gross in negative_customers.items()
-            }
-            share_total_negative = sum(
-                share_basis_negative.values(), Decimal("0")
-            )
-
-        if (
-            vat_positive_total > 0
-            and share_total_positive == 0
-            and positive_customers
-        ) or (
-            vat_negative_total < 0
-            and share_total_negative == 0
-            and negative_customers
-        ):
+        if share_total == 0:
             continue
 
         for customer_id, gross_amount in gross_per_customer.items():
-            vat_adjustment = Decimal("0")
-            if (
-                gross_amount > 0
-                and vat_positive_total > 0
-                and share_total_positive > 0
-            ):
-                share_basis = share_basis_positive.get(customer_id, Decimal("0"))
-                if share_basis > 0:
-                    share = share_basis / share_total_positive
-                    vat_adjustment = vat_positive_total * share
-            elif (
-                gross_amount < 0
-                and vat_negative_total < 0
-                and share_total_negative > 0
-            ):
-                share_basis = share_basis_negative.get(customer_id, Decimal("0"))
-                if share_basis > 0:
-                    share = share_basis / share_total_negative
-                    vat_adjustment = vat_negative_total * share
-            net_amount = gross_amount - vat_adjustment
+            share_basis = share_basis_per_customer.get(customer_id, Decimal("0"))
+            if share_basis == 0:
+                continue
+            share = share_basis / share_total
+            net_amount = gross_amount - (vat_total * share)
             if net_amount == 0:
                 continue
             totals[customer_id] += net_amount
