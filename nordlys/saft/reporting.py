@@ -140,7 +140,14 @@ def _lookup_description_customer(
     normalized = description.strip().lower()
     if not normalized:
         return None
-    return mapping.get(normalized)
+    direct_match = mapping.get(normalized)
+    if direct_match:
+        return direct_match
+
+    for keyword, customer_id in mapping.items():
+        if keyword in normalized:
+            return customer_id
+    return None
 
 
 def _extract_transaction_period(

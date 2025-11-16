@@ -536,6 +536,8 @@ def test_compute_sales_per_customer_includes_cash_sale_with_tx_customer(
     [
         ("VoucherDescription", "Annet", "A"),
         ("Description", "Diverse", "D"),
+        ("VoucherDescription", "Annet kontantsalg", "A"),
+        ("Description", "Salg Diverse kunder", "D"),
     ],
 )
 def test_compute_sales_per_customer_assigns_known_description_buckets(
