@@ -474,6 +474,56 @@ def test_compute_sales_per_customer_distributes_vat():
     assert counts["C2"] == 1
 
 
+def test_compute_sales_per_customer_handles_mixed_credit_note_journal():
+    xml = """
+    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <GeneralLedgerEntries>
+        <Journal>
+          <Transaction>
+            <Period>
+              <PeriodYear>2023</PeriodYear>
+              <PeriodNumber>6</PeriodNumber>
+            </Period>
+            <TransactionDate>2023-06-20</TransactionDate>
+            <Line>
+              <AccountID>3000</AccountID>
+              <CreditAmount>1000</CreditAmount>
+            </Line>
+            <Line>
+              <AccountID>2700</AccountID>
+              <CreditAmount>250</CreditAmount>
+            </Line>
+            <Line>
+              <AccountID>1500</AccountID>
+              <DebitAmount>1250</DebitAmount>
+              <CustomerID>SALE</CustomerID>
+            </Line>
+            <Line>
+              <AccountID>3000</AccountID>
+              <DebitAmount>500</DebitAmount>
+            </Line>
+            <Line>
+              <AccountID>2700</AccountID>
+              <DebitAmount>125</DebitAmount>
+            </Line>
+            <Line>
+              <AccountID>1500</AccountID>
+              <CreditAmount>625</CreditAmount>
+              <CustomerID>CREDIT</CustomerID>
+            </Line>
+          </Transaction>
+        </Journal>
+      </GeneralLedgerEntries>
+    </AuditFile>
+    """
+    root = ET.fromstring(xml)
+    ns = {"n1": root.tag.split("}")[0][1:]}
+    df = compute_sales_per_customer(root, ns, year=2023)
+    totals = dict(zip(df["Kundenr"], df["Omsetning eks mva"]))
+    assert totals["SALE"] == pytest.approx(1000.0)
+    assert totals["CREDIT"] == pytest.approx(-500.0)
+
+
 @pytest.mark.parametrize(
     "customer_block",
     [
