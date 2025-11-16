@@ -591,6 +591,54 @@ def test_compute_sales_per_customer_assigns_voucher_description_buckets(
     assert df.loc[0, "Transaksjoner"] == 1
 
 
+@pytest.mark.parametrize(
+    ("voucher_description", "expected_customer"),
+    [
+        ("Kontantsalg diverse kunder", "D"),
+        ("Annet kontantoppgjør", "A"),
+    ],
+)
+def test_compute_sales_per_customer_handles_voucher_description_substrings(
+    voucher_description: str, expected_customer: str
+) -> None:
+    xml = f"""
+    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <GeneralLedgerEntries>
+        <Journal>
+          <Transaction>
+            <Period>
+              <PeriodYear>2023</PeriodYear>
+              <PeriodNumber>6</PeriodNumber>
+            </Period>
+            <TransactionDate>2023-06-15</TransactionDate>
+            <VoucherDescription>{voucher_description}</VoucherDescription>
+            <Line>
+              <AccountID>3000</AccountID>
+              <CreditAmount>1000</CreditAmount>
+            </Line>
+            <Line>
+              <AccountID>2700</AccountID>
+              <CreditAmount>250</CreditAmount>
+            </Line>
+            <Line>
+              <AccountID>1920</AccountID>
+              <DebitAmount>1250</DebitAmount>
+            </Line>
+          </Transaction>
+        </Journal>
+      </GeneralLedgerEntries>
+    </AuditFile>
+    """
+    root = ET.fromstring(xml)
+    ns = {"n1": root.tag.split("}")[0][1:]}
+
+    df = compute_sales_per_customer(root, ns, year=2023)
+
+    assert list(df["Kundenr"]) == [expected_customer]
+    assert df.loc[0, "Omsetning eks mva"] == pytest.approx(1000.0)
+    assert df.loc[0, "Transaksjoner"] == 1
+
+
 def test_compute_sales_per_customer_creates_missing_bucket_customers() -> None:
     xml = """
     <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">

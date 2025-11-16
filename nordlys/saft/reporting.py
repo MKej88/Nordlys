@@ -155,6 +155,11 @@ def _lookup_description_customer(
         direct = mapping.get(normalized_voucher)
         if direct:
             return direct
+        for keyword in _DESCRIPTION_BUCKET_NAMES:
+            if keyword in normalized_voucher:
+                fallback = mapping.get(keyword)
+                if fallback:
+                    return fallback
 
     normalized_description = _normalize(description)
     if normalized_description:
