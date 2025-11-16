@@ -243,8 +243,16 @@ def _compute_customer_sales_map(
         share_basis_per_customer: Dict[str, Decimal]
         share_total: Decimal
         if vat_share_total > 0:
-            share_basis_per_customer = vat_share_per_customer
+            share_basis_per_customer = dict(vat_share_per_customer)
             share_total = vat_share_total
+            for customer_id, gross_amount in gross_per_customer.items():
+                if customer_id in share_basis_per_customer:
+                    continue
+                fallback_share = abs(gross_amount)
+                if fallback_share == 0:
+                    continue
+                share_basis_per_customer[customer_id] = fallback_share
+                share_total += fallback_share
         else:
             share_basis_per_customer = gross_per_customer
             share_total = sum(gross_per_customer.values(), Decimal("0"))
