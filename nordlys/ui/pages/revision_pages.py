@@ -27,8 +27,9 @@ from PySide6.QtWidgets import (
 )
 
 from ... import saft_customers
+from ...helpers.formatting import format_currency, format_difference
 from ..tables import create_table_widget, populate_table
-from ..widgets import CardFrame, EmptyStateWidget
+from ..widgets import CardFrame, EmptyStateWidget, StatBadge
 
 __all__ = [
     "ChecklistPage",
@@ -882,6 +883,34 @@ class SalesArPage(QWidget):
         self.top_card = CardFrame(
             "Topp kunder", "Identifiser kunder med høyest omsetning."
         )
+        stats_layout = QHBoxLayout()
+        stats_layout.setContentsMargins(0, 0, 0, 0)
+        stats_layout.setSpacing(12)
+        self.sales_badge = StatBadge(
+            "Sum kundesalg",
+            "Summerte inntekter per kunde (eks. mva)",
+        )
+        self.revenue_badge = StatBadge(
+            "Sum salgskonti",
+            "Driftsinntekter fra 3xxx-konti",
+        )
+        self.diff_badge = StatBadge(
+            "Kontroll",
+            "Avvik mellom kundesalg og salgskonti",
+        )
+        stats_layout.addWidget(self.sales_badge)
+        stats_layout.addWidget(self.revenue_badge)
+        stats_layout.addWidget(self.diff_badge)
+        stats_layout.addStretch(1)
+        self.top_card.add_layout(stats_layout)
+
+        self.balance_hint = QLabel(
+            "Kontroll av kundesalg er ikke tilgjengelig før et datasett er aktivt."
+        )
+        self.balance_hint.setObjectName("infoLabel")
+        self.balance_hint.setWordWrap(True)
+        self.top_card.add_widget(self.balance_hint)
+
         controls = QHBoxLayout()
         controls.setSpacing(12)
         controls.addWidget(QLabel("Antall:"))
@@ -926,6 +955,7 @@ class SalesArPage(QWidget):
         layout.addWidget(self.top_card, 1)
 
         self.set_controls_enabled(False)
+        self.update_sales_reconciliation(None, None)
 
     def _handle_calc_clicked(self) -> None:
         rows = self._on_calc_top("3xxx", _requested_top_count(self.top_spin))
@@ -954,6 +984,49 @@ class SalesArPage(QWidget):
     def set_controls_enabled(self, enabled: bool) -> None:
         self.calc_button.setEnabled(enabled)
         self.top_spin.setEnabled(enabled)
+
+    def update_sales_reconciliation(
+        self,
+        sales_total: Optional[float],
+        revenue_total: Optional[float],
+    ) -> None:
+        """Vis en enkel kontroll mellom kundesalg og salgskonti."""
+
+        self.sales_badge.set_value(format_currency(sales_total))
+        self.revenue_badge.set_value(format_currency(revenue_total))
+        diff_text = format_difference(sales_total, revenue_total)
+        if diff_text == "0":
+            diff_display = "0 (OK)"
+        elif diff_text == "—":
+            diff_display = "—"
+        else:
+            diff_display = f"{diff_text} (avvik)"
+        self.diff_badge.set_value(diff_display)
+
+        if sales_total is None or revenue_total is None:
+            self.balance_hint.setText(
+                "Kontroll av kundesalg er ikke tilgjengelig før både "
+                "kundedata og saldobalanse er lest inn."
+            )
+            return
+
+        diff = sales_total - revenue_total
+        abs_diff = abs(diff)
+        tolerance = 0.5
+        if abs_diff <= tolerance:
+            self.balance_hint.setText(
+                "Kontroll: OK – sum kundesalg matcher salgskonti (3xxx)."
+            )
+        elif diff > 0:
+            self.balance_hint.setText(
+                "Kontroll: Kundesalg overstiger salgskonti med "
+                f"{format_currency(abs_diff)}."
+            )
+        else:
+            self.balance_hint.setText(
+                "Kontroll: Kundesalg ligger "
+                f"{format_currency(abs_diff)} under salgskonti."
+            )
 
 
 class PurchasesApPage(QWidget):

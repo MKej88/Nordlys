@@ -179,6 +179,10 @@ class DatasetFlowController:
 
         if pages.sales_ar_page:
             pages.sales_ar_page.set_controls_enabled(store.has_customer_data)
+            pages.sales_ar_page.update_sales_reconciliation(
+                store.customer_sales_total,
+                store.sales_account_total,
+            )
             pages.sales_ar_page.clear_top_customers()
         if pages.purchases_ap_page:
             pages.purchases_ap_page.set_controls_enabled(store.has_supplier_data)
