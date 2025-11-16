@@ -520,6 +520,38 @@ def test_compute_sales_per_customer_falls_back_to_transaction_customer():
     assert df.iloc[0]["Omsetning eks mva"] == pytest.approx(1250.0)
 
 
+def test_compute_sales_per_customer_includes_asset_sale_without_vat():
+    xml = """
+    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <GeneralLedgerEntries>
+        <Journal>
+          <Transaction>
+            <Period>
+              <PeriodYear>2023</PeriodYear>
+              <PeriodNumber>8</PeriodNumber>
+            </Period>
+            <TransactionDate>2023-08-05</TransactionDate>
+            <Line>
+              <AccountID>3800</AccountID>
+              <CreditAmount>200000</CreditAmount>
+            </Line>
+            <Line>
+              <AccountID>1500</AccountID>
+              <DebitAmount>200000</DebitAmount>
+              <CustomerID>ASSET</CustomerID>
+            </Line>
+          </Transaction>
+        </Journal>
+      </GeneralLedgerEntries>
+    </AuditFile>
+    """
+    root = ET.fromstring(xml)
+    ns = {"n1": root.tag.split("}")[0][1:]}
+    df = compute_sales_per_customer(root, ns, year=2023)
+    assert list(df["Kundenr"]) == ["ASSET"]
+    assert df.iloc[0]["Omsetning eks mva"] == pytest.approx(200000.0)
+
+
 def test_compute_sales_per_customer_last_period_filter():
     xml = """
     <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">

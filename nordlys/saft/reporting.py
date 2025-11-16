@@ -175,6 +175,7 @@ def _compute_customer_sales_map(
         gross_per_customer: Dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
         vat_total = Decimal("0")
         vat_found = False
+        has_revenue_account = False
         fallback_customer_id: Optional[str] = None
 
         for line in lines_list:
@@ -186,6 +187,9 @@ def _compute_customer_sales_map(
                 continue
 
             normalized = _normalize_account_key(account_text) or account_text
+
+            if _is_revenue_account(normalized):
+                has_revenue_account = True
             debit = get_amount(line, "DebitAmount", ns)
             credit = get_amount(line, "CreditAmount", ns)
 
@@ -207,7 +211,7 @@ def _compute_customer_sales_map(
                 vat_found = True
                 vat_total += credit - debit
 
-        if not vat_found:
+        if not vat_found and not has_revenue_account:
             continue
 
         gross_per_customer = {
@@ -499,6 +503,19 @@ def _is_cost_account(account: str) -> bool:
         return False
     first_char = normalized[0]
     return first_char in {"4", "5", "6", "7", "8"}
+
+
+def _is_revenue_account(account: str) -> bool:
+    """Returnerer True dersom kontoen tilhører kontoklasse 3xxx."""
+
+    if not account:
+        return False
+    normalized = account.strip()
+    digits = "".join(ch for ch in normalized if ch.isdigit())
+    normalized = digits or normalized
+    if not normalized:
+        return False
+    return normalized[0] == "3"
 
 
 def compute_purchases_per_supplier(
