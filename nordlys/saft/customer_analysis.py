@@ -89,6 +89,15 @@ def build_customer_supplier_analysis(
 
     period_start = _parse_date(header.period_start) if header else None
     period_end = _parse_date(header.period_end) if header else None
+    observed_start, observed_end = _detect_transaction_span(root, ns)
+    effective_start = period_start
+    if observed_start is not None:
+        if effective_start is None or observed_start < effective_start:
+            effective_start = observed_start
+    effective_end = period_end
+    if observed_end is not None:
+        if effective_end is None or observed_end > effective_end:
+            effective_end = observed_end
 
     if period_start or period_end:
         if parent_map is None:
@@ -97,16 +106,16 @@ def build_customer_supplier_analysis(
             saft_customers.compute_customer_supplier_totals(
                 root,
                 ns,
-                date_from=period_start,
-                date_to=period_end,
+                date_from=effective_start,
+                date_to=effective_end,
                 parent_map=parent_map,
             )
         )
         cost_vouchers = saft_customers.extract_cost_vouchers(
             root,
             ns,
-            date_from=period_start,
-            date_to=period_end,
+            date_from=effective_start,
+            date_to=effective_end,
             parent_map=parent_map,
         )
     elif analysis_year is not None:
@@ -150,3 +159,33 @@ def _parse_date(value: Optional[str]) -> Optional[date]:
             return datetime.strptime(text, "%Y-%m-%d").date()
         except ValueError:
             return None
+
+
+def _detect_transaction_span(
+    root: ET.Element, ns: MutableMapping[str, object]
+) -> Tuple[Optional[date], Optional[date]]:
+    """Finn første og siste transaksjonsdato i SAF-T-filen."""
+
+    ns_et = {
+        key: value
+        for key, value in ns.items()
+        if isinstance(key, str) and isinstance(value, str)
+    }
+    transactions = root.findall(
+        ".//n1:GeneralLedgerEntries/n1:Journal/n1:Transaction",
+        ns_et or None,
+    )
+    first_date: Optional[date] = None
+    last_date: Optional[date] = None
+    for transaction in transactions:
+        element = transaction.find("n1:TransactionDate", ns_et or None)
+        if element is None or not element.text:
+            continue
+        parsed = _parse_date(element.text)
+        if parsed is None:
+            continue
+        if first_date is None or parsed < first_date:
+            first_date = parsed
+        if last_date is None or parsed > last_date:
+            last_date = parsed
+    return first_date, last_date

@@ -20,6 +20,7 @@ from nordlys.saft import (
     SaftValidationResult,
     validate_saft_against_xsd,
 )
+from nordlys.saft.customer_analysis import build_customer_supplier_analysis
 from nordlys.saft_customers import (
     build_customer_name_map,
     build_supplier_name_map,
@@ -771,6 +772,78 @@ def test_compute_customer_supplier_totals_empty_results_and_export(tmp_path):
     csv_path, xlsx_path = save_outputs(customer_df, tmp_path, 2023)
     assert csv_path.exists()
     assert xlsx_path.exists()
+
+
+def test_customer_supplier_analysis_includes_all_file_months():
+    xml = """
+    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <Header>
+        <SelectionCriteria>
+          <PeriodStart>2023-01-01</PeriodStart>
+          <PeriodEnd>2023-10-31</PeriodEnd>
+        </SelectionCriteria>
+        <FiscalYear>2023</FiscalYear>
+      </Header>
+      <GeneralLedgerEntries>
+        <Journal>
+          <Transaction>
+            <Period>
+              <PeriodYear>2023</PeriodYear>
+              <PeriodNumber>5</PeriodNumber>
+            </Period>
+            <TransactionDate>2023-05-15</TransactionDate>
+            <Line>
+              <AccountID>3000</AccountID>
+              <CreditAmount>1000</CreditAmount>
+            </Line>
+            <Line>
+              <AccountID>2700</AccountID>
+              <CreditAmount>250</CreditAmount>
+            </Line>
+            <Line>
+              <AccountID>1500</AccountID>
+              <DebitAmount>1250</DebitAmount>
+              <CustomerID>FULL-YEAR</CustomerID>
+            </Line>
+          </Transaction>
+          <Transaction>
+            <Period>
+              <PeriodYear>2023</PeriodYear>
+              <PeriodNumber>12</PeriodNumber>
+            </Period>
+            <TransactionDate>2023-12-10</TransactionDate>
+            <Line>
+              <AccountID>3000</AccountID>
+              <CreditAmount>1000</CreditAmount>
+            </Line>
+            <Line>
+              <AccountID>2700</AccountID>
+              <CreditAmount>250</CreditAmount>
+            </Line>
+            <Line>
+              <AccountID>1500</AccountID>
+              <DebitAmount>1250</DebitAmount>
+              <CustomerID>FULL-YEAR</CustomerID>
+            </Line>
+          </Transaction>
+        </Journal>
+      </GeneralLedgerEntries>
+    </AuditFile>
+    """
+    root = ET.fromstring(xml)
+    ns = {"n1": root.tag.split("}")[0][1:]}
+    header = parse_saft_header(root)
+
+    analysis = build_customer_supplier_analysis(header, root, ns)
+
+    assert analysis.customer_sales is not None
+    totals = dict(
+        zip(
+            analysis.customer_sales["Kundenr"],
+            analysis.customer_sales["Omsetning eks mva"],
+        )
+    )
+    assert totals["FULL-YEAR"] == pytest.approx(2000.0)
 
 
 def test_compute_purchases_includes_all_cost_accounts():
