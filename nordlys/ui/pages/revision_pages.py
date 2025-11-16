@@ -38,6 +38,14 @@ __all__ = [
 ]
 
 
+def _requested_top_count(spin_box: QSpinBox) -> int:
+    """Returner brukers valg etter at spinboxen har tolket inndata."""
+
+    spin_box.interpretText()
+    value = spin_box.value()
+    return max(spin_box.minimum(), min(spin_box.maximum(), value))
+
+
 @dataclass
 class VoucherReviewResult:
     """Resultat fra vurdering av et enkelt bilag."""
@@ -863,8 +871,8 @@ class SalesArPage(QWidget):
         controls.setSpacing(12)
         controls.addWidget(QLabel("Antall:"))
         self.top_spin = QSpinBox()
-        self.top_spin.setRange(5, 100)
-        self.top_spin.setValue(10)
+        self.top_spin.setRange(1, 9999)
+        self.top_spin.setValue(self.top_spin.minimum())
         controls.addWidget(self.top_spin)
         controls.addStretch(1)
         self.calc_button = QPushButton("Beregn topp kunder")
@@ -891,6 +899,9 @@ class SalesArPage(QWidget):
                 "Omsetning (eks. mva)",
             ]
         )
+        self.top_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeToContents
+        )
         self.top_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.top_table.hide()
 
@@ -902,7 +913,7 @@ class SalesArPage(QWidget):
         self.set_controls_enabled(False)
 
     def _handle_calc_clicked(self) -> None:
-        rows = self._on_calc_top("3xxx", int(self.top_spin.value()))
+        rows = self._on_calc_top("3xxx", _requested_top_count(self.top_spin))
         if rows:
             self.set_top_customers(rows)
 
@@ -954,8 +965,8 @@ class PurchasesApPage(QWidget):
         controls.setSpacing(12)
         controls.addWidget(QLabel("Antall:"))
         self.top_spin = QSpinBox()
-        self.top_spin.setRange(5, 100)
-        self.top_spin.setValue(10)
+        self.top_spin.setRange(1, 9999)
+        self.top_spin.setValue(self.top_spin.minimum())
         controls.addWidget(self.top_spin)
         controls.addStretch(1)
         self.calc_button = QPushButton("Beregn innkjøp per leverandør")
@@ -995,7 +1006,7 @@ class PurchasesApPage(QWidget):
         self.set_controls_enabled(False)
 
     def _handle_calc_clicked(self) -> None:
-        rows = self._on_calc_top("kostnadskonti", int(self.top_spin.value()))
+        rows = self._on_calc_top("kostnadskonti", _requested_top_count(self.top_spin))
         if rows:
             self.set_top_suppliers(rows)
 
