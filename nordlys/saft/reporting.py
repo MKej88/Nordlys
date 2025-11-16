@@ -6,7 +6,7 @@ import xml.etree.ElementTree as ET
 from collections import defaultdict
 from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple, TYPE_CHECKING
+from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple, TYPE_CHECKING
 
 from ..helpers.lazy_imports import lazy_pandas
 from .entry_stream import get_amount, get_tx_customer_id, get_tx_supplier_id
@@ -30,6 +30,8 @@ __all__ = [
 ]
 
 _pd: Optional["pd"] = None
+
+_DESCRIPTION_BUCKET_NAMES: Set[str] = {"annet", "diverse"}
 
 
 def _require_pandas() -> "pd":
@@ -89,6 +91,58 @@ def _normalize_account_key(account: str) -> Optional[str]:
     return digits or None
 
 
+def _build_description_customer_map(
+    root: ET.Element, ns: NamespaceMap
+) -> Dict[str, str]:
+    """Returnerer kunde-IDer for transaksjoner som mangler kunde men har kjent tekst."""
+
+    mapping: Dict[str, str] = {}
+    if not _DESCRIPTION_BUCKET_NAMES:
+        return mapping
+
+    for customer in _findall(root, ".//n1:MasterFiles//n1:Customer", ns):
+        cid_element = _find(customer, "n1:CustomerID", ns)
+        customer_id = _clean_text(cid_element.text if cid_element is not None else None)
+        if not customer_id:
+            continue
+        name_element = _find(customer, "n1:Name", ns)
+        if name_element is None:
+            name_element = _find(customer, "n1:CompanyName", ns)
+        name = _clean_text(name_element.text if name_element is not None else None)
+        if not name:
+            continue
+        normalized = name.strip().lower()
+        if normalized in _DESCRIPTION_BUCKET_NAMES and normalized not in mapping:
+            mapping[normalized] = customer_id
+    return mapping
+
+
+def _extract_transaction_description(
+    transaction: ET.Element, ns: NamespaceMap
+) -> Optional[str]:
+    """Henter beskrivelsen fra bilaget, inkludert eventuell VoucherDescription."""
+
+    for path in ("n1:VoucherDescription", "n1:Description"):
+        element = _find(transaction, path, ns)
+        description = _clean_text(element.text if element is not None else None)
+        if description:
+            return description
+    return None
+
+
+def _lookup_description_customer(
+    description: Optional[str], mapping: Dict[str, str]
+) -> Optional[str]:
+    """Returnerer kunde-ID for en kjent beskrivelse."""
+
+    if not description:
+        return None
+    normalized = description.strip().lower()
+    if not normalized:
+        return None
+    return mapping.get(normalized)
+
+
 def _extract_transaction_period(
     transaction: ET.Element, ns: NamespaceMap
 ) -> Tuple[Optional[int], Optional[int]]:
@@ -142,6 +196,7 @@ def _compute_customer_sales_map(
     totals: Dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
     counts: Dict[str, int] = defaultdict(int)
     use_range = start_date is not None or end_date is not None
+    description_customer_map = _build_description_customer_map(root, ns)
 
     for transaction in _iter_transactions(root, ns):
         lines_list = list(_findall(transaction, "n1:Line", ns))
@@ -150,6 +205,7 @@ def _compute_customer_sales_map(
 
         date_element = _find(transaction, "n1:TransactionDate", ns)
         tx_date = _ensure_date(date_element.text if date_element is not None else None)
+        transaction_description = _extract_transaction_description(transaction, ns)
 
         if use_range:
             if tx_date is None:
@@ -176,12 +232,16 @@ def _compute_customer_sales_map(
         vat_total = Decimal("0")
         vat_found = False
         has_revenue_account = False
-        fallback_customer_id: Optional[str] = None
         vat_share_per_customer: Dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
         revenue_total = Decimal("0")
         transaction_customer_id = get_tx_customer_id(
             transaction, ns, lines=lines_list
         )
+        if not transaction_customer_id:
+            transaction_customer_id = _lookup_description_customer(
+                transaction_description, description_customer_map
+            )
+        fallback_customer_id: Optional[str] = transaction_customer_id
         line_summaries: List[Tuple[str, Optional[str], Decimal, Decimal]] = []
 
         for line in lines_list:
@@ -212,6 +272,12 @@ def _compute_customer_sales_map(
                 if not customer_id:
                     if not is_receivable_account:
                         continue
+                    if fallback_customer_id is None:
+                        fallback_customer_id = transaction_customer_id
+                        if fallback_customer_id is None:
+                            fallback_customer_id = _lookup_description_customer(
+                                transaction_description, description_customer_map
+                            )
                     if fallback_customer_id is None:
                         fallback_customer_id = get_tx_customer_id(
                             transaction, ns, lines=lines_list
