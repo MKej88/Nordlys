@@ -193,8 +193,10 @@ def _compute_customer_sales_map(
             debit = get_amount(line, "DebitAmount", ns)
             credit = get_amount(line, "CreditAmount", ns)
 
-            if normalized == "1500":
-                customer_id = _extract_line_customer_id(line, ns)
+            customer_id = _extract_line_customer_id(line, ns)
+            is_customer_balance_account = normalized.startswith("1")
+
+            if normalized == "1500" or is_customer_balance_account:
                 if not customer_id:
                     if fallback_customer_id is None:
                         fallback_customer_id = get_tx_customer_id(
