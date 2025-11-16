@@ -8,6 +8,7 @@ from typing import Callable, Iterable, List, Optional, Sequence, Tuple, cast
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QFileDialog,
+    QFrame,
     QGridLayout,
     QHeaderView,
     QHBoxLayout,
@@ -143,11 +144,14 @@ class CostVoucherReviewPage(QWidget):
         self.detail_card.add_widget(self.lbl_progress)
 
         meta_grid = QGridLayout()
-        meta_grid.setHorizontalSpacing(24)
-        meta_grid.setVerticalSpacing(8)
+        meta_grid.setContentsMargins(0, 0, 0, 0)
+        meta_grid.setHorizontalSpacing(16)
+        meta_grid.setVerticalSpacing(10)
+        meta_grid.setColumnStretch(0, 0)
+        meta_grid.setColumnStretch(1, 1)
         meta_labels = [
             ("Leverandør", "value_supplier"),
-            ("Dokument", "value_document"),
+            ("Bilag", "value_document"),
             ("Dato", "value_date"),
             ("Beløp (kostnad)", "value_amount"),
             ("Beskrivelse", "value_description"),
@@ -156,6 +160,7 @@ class CostVoucherReviewPage(QWidget):
         for row, (label_text, attr_name) in enumerate(meta_labels):
             label = QLabel(label_text)
             label.setObjectName("infoLabel")
+            label.setProperty("meta", True)
             meta_grid.addWidget(label, row, 0)
             value_label = QLabel("–")
             value_label.setObjectName("statusLabel")
@@ -163,7 +168,17 @@ class CostVoucherReviewPage(QWidget):
             meta_grid.addWidget(value_label, row, 1)
             setattr(self, attr_name, value_label)
 
-        self.detail_card.add_layout(meta_grid)
+        meta_section = QWidget()
+        meta_section_layout = QVBoxLayout(meta_section)
+        meta_section_layout.setContentsMargins(0, 0, 0, 0)
+        meta_section_layout.setSpacing(8)
+        meta_section_layout.addLayout(meta_grid)
+        self.detail_card.add_widget(meta_section)
+
+        divider = QFrame()
+        divider.setObjectName("analysisDivider")
+        divider.setFixedHeight(4)
+        self.detail_card.add_widget(divider)
 
         self.value_status = cast(QLabel, getattr(self, "value_status"))
         self._update_status_display(None)

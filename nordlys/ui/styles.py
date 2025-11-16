@@ -37,9 +37,19 @@ QPushButton#exportPdfButton:pressed { background-color: #c2410c; }
 #pageTitle { font-size: 30px; font-weight: 800; color: #0f172a; letter-spacing: 0.6px; }
 QLabel#pageSubtitle { color: #1e293b; font-size: 15px; }
 #statusLabel { color: #1f2937; font-size: 14px; line-height: 1.6; }
-QLabel[statusState='approved'] { color: #166534; font-weight: 600; }
-QLabel[statusState='rejected'] { color: #b91c1c; font-weight: 600; }
-QLabel[statusState='pending'] { color: #64748b; font-weight: 500; }
+QLabel[meta='true'] { font-weight: 600; }
+QLabel#statusLabel[statusState='approved'] {
+    color: #166534;
+    font-weight: 700;
+}
+QLabel#statusLabel[statusState='rejected'] {
+    color: #b91c1c;
+    font-weight: 700;
+}
+QLabel#statusLabel[statusState='pending'] {
+    color: #64748b;
+    font-weight: 500;
+}
 #emptyState { background-color: rgba(148, 163, 184, 0.12); border-radius: 18px; border: 1px dashed rgba(148, 163, 184, 0.4); }
 #emptyStateIcon { font-size: 32px; }
 #emptyStateTitle { font-size: 17px; font-weight: 600; color: #0f172a; }
