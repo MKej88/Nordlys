@@ -322,7 +322,9 @@ def _collect_supplier_transactions(
 def _deduplicate_by_reference(
     transactions: List[_CounterpartyTransaction],
 ) -> List[_CounterpartyTransaction]:
-    grouped: Dict[Tuple[str, str, int], List[_CounterpartyTransaction]] = defaultdict(list)
+    grouped: Dict[Tuple[str, str, int], List[_CounterpartyTransaction]] = defaultdict(
+        list
+    )
     unique: List[_CounterpartyTransaction] = []
 
     for transaction in transactions:
@@ -400,7 +402,9 @@ def _dates_within_dedup_window(
     return (current - previous) <= timedelta(days=_REFERENCE_DEDUP_WINDOW_DAYS)
 
 
-def _pick_latest_record(group: List[_CounterpartyTransaction]) -> _CounterpartyTransaction:
+def _pick_latest_record(
+    group: List[_CounterpartyTransaction],
+) -> _CounterpartyTransaction:
     base_date = date.min
     return max(
         group,
