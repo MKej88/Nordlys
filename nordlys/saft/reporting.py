@@ -358,8 +358,8 @@ def _pick_latest_record(group: List[_CounterpartyTransaction]) -> _CounterpartyT
         group,
         key=lambda tx: (
             tx.date or base_date,
-            abs(tx.amount),
             tx.order,
+            abs(tx.amount),
         ),
     )
 

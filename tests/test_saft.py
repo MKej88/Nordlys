@@ -186,6 +186,21 @@ def build_sales_dedup_root() -> ET.Element:
             </Line>
           </Transaction>
           <Transaction>
+            <TransactionDate>2023-01-07</TransactionDate>
+            <DocumentReference>
+              <ReferenceNumber>INV-1</ReferenceNumber>
+            </DocumentReference>
+            <Line>
+              <AccountID>3000</AccountID>
+              <CreditAmount>800</CreditAmount>
+            </Line>
+            <Line>
+              <AccountID>1500</AccountID>
+              <DebitAmount>800</DebitAmount>
+              <CustomerID>K1</CustomerID>
+            </Line>
+          </Transaction>
+          <Transaction>
             <TransactionDate>2023-01-10</TransactionDate>
             <DocumentReference>
               <ReferenceNumber>INV-1</ReferenceNumber>
@@ -246,6 +261,21 @@ def build_purchase_dedup_root() -> ET.Element:
             <Line>
               <AccountID>2400</AccountID>
               <CreditAmount>650</CreditAmount>
+              <SupplierID>S1</SupplierID>
+            </Line>
+          </Transaction>
+          <Transaction>
+            <TransactionDate>2023-02-03</TransactionDate>
+            <DocumentReference>
+              <ReferenceNumber>BILL-7</ReferenceNumber>
+            </DocumentReference>
+            <Line>
+              <AccountID>4000</AccountID>
+              <DebitAmount>450</DebitAmount>
+            </Line>
+            <Line>
+              <AccountID>2400</AccountID>
+              <CreditAmount>450</CreditAmount>
               <SupplierID>S1</SupplierID>
             </Line>
           </Transaction>
@@ -579,14 +609,14 @@ def test_compute_sales_per_customer_deduplicates_reference():
     df = compute_sales_per_customer(root, ns, year=2023)
     assert len(df) == 1
     row = df.iloc[0]
-    assert row["Omsetning eks mva"] == pytest.approx(1100.0)
+    assert row["Omsetning eks mva"] == pytest.approx(800.0)
     assert row["Transaksjoner"] == 1
 
     sales_df, purchases_df = compute_customer_supplier_totals(root, ns, year=2023)
     assert not sales_df.empty
     assert purchases_df.empty
     totals_row = sales_df.iloc[0]
-    assert totals_row["Omsetning eks mva"] == pytest.approx(1100.0)
+    assert totals_row["Omsetning eks mva"] == pytest.approx(800.0)
     assert totals_row["Transaksjoner"] == 1
 
 
@@ -621,13 +651,13 @@ def test_compute_purchases_per_supplier_deduplicates_reference():
     df = compute_purchases_per_supplier(root, ns, year=2023)
     assert len(df) == 1
     row = df.iloc[0]
-    assert row["Innkjøp eks mva"] == pytest.approx(650.0)
+    assert row["Innkjøp eks mva"] == pytest.approx(450.0)
     assert row["Transaksjoner"] == 1
 
     _, purchases_df = compute_customer_supplier_totals(root, ns, year=2023)
     assert not purchases_df.empty
     totals_row = purchases_df.iloc[0]
-    assert totals_row["Innkjøp eks mva"] == pytest.approx(650.0)
+    assert totals_row["Innkjøp eks mva"] == pytest.approx(450.0)
     assert totals_row["Transaksjoner"] == 1
 
 
