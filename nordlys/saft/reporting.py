@@ -34,6 +34,17 @@ _pd: Optional["pd"] = None
 _REFERENCE_DEDUP_WINDOW_DAYS = 7
 
 
+_CORRECTION_KEYWORDS = (
+    "korrig",
+    "revers",
+    "reverse",
+    "annull",
+    "storno",
+    "correction",
+)
+_CORRECTION_FULL_MATCHES = {"annet", "korrigeringsbilag", "reversering"}
+
+
 @dataclass
 class _CounterpartyTransaction:
     """Liten hjelpecontainer for summeringer per kunde/leverandør."""
@@ -43,6 +54,36 @@ class _CounterpartyTransaction:
     date: Optional[date]
     reference: Optional[str]
     order: int
+
+
+def _is_correction_transaction(transaction: ET.Element, ns: NamespaceMap) -> bool:
+    """Returnerer True dersom transaksjonen ser ut som et korrigeringsbilag."""
+
+    def _candidate_matches(path: str) -> bool:
+        element = _find(transaction, path, ns)
+        text = _clean_text(element.text if element is not None else None)
+        if not text:
+            return False
+        lower = text.lower()
+        if lower in _CORRECTION_FULL_MATCHES:
+            return True
+        return any(keyword in lower for keyword in _CORRECTION_KEYWORDS)
+
+    candidate_paths = (
+        "n1:TransactionType",
+        "n1:SourceDocumentID/n1:DocumentType",
+        "n1:DocumentType",
+    )
+    for candidate_path in candidate_paths:
+        if _candidate_matches(candidate_path):
+            return True
+
+    description_element = _find(transaction, "n1:Description", ns)
+    description = _clean_text(description_element.text if description_element else None)
+    if description:
+        lower = description.lower()
+        return any(keyword in lower for keyword in _CORRECTION_KEYWORDS)
+    return False
 
 
 def _require_pandas() -> "pd":
@@ -203,6 +244,8 @@ def _collect_customer_transactions(
         lines_list = list(_findall(transaction, "n1:Line", ns))
         if not lines_list:
             continue
+        if _is_correction_transaction(transaction, ns):
+            continue
 
         date_element = _find(transaction, "n1:TransactionDate", ns)
         tx_date = _ensure_date(date_element.text if date_element is not None else None)
@@ -270,6 +313,8 @@ def _collect_supplier_transactions(
     for transaction in _iter_transactions(root, ns):
         lines_list = list(_findall(transaction, "n1:Line", ns))
         if not lines_list:
+            continue
+        if _is_correction_transaction(transaction, ns):
             continue
 
         date_element = _find(transaction, "n1:TransactionDate", ns)
@@ -658,6 +703,8 @@ def extract_cost_vouchers(
         date_element = _find(transaction, "n1:TransactionDate", ns)
         tx_date = _ensure_date(date_element.text if date_element is not None else None)
         if tx_date is None:
+            continue
+        if _is_correction_transaction(transaction, ns):
             continue
         if use_range:
             if start_date and tx_date < start_date:
