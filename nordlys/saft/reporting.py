@@ -177,6 +177,7 @@ def _compute_customer_sales_map(
         vat_found = False
         has_revenue_account = False
         fallback_customer_id: Optional[str] = None
+        vat_share_per_customer: Dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
 
         for line in lines_list:
             account_element = _find(line, "n1:AccountID", ns)
@@ -209,6 +210,8 @@ def _compute_customer_sales_map(
                 if amount == 0:
                     continue
                 gross_per_customer[customer_id] += amount
+                if debit > 0:
+                    vat_share_per_customer[customer_id] += debit
             elif normalized.startswith("27"):
                 vat_found = True
                 vat_total += credit - debit
@@ -224,12 +227,30 @@ def _compute_customer_sales_map(
         if not gross_per_customer:
             continue
 
-        gross_total = sum(gross_per_customer.values(), Decimal("0"))
-        if gross_total == 0:
+        vat_share_per_customer = {
+            customer_id: share
+            for customer_id, share in vat_share_per_customer.items()
+            if share > 0 and customer_id in gross_per_customer
+        }
+
+        vat_share_total = sum(vat_share_per_customer.values(), Decimal("0"))
+        share_basis_per_customer: Dict[str, Decimal]
+        share_total: Decimal
+        if vat_share_total > 0:
+            share_basis_per_customer = vat_share_per_customer
+            share_total = vat_share_total
+        else:
+            share_basis_per_customer = gross_per_customer
+            share_total = sum(gross_per_customer.values(), Decimal("0"))
+
+        if share_total == 0:
             continue
 
         for customer_id, gross_amount in gross_per_customer.items():
-            share = gross_amount / gross_total
+            share_basis = share_basis_per_customer.get(customer_id, Decimal("0"))
+            if share_basis == 0:
+                continue
+            share = share_basis / share_total
             net_amount = gross_amount - (vat_total * share)
             if net_amount == 0:
                 continue
