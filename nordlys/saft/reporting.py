@@ -178,6 +178,10 @@ def _compute_customer_sales_map(
         has_revenue_account = False
         fallback_customer_id: Optional[str] = None
         vat_share_per_customer: Dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
+        transaction_customer_id = get_tx_customer_id(
+            transaction, ns, lines=lines_list
+        )
+        line_summaries: List[Tuple[str, Optional[str], Decimal, Decimal]] = []
 
         for line in lines_list:
             account_element = _find(line, "n1:AccountID", ns)
@@ -194,6 +198,7 @@ def _compute_customer_sales_map(
                 has_revenue_account = True
             debit = get_amount(line, "DebitAmount", ns)
             credit = get_amount(line, "CreditAmount", ns)
+            line_summaries.append((normalized, normalized_digits, debit, credit))
 
             customer_id = _extract_line_customer_id(line, ns)
             is_receivable_account = bool(
@@ -230,6 +235,19 @@ def _compute_customer_sales_map(
             for customer_id, amount in gross_per_customer.items()
             if amount != 0
         }
+        if not gross_per_customer and transaction_customer_id:
+            fallback_gross = Decimal("0")
+            used_revenue_basis = False
+            for normalized, normalized_digits, debit, credit in line_summaries:
+                if normalized and _is_revenue_account(normalized):
+                    fallback_gross += credit - debit
+                    used_revenue_basis = True
+                    continue
+                if normalized_digits and normalized_digits.startswith("27"):
+                    fallback_gross += credit - debit
+                    used_revenue_basis = True
+            if used_revenue_basis and fallback_gross != 0:
+                gross_per_customer[transaction_customer_id] = fallback_gross
         if not gross_per_customer:
             continue
 
