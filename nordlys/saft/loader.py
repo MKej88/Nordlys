@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from decimal import Decimal
@@ -19,6 +20,8 @@ from .customer_analysis import (
     build_customer_supplier_analysis,
 )
 from .trial_balance import compute_trial_balance
+
+_LOGGER = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -135,13 +138,21 @@ def load_saft_file(
 
 
 def load_saft_files(
-    file_paths: Sequence[str],
+    file_paths: Sequence[str] | str,
     *,
     progress_callback: Optional[Callable[[int, str], None]] = None,
 ) -> List[SaftLoadResult]:
-    """Laster en eller flere SAF-T-filer med fremdriftsrapportering."""
+    """
+    Laster en eller flere SAF-T-filer med fremdriftsrapportering.
 
-    paths = list(file_paths)
+    Funksjonen kan ta imot én eller flere filbaner og spinner opp en trådpool
+    med opptil én arbeider per CPU-kjerne.
+    """
+
+    if isinstance(file_paths, (str, os.PathLike)):
+        paths = [str(file_paths)]
+    else:
+        paths = list(file_paths)
     total = len(paths)
     if total == 0:
         if progress_callback is not None:
@@ -155,6 +166,9 @@ def load_saft_files(
         return [single]
 
     results: List[Optional[SaftLoadResult]] = [None] * total
+
+    failed_files: List[str] = []
+    first_exception: Optional[BaseException] = None
 
     if progress_callback is not None:
         progress_lock = Lock()
@@ -190,7 +204,7 @@ def load_saft_files(
             return _inner
 
     cpu_count = os.cpu_count() or 1
-    max_workers = min(total, max(1, cpu_count))
+    max_workers = min(total, cpu_count)
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {}
@@ -203,9 +217,37 @@ def load_saft_files(
 
         for future in as_completed(futures):
             index = futures[future]
-            results[index] = future.result()
+            try:
+                results[index] = future.result()
+            except Exception as exc:  # noqa: BLE001 - vi vil logge og fortsette
+                file_label = Path(paths[index]).name
+                _LOGGER.exception("Feil ved import av %s", file_label)
+                failed_files.append(file_label)
+                if first_exception is None:
+                    first_exception = exc
+                if progress_callback is not None:
+                    error_message = f"Feil ved import av {file_label}: {exc}"
+                    with progress_lock:
+                        progress_values[index] = 100
+                        last_messages[index] = error_message
+                        overall = int(round(sum(progress_values) / total))
+                        if overall < overall_progress:
+                            overall = overall_progress
+                        else:
+                            overall_progress = overall
+                    progress_callback(overall, error_message)
 
     if progress_callback is not None:
-        progress_callback(100, "Import fullført.")
+        if failed_files:
+            failed_summary = ", ".join(sorted(failed_files))
+            final_message = f"Import fullført med feil i: {failed_summary}."
+        else:
+            final_message = "Import fullført."
+        progress_callback(100, final_message)
 
-    return [result for result in results if result is not None]
+    successful_results = [result for result in results if result is not None]
+
+    if first_exception is not None:
+        raise first_exception
+
+    return successful_results
