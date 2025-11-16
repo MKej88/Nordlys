@@ -199,6 +199,48 @@ class SaftDatasetStore:
         return self._current_file
 
     @property
+    def customer_sales_total(self) -> Optional[float]:
+        """Summerer kundesalgene dersom data er tilgjengelig."""
+
+        if self._customer_sales is None or self._customer_sales.empty:
+            return None
+        column = "Omsetning eks mva"
+        if column not in self._customer_sales.columns:
+            return None
+        try:
+            series = pd.to_numeric(
+                self._customer_sales[column], errors="coerce"
+            ).fillna(0.0)
+        except Exception:
+            return None
+        total = float(series.sum())
+        return total
+
+    @property
+    def sales_account_total(self) -> Optional[float]:
+        """Henter driftsinntektene fra saldobalansens sammendrag."""
+
+        if not self._saft_summary:
+            return None
+        value = self._saft_summary.get("driftsinntekter")
+        if value is None:
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    @property
+    def customer_sales_balance_diff(self) -> Optional[float]:
+        """Returnerer avviket mellom kundesalg og salgskonti."""
+
+        sales_total = self.customer_sales_total
+        revenue_total = self.sales_account_total
+        if sales_total is None or revenue_total is None:
+            return None
+        return sales_total - revenue_total
+
+    @property
     def industry(self) -> Optional[IndustryClassification]:
         return self._industry
 
