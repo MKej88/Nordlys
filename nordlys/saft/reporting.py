@@ -178,6 +178,7 @@ def _compute_customer_sales_map(
         has_revenue_account = False
         fallback_customer_id: Optional[str] = None
         vat_share_per_customer: Dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
+        revenue_total = Decimal("0")
         transaction_customer_id = get_tx_customer_id(
             transaction, ns, lines=lines_list
         )
@@ -194,11 +195,12 @@ def _compute_customer_sales_map(
             normalized_digits = _normalize_account_key(account_text)
             normalized = normalized_digits or account_text
 
-            if _is_revenue_account(normalized):
-                has_revenue_account = True
             debit = get_amount(line, "DebitAmount", ns)
             credit = get_amount(line, "CreditAmount", ns)
             line_summaries.append((normalized, normalized_digits, debit, credit))
+            if _is_revenue_account(normalized):
+                has_revenue_account = True
+                revenue_total += credit - debit
 
             customer_id = _extract_line_customer_id(line, ns)
             is_receivable_account = bool(
@@ -250,6 +252,24 @@ def _compute_customer_sales_map(
                 gross_per_customer[transaction_customer_id] = fallback_gross
         if not gross_per_customer:
             continue
+
+        expected_gross_total = revenue_total + vat_total
+        gross_sum = sum(gross_per_customer.values(), Decimal("0"))
+        if has_revenue_account and expected_gross_total != gross_sum:
+            diff = expected_gross_total - gross_sum
+            if diff != 0:
+                target_customer: Optional[str] = transaction_customer_id
+                if not target_customer:
+                    if len(gross_per_customer) == 1:
+                        target_customer = next(iter(gross_per_customer))
+                    else:
+                        target_customer = max(
+                            gross_per_customer.items(), key=lambda item: abs(item[1])
+                        )[0]
+                if target_customer:
+                    gross_per_customer[target_customer] = (
+                        gross_per_customer.get(target_customer, Decimal("0")) + diff
+                    )
 
         vat_share_per_customer = {
             customer_id: share
