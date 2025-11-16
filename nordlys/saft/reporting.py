@@ -175,6 +175,7 @@ def _compute_customer_sales_map(
         gross_per_customer: Dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
         vat_total = Decimal("0")
         vat_found = False
+        fallback_customer_id: Optional[str] = None
 
         for line in lines_list:
             account_element = _find(line, "n1:AccountID", ns)
@@ -190,6 +191,12 @@ def _compute_customer_sales_map(
 
             if normalized == "1500":
                 customer_id = _extract_line_customer_id(line, ns)
+                if not customer_id:
+                    if fallback_customer_id is None:
+                        fallback_customer_id = get_tx_customer_id(
+                            transaction, ns, lines=lines_list
+                        )
+                    customer_id = fallback_customer_id
                 if not customer_id:
                     continue
                 amount = debit - credit

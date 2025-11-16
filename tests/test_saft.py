@@ -481,6 +481,44 @@ def test_compute_sales_per_customer_ignores_payments_without_vat():
     assert df.empty
 
 
+def test_compute_sales_per_customer_falls_back_to_transaction_customer():
+    xml = """
+    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <GeneralLedgerEntries>
+        <Journal>
+          <Transaction>
+            <Period>
+              <PeriodYear>2023</PeriodYear>
+              <PeriodNumber>1</PeriodNumber>
+            </Period>
+            <TransactionDate>2023-01-10</TransactionDate>
+            <CustomerInfo>
+              <CustomerID>HEAD-1</CustomerID>
+            </CustomerInfo>
+            <Line>
+              <AccountID>3000</AccountID>
+              <CreditAmount>1250</CreditAmount>
+            </Line>
+            <Line>
+              <AccountID>2700</AccountID>
+              <CreditAmount>250</CreditAmount>
+            </Line>
+            <Line>
+              <AccountID>1500</AccountID>
+              <DebitAmount>1500</DebitAmount>
+            </Line>
+          </Transaction>
+        </Journal>
+      </GeneralLedgerEntries>
+    </AuditFile>
+    """
+    root = ET.fromstring(xml)
+    ns = {"n1": root.tag.split("}")[0][1:]}
+    df = compute_sales_per_customer(root, ns, year=2023)
+    assert list(df["Kundenr"]) == ["HEAD-1"]
+    assert df.iloc[0]["Omsetning eks mva"] == pytest.approx(1250.0)
+
+
 def test_compute_sales_per_customer_last_period_filter():
     xml = """
     <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
