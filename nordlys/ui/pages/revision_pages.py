@@ -130,6 +130,10 @@ class CostVoucherReviewPage(QWidget):
         self.lbl_available.setObjectName("infoLabel")
         self.control_card.add_widget(self.lbl_available)
 
+        self.lbl_total_amount = QLabel("Sum inngående faktura: —")
+        self.lbl_total_amount.setObjectName("infoLabel")
+        self.control_card.add_widget(self.lbl_total_amount)
+
         input_layout.addWidget(self.control_card, 0, Qt.AlignTop)
         input_layout.addStretch(1)
 
@@ -139,6 +143,27 @@ class CostVoucherReviewPage(QWidget):
         selection_layout = QVBoxLayout(selection_container)
         selection_layout.setContentsMargins(0, 0, 0, 0)
         selection_layout.setSpacing(24)
+
+        selection_stats_layout = QHBoxLayout()
+        selection_stats_layout.setContentsMargins(0, 0, 0, 0)
+        selection_stats_layout.setSpacing(12)
+        selection_stats_layout.addStretch(1)
+        self.selection_badge_total_amount = StatBadge(
+            "Sum inngående faktura",
+            "Beløp fra innlastet fil",
+        )
+        self.selection_badge_reviewed_amount = StatBadge(
+            "Sum kontrollert",
+            "Kostnad på vurderte bilag",
+        )
+        self.selection_badge_coverage = StatBadge(
+            "Dekning",
+            "Andel av sum som er kontrollert",
+        )
+        selection_stats_layout.addWidget(self.selection_badge_total_amount)
+        selection_stats_layout.addWidget(self.selection_badge_reviewed_amount)
+        selection_stats_layout.addWidget(self.selection_badge_coverage)
+        selection_layout.addLayout(selection_stats_layout)
 
         self.detail_card = CardFrame("Gjennomgang av bilag")
         self.detail_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -255,7 +280,6 @@ class CostVoucherReviewPage(QWidget):
         stats_layout = QHBoxLayout()
         stats_layout.setContentsMargins(0, 0, 0, 0)
         stats_layout.setSpacing(12)
-        stats_layout.addStretch(1)
         self.badge_total_amount = StatBadge(
             "Sum inngående faktura",
             "Beløp fra innlastet fil",
@@ -271,6 +295,7 @@ class CostVoucherReviewPage(QWidget):
         stats_layout.addWidget(self.badge_total_amount)
         stats_layout.addWidget(self.badge_reviewed_amount)
         stats_layout.addWidget(self.badge_coverage)
+        stats_layout.addStretch(1)
         self.summary_card.add_layout(stats_layout)
 
         self.lbl_summary = QLabel("Ingen bilag kontrollert ennå.")
@@ -331,6 +356,7 @@ class CostVoucherReviewPage(QWidget):
         self.btn_start_sample.setText("Start bilagskontroll")
         self._clear_current_display()
         self._refresh_summary_table(force_rebuild=True)
+        self._update_total_amount_label()
         self.tab_widget.setCurrentIndex(0)
         self.tab_widget.setTabEnabled(1, False)
         self.tab_widget.setTabEnabled(2, False)
@@ -703,6 +729,12 @@ class CostVoucherReviewPage(QWidget):
             total += self._extract_amount(result.voucher.amount)
         return total
 
+    def _update_total_amount_label(self) -> None:
+        formatted_total = format_currency(self._total_available_amount)
+        self.lbl_total_amount.setText(
+            f"Sum inngående faktura: {formatted_total}"
+        )
+
     @staticmethod
     def _extract_amount(value: Optional[float]) -> float:
         try:
@@ -716,14 +748,29 @@ class CostVoucherReviewPage(QWidget):
     def _update_coverage_badges(self) -> None:
         total_available = self._total_available_amount
         reviewed = self._sum_reviewed_amount()
-        self.badge_total_amount.set_value(format_currency(total_available))
-        self.badge_reviewed_amount.set_value(format_currency(reviewed))
+        total_text = format_currency(total_available)
+        reviewed_text = format_currency(reviewed)
+        for badge in (
+            self.badge_total_amount,
+            self.selection_badge_total_amount,
+        ):
+            badge.set_value(total_text)
+        for badge in (
+            self.badge_reviewed_amount,
+            self.selection_badge_reviewed_amount,
+        ):
+            badge.set_value(reviewed_text)
         if total_available <= 0:
             coverage_text = "—"
         else:
             coverage = (reviewed / total_available) * 100
             coverage_text = f"{coverage:.1f} %"
-        self.badge_coverage.set_value(coverage_text)
+        for badge in (
+            self.badge_coverage,
+            self.selection_badge_coverage,
+        ):
+            badge.set_value(coverage_text)
+        self._update_total_amount_label()
 
     def _on_export_pdf(self) -> None:
         if not self._results or any(result is None for result in self._results):
