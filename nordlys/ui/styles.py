@@ -2,7 +2,20 @@
 
 from __future__ import annotations
 
-APPLICATION_STYLESHEET = """
+from pathlib import Path
+from string import Template
+
+_ICON_DIR = Path(__file__).resolve().parent.parent / "resources" / "icons"
+
+
+def _icon_path(filename: str) -> str:
+    """Returner ikonets fil-URI slik at Qt alltid finner det."""
+
+    return (_ICON_DIR / filename).as_uri()
+
+
+_APPLICATION_STYLESHEET_TEMPLATE = Template(
+    """
 QWidget { font-family: 'Roboto', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; font-size: 14px; color: #0f172a; }
 QMainWindow { background-color: #e9effb; }
 #navPanel { background-color: #0b1120; color: #e2e8f0; border-right: 1px solid rgba(148, 163, 184, 0.18); }
@@ -33,6 +46,28 @@ QPushButton#exportPdfButton:pressed { background-color: #c2410c; }
 #card { background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 #ffffff, stop:1 #f8fbff); border-radius: 20px; border: 1px solid rgba(148, 163, 184, 0.32); }
 #cardTitle { font-size: 20px; font-weight: 700; color: #0f172a; letter-spacing: 0.2px; }
 #cardSubtitle { color: #475569; font-size: 13px; line-height: 1.5; }
+QFrame#logListContainer {
+    background-color: #f8fafc;
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    border-radius: 16px;
+    padding: 0;
+}
+QListWidget#logList {
+    background: transparent;
+    border: none;
+    padding: 0;
+}
+QListWidget#logList::item {
+    padding: 12px 16px;
+    margin: 0;
+    border: none;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+    background-color: transparent;
+}
+QListWidget#logList::item:selected {
+    background-color: rgba(37, 99, 235, 0.15);
+    color: #0f172a;
+}
 #analysisSectionTitle { font-size: 16px; font-weight: 700; color: #0f172a; letter-spacing: 0.2px; border-bottom: 2px solid rgba(37, 99, 235, 0.35); padding-bottom: 6px; }
 #pageTitle { font-size: 30px; font-weight: 800; color: #0f172a; letter-spacing: 0.6px; }
 QLabel#pageSubtitle { color: #1e293b; font-size: 15px; }
@@ -73,7 +108,9 @@ QComboBox, QSpinBox { background-color: #ffffff; border: 1px solid rgba(148, 163
 QComboBox QAbstractItemView { border-radius: 8px; padding: 6px; }
 QComboBox::drop-down { border: none; width: 24px; }
 QComboBox::down-arrow { image: none; }
-QSpinBox::up-button, QSpinBox::down-button { border: none; background: transparent; width: 20px; }
+QSpinBox::up-button, QSpinBox::down-button, QDoubleSpinBox::up-button, QDoubleSpinBox::down-button { border: none; background: transparent; width: 24px; }
+QSpinBox::up-arrow, QDoubleSpinBox::up-arrow { image: url("${up_icon}"); width: 14px; height: 14px; }
+QSpinBox::down-arrow, QDoubleSpinBox::down-arrow { image: url("${down_icon}"); width: 14px; height: 14px; }
 QToolTip { background-color: #0f172a; color: #f8fafc; border: none; padding: 8px 10px; border-radius: 8px; }
 QTabWidget::pane { border: 1px solid rgba(148, 163, 184, 0.32); border-radius: 14px; background: #f4f7ff; margin-top: 12px; padding: 12px; }
 QTabWidget::tab-bar { left: 12px; }
@@ -91,5 +128,13 @@ QScrollBar::handle:horizontal { background: #2563eb; min-width: 24px; border-rad
 QScrollBar::handle:horizontal:hover { background: #1d4ed8; }
 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
 """
+)
+
+APPLICATION_STYLESHEET = _APPLICATION_STYLESHEET_TEMPLATE.substitute(
+    {
+        "up_icon": _icon_path("chevron-up.svg"),
+        "down_icon": _icon_path("chevron-down.svg"),
+    }
+)
 
 __all__ = ["APPLICATION_STYLESHEET"]
