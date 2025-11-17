@@ -320,6 +320,8 @@ class SammenstillingsanalysePage(QWidget):
         self.cost_table.setHorizontalHeaderLabels(headers)
         self.cost_table.setRowCount(len(rows))
         self._updating_cost_table = True
+        sorting_enabled = self.cost_table.isSortingEnabled()
+        self.cost_table.setSortingEnabled(False)
         try:
             for row_idx, row in enumerate(rows):
                 for col_idx, cell in enumerate(row):
@@ -349,6 +351,7 @@ class SammenstillingsanalysePage(QWidget):
                     self.cost_table.setItem(row_idx, col_idx, item)
         finally:
             self._updating_cost_table = False
+            self.cost_table.setSortingEnabled(sorting_enabled)
         apply_compact_row_heights(self.cost_table)
         header = self.cost_table.horizontalHeader()
         if header is not None:
