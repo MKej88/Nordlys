@@ -4,6 +4,7 @@ import sys
 import time
 import xml.etree.ElementTree as ET
 import zipfile
+from datetime import date
 from decimal import Decimal
 
 import pandas as pd
@@ -20,7 +21,12 @@ from nordlys.saft import (
     SaftValidationResult,
     validate_saft_against_xsd,
 )
-from nordlys.saft.customer_analysis import build_customer_supplier_analysis
+from nordlys.saft.header import SaftHeader
+from nordlys.saft.customer_analysis import (
+    _parse_date,
+    build_customer_supplier_analysis,
+)
+from nordlys.saft.periods import format_header_period
 from nordlys.saft_customers import (
     build_customer_name_map,
     build_supplier_name_map,
@@ -162,6 +168,64 @@ def test_parse_header_and_customers():
     assert "K1" in customers
     assert customers["K1"].customer_number == "1001"
     assert customers["K1"].name == "Kunde 1"
+
+
+def test_parse_header_with_selection_dates():
+    xml = """
+    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <Header>
+        <SelectionCriteria>
+          <SelectionStartDate>2023-01-01</SelectionStartDate>
+          <SelectionEndDate>31.12.2023</SelectionEndDate>
+        </SelectionCriteria>
+      </Header>
+    </AuditFile>
+    """
+    root = ET.fromstring(xml)
+    header = parse_saft_header(root)
+    assert header.period_start == "2023-01-01"
+    assert header.period_end == "31.12.2023"
+
+
+def test_parse_date_supports_multiple_formats():
+    assert _parse_date("31.12.2023") == date(2023, 12, 31)
+    assert _parse_date("20231231") == date(2023, 12, 31)
+
+
+def test_format_header_period_normalizes_dates():
+    header = SaftHeader(
+        company_name=None,
+        orgnr=None,
+        fiscal_year="2024",
+        period_start="2024-01-01",
+        period_end="2024-12-31",
+        file_version=None,
+    )
+    assert format_header_period(header) == "2024 P1–P12"
+
+
+def test_format_header_period_handles_month_tokens_without_year():
+    header = SaftHeader(
+        company_name=None,
+        orgnr=None,
+        fiscal_year="2025",
+        period_start="P1",
+        period_end="P12",
+        file_version=None,
+    )
+    assert format_header_period(header) == "2025 P1–P12"
+
+
+def test_format_header_period_builds_year_range_when_needed():
+    header = SaftHeader(
+        company_name=None,
+        orgnr=None,
+        fiscal_year=None,
+        period_start="2023-11-01",
+        period_end="2024-01-31",
+        file_version=None,
+    )
+    assert format_header_period(header) == "2023–2024 P11–P1"
 
 
 def test_parse_saldobalanse_and_summary():

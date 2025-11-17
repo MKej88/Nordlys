@@ -32,6 +32,13 @@ def parse_saft_header(root: ET.Element) -> SaftHeader:
     def txt(elem: Optional[ET.Element], tag: str) -> Optional[str]:
         return text_or_none(elem.find(f"n1:{tag}", NS)) if elem is not None else None
 
+    def txt_first(elem: Optional[ET.Element], tags: tuple[str, ...]) -> Optional[str]:
+        for tag in tags:
+            value = txt(elem, tag)
+            if value:
+                return value
+        return None
+
     def find_company_orgnr(company_elem: Optional[ET.Element]) -> Optional[str]:
         if company_elem is None:
             return None
@@ -59,8 +66,24 @@ def parse_saft_header(root: ET.Element) -> SaftHeader:
         company_name=txt(company, "Name"),
         orgnr=find_company_orgnr(company),
         fiscal_year=txt(criteria, "PeriodEndYear"),
-        period_start=txt(criteria, "PeriodStart"),
-        period_end=txt(criteria, "PeriodEnd"),
+        period_start=txt_first(
+            criteria,
+            (
+                "PeriodStart",
+                "SelectionStartDate",
+                "StartDate",
+                "PeriodStartDate",
+            ),
+        ),
+        period_end=txt_first(
+            criteria,
+            (
+                "PeriodEnd",
+                "SelectionEndDate",
+                "EndDate",
+                "PeriodEndDate",
+            ),
+        ),
         file_version=(
             text_or_none(header.find("n1:AuditFileVersion", NS))
             if header is not None

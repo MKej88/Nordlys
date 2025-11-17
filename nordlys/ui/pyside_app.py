@@ -10,6 +10,7 @@ import os
 from PySide6.QtCore import Qt, QtMsgType, qInstallMessageHandler
 from PySide6.QtWidgets import QApplication, QMainWindow, QTreeWidgetItem
 
+from ..saft.periods import format_header_period
 from .import_export import ImportExportController
 from .styles import APPLICATION_STYLESHEET
 from .window_layout import WindowComponents
@@ -128,11 +129,8 @@ class NordlysWindow(QMainWindow):
             return
         self.lbl_company.setText(f"Selskap: {header.company_name or '–'}")
         self.lbl_orgnr.setText(f"Org.nr: {header.orgnr or '–'}")
-        per = (
-            f"{header.fiscal_year or '–'} "
-            f"P{header.period_start or '?'}–P{header.period_end or '?'}"
-        )
-        self.lbl_period.setText(f"Periode: {per}")
+        period = format_header_period(header) or "–"
+        self.lbl_period.setText(f"Periode: {period}")
 
     def _ensure_import_controller(self) -> ImportExportController:
         if self._import_controller is None:

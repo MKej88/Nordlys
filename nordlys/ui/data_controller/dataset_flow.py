@@ -9,6 +9,7 @@ from typing import List, Optional, Sequence, Tuple
 from PySide6.QtWidgets import QMessageBox
 
 from ...saft.loader import SaftLoadResult
+from ...saft.periods import format_header_period
 from ...helpers.formatting import format_currency
 from .context import ControllerContext
 from .messaging import ImportMessenger
@@ -99,12 +100,7 @@ class DatasetFlowController:
         header = store.header
         company = header.company_name if header else None
         orgnr = header.orgnr if header else None
-        period = None
-        if header:
-            period = (
-                f"{header.fiscal_year or '—'} "
-                f"P{header.period_start or '?'}–P{header.period_end or '?'}"
-            )
+        period = format_header_period(header)
         summary = store.saft_summary or {}
         revenue_value = summary.get("driftsinntekter")
         revenue_txt = (
