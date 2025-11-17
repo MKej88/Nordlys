@@ -335,9 +335,7 @@ class SammenstillingsanalysePage(QWidget):
                     else:
                         item.setFlags(flags & ~Qt.ItemIsEditable)
                     sort_value = (
-                        cell.sort_value
-                        if cell.sort_value is not None
-                        else cell.value
+                        cell.sort_value if cell.sort_value is not None else cell.value
                     )
                     if isinstance(sort_value, (int, float)):
                         item.setData(Qt.UserRole, float(sort_value))
