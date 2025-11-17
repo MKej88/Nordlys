@@ -7,7 +7,6 @@ from typing import List, Optional, Sequence, Tuple
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
-    QFrame,
     QHeaderView,
     QHBoxLayout,
     QLabel,
@@ -80,23 +79,19 @@ class RegnskapsanalysePage(QWidget):
         self.result_section.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         result_layout = QVBoxLayout(self.result_section)
         result_layout.setContentsMargins(0, 0, 0, 0)
-        result_layout.setSpacing(0)
+        result_layout.setSpacing(4)
         self.result_title = QLabel("Resultat")
         self.result_title.setObjectName("analysisSectionTitle")
-        self.result_title.setContentsMargins(0, 0, 0, 4)
         result_layout.addWidget(self.result_title)
         self.result_info = QLabel(
             "Importer en SAF-T saldobalanse for å beregne resultatpostene."
         )
         self.result_info.setWordWrap(True)
-        self.result_info.setContentsMargins(0, 0, 0, 4)
         result_layout.addWidget(self.result_info)
         self.result_table = create_table_widget()
-        self.result_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
+        self.result_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self._configure_analysis_table(self.result_table, font_point_size=8)
-        result_layout.addWidget(self.result_table)
-        result_layout.setAlignment(self.result_table, Qt.AlignTop)
-        result_layout.addStretch(1)
+        result_layout.addWidget(self.result_table, 1)
         self.result_table.hide()
 
         self._table_delegate = AnalysisTableDelegate(self)
@@ -109,14 +104,8 @@ class RegnskapsanalysePage(QWidget):
         analysis_layout.setContentsMargins(0, 0, 0, 0)
         analysis_layout.setSpacing(0)
 
-        divider = QFrame()
-        divider.setObjectName("analysisDivider")
-        divider.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
-        divider.setFrameShape(QFrame.NoFrame)
-        divider.setFixedWidth(12)
-
         analysis_layout.addWidget(self.balance_section, 1)
-        analysis_layout.addWidget(divider)
+        analysis_layout.addSpacing(24)
         analysis_layout.addWidget(self.result_section, 1)
 
         self.analysis_card.add_widget(analysis_container)
