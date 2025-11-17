@@ -6,12 +6,12 @@ from datetime import datetime
 from typing import List, Optional, Sequence, Tuple, TYPE_CHECKING
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import (
     QLabel,
+    QAbstractItemView,
     QFrame,
     QGridLayout,
-    QPlainTextEdit,
+    QListWidget,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -107,15 +107,20 @@ class ImportPage(QWidget):
             "Siste hendelser under import og validering.",
         )
         self.log_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        self.log_output = QPlainTextEdit()
-        self.log_output.setReadOnly(True)
-        self.log_output.setObjectName("logField")
-        self.log_output.setFrameShape(QFrame.NoFrame)
-        self.log_output.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.log_output.setMinimumHeight(260)
-        self.log_output.setMaximumHeight(260)
-        self.log_output.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.log_card.add_widget(self.log_output)
+        self.log_list = QListWidget()
+        self.log_list.setObjectName("logList")
+        self.log_list.setAlternatingRowColors(True)
+        self.log_list.setFrameShape(QFrame.NoFrame)
+        self.log_list.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self.log_list.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.log_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.log_list.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.log_list.setFocusPolicy(Qt.NoFocus)
+        self.log_list.setSelectionMode(QAbstractItemView.NoSelection)
+        self.log_list.setMinimumHeight(260)
+        self.log_list.setMaximumHeight(260)
+        self.log_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.log_card.add_widget(self.log_list)
         grid.addWidget(self.log_card, 1, 0)
 
         self.invoice_card = CardFrame(
@@ -280,12 +285,10 @@ class ImportPage(QWidget):
         self.misc_label.setText(f"<ul>{''.join(bullet_items)}</ul>")
 
     def reset_log(self) -> None:
-        self.log_output.clear()
+        self.log_list.clear()
 
     def append_log(self, message: str) -> None:
         timestamp = datetime.now().strftime("%H:%M:%S")
         entry = f"[{timestamp}] {message}"
-        self.log_output.appendPlainText(entry)
-        cursor = self.log_output.textCursor()
-        cursor.movePosition(QTextCursor.End)
-        self.log_output.setTextCursor(cursor)
+        self.log_list.addItem(entry)
+        self.log_list.scrollToBottom()
