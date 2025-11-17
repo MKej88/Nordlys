@@ -1678,3 +1678,23 @@ def test_load_saft_files_parallel_progress(monkeypatch):
     percentages = [percent for percent, _ in progress_events]
     assert all(earlier <= later for earlier, later in zip(percentages, percentages[1:]))
     assert progress_events[-1] == (100, "Import fullført.")
+
+
+def test_suggest_max_workers_limits_large_imports(monkeypatch, tmp_path):
+    from nordlys.saft import loader
+
+    files = []
+    for idx in range(5):
+        path = tmp_path / f"file_{idx}.xml"
+        path.write_bytes(b"x" * (idx + 1))
+        files.append(str(path))
+
+    monkeypatch.setattr(loader, "HEAVY_SAFT_FILE_BYTES", 1)
+    monkeypatch.setattr(loader, "HEAVY_SAFT_TOTAL_BYTES", 5)
+
+    limited = loader._suggest_max_workers(files, cpu_limit=8)
+    assert limited == loader.HEAVY_SAFT_MAX_WORKERS
+
+    # Når datasettet er lite skal ikke heuristikken begrense.
+    unrestricted = loader._suggest_max_workers(files[:2], cpu_limit=2)
+    assert unrestricted == 2
