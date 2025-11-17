@@ -6,6 +6,7 @@ from datetime import date, datetime
 from typing import Callable, Iterable, List, Optional, Sequence, Tuple, cast
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QTextOption
 from PySide6.QtWidgets import (
     QFileDialog,
     QFrame,
@@ -210,9 +211,15 @@ class CostVoucherReviewPage(QWidget):
         self.detail_card.add_widget(comment_label)
 
         self.txt_comment = QPlainTextEdit()
+        self.txt_comment.setObjectName("commentInput")
         self.txt_comment.setPlaceholderText(
             "Noter funn eller videre oppfølging for bilaget."
         )
+        self.txt_comment.setWordWrapMode(QTextOption.WrapAtWordBoundaryOrAnywhere)
+        self.txt_comment.setTabChangesFocus(True)
+        self.txt_comment.setAttribute(Qt.WA_StyledBackground, True)
+        self.txt_comment.setAutoFillBackground(True)
+        self.txt_comment.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.txt_comment.setFixedHeight(100)
         self.detail_card.add_widget(self.txt_comment)
 
