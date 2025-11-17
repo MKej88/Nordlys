@@ -5,7 +5,7 @@ import textwrap
 from datetime import datetime
 from typing import List, Optional, Sequence, Tuple, TYPE_CHECKING
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, QObject, Qt
 from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import (
     QLabel,
@@ -107,16 +107,30 @@ class ImportPage(QWidget):
             "Siste hendelser under import og validering.",
         )
         self.log_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.log_container = QFrame()
+        self.log_container.setObjectName("logFieldContainer")
+        self.log_container.setFrameShape(QFrame.NoFrame)
+        self.log_container.setAttribute(Qt.WA_StyledBackground, True)
+        self.log_container.setMinimumHeight(260)
+        self.log_container.setMaximumHeight(260)
+        self.log_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.log_container.setProperty("focusState", "idle")
+
+        container_layout = QVBoxLayout(self.log_container)
+        container_layout.setContentsMargins(12, 12, 12, 12)
+        container_layout.setSpacing(0)
+
         self.log_output = QPlainTextEdit()
         self.log_output.setReadOnly(True)
         self.log_output.setObjectName("logField")
         self.log_output.setFrameShape(QFrame.NoFrame)
-        self.log_output.setMinimumHeight(260)
-        self.log_output.setMaximumHeight(260)
-        self.log_output.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.log_output.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.log_card.add_widget(self.log_output)
+        self.log_output.installEventFilter(self)
+        container_layout.addWidget(self.log_output)
+
+        self.log_card.add_widget(self.log_container)
         grid.addWidget(self.log_card, 1, 0)
+        self._update_log_focus_state(False)
 
         self.invoice_card = CardFrame(
             "Antall inngående faktura",
@@ -144,6 +158,20 @@ class ImportPage(QWidget):
         self._error_entries: List[str] = []
 
         layout.addStretch(1)
+
+    def eventFilter(self, obj: QObject, event: QEvent) -> bool:  # type: ignore[override]
+        if obj is self.log_output and event.type() in (QEvent.FocusIn, QEvent.FocusOut):
+            self._update_log_focus_state(event.type() == QEvent.FocusIn)
+        return super().eventFilter(obj, event)
+
+    def _update_log_focus_state(self, focused: bool) -> None:
+        state = "focused" if focused else "idle"
+        if self.log_container.property("focusState") == state:
+            return
+        self.log_container.setProperty("focusState", state)
+        style = self.log_container.style()
+        style.unpolish(self.log_container)
+        style.polish(self.log_container)
 
     def update_status(self, message: str) -> None:
         self.status_label.setText(message)
