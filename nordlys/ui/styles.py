@@ -46,20 +46,29 @@ QPushButton#exportPdfButton:pressed { background-color: #c2410c; }
 #card { background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 #ffffff, stop:1 #f8fbff); border-radius: 20px; border: 1px solid rgba(148, 163, 184, 0.32); }
 #cardTitle { font-size: 20px; font-weight: 700; color: #0f172a; letter-spacing: 0.2px; }
 #cardSubtitle { color: #475569; font-size: 13px; line-height: 1.5; }
-QListWidget#logList {
+QFrame#logListContainer {
     background-color: #f8fafc;
     border: 1px solid rgba(148, 163, 184, 0.35);
     border-radius: 14px;
     padding: 6px 0;
 }
+QListWidget#logList {
+    background: transparent;
+    border: none;
+}
 QListWidget#logList::item {
     padding: 10px 14px;
     margin: 0;
     border: none;
+    background-color: transparent;
+}
+QListWidget#logList::item:alternate {
+    background-color: rgba(148, 163, 184, 0.12);
 }
 QListWidget#logList::item:selected {
     background-color: rgba(37, 99, 235, 0.2);
     color: #0f172a;
+    border-radius: 8px;
 }
 #analysisSectionTitle { font-size: 16px; font-weight: 700; color: #0f172a; letter-spacing: 0.2px; border-bottom: 2px solid rgba(37, 99, 235, 0.35); padding-bottom: 6px; }
 #pageTitle { font-size: 30px; font-weight: 800; color: #0f172a; letter-spacing: 0.6px; }

@@ -120,7 +120,19 @@ class ImportPage(QWidget):
         self.log_list.setMinimumHeight(260)
         self.log_list.setMaximumHeight(260)
         self.log_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.log_card.add_widget(self.log_list)
+
+        self.log_container = QFrame()
+        self.log_container.setObjectName("logListContainer")
+        self.log_container.setFrameShape(QFrame.NoFrame)
+        self.log_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.log_container.setAttribute(Qt.WA_StyledBackground, True)
+
+        log_container_layout = QVBoxLayout(self.log_container)
+        log_container_layout.setContentsMargins(0, 0, 0, 0)
+        log_container_layout.setSpacing(0)
+        log_container_layout.addWidget(self.log_list)
+
+        self.log_card.add_widget(self.log_container)
         grid.addWidget(self.log_card, 1, 0)
 
         self.invoice_card = CardFrame(
