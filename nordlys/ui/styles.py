@@ -9,9 +9,9 @@ _ICON_DIR = Path(__file__).resolve().parent.parent / "resources" / "icons"
 
 
 def _icon_path(filename: str) -> str:
-    """Returner filsti i QSS-format (fremover-slash)."""
+    """Returner ikonets fil-URI slik at Qt alltid finner det."""
 
-    return (_ICON_DIR / filename).as_posix()
+    return (_ICON_DIR / filename).as_uri()
 
 
 _APPLICATION_STYLESHEET_TEMPLATE = Template(
