@@ -107,6 +107,8 @@ class RegnskapsanalysePage(QWidget):
         analysis_layout.addWidget(self.balance_section, 1)
         analysis_layout.addSpacing(24)
         analysis_layout.addWidget(self.result_section, 1)
+        analysis_layout.setAlignment(self.balance_section, Qt.AlignTop)
+        analysis_layout.setAlignment(self.result_section, Qt.AlignTop)
 
         self.analysis_card.add_widget(analysis_container)
         layout.addWidget(self.analysis_card, 1)
