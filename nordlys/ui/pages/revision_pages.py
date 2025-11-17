@@ -745,9 +745,7 @@ class CostVoucherReviewPage(QWidget):
 
     def _update_total_amount_label(self) -> None:
         formatted_total = format_currency(self._total_available_amount)
-        self.lbl_total_amount.setText(
-            f"Sum inngående faktura: {formatted_total}"
-        )
+        self.lbl_total_amount.setText(f"Sum inngående faktura: {formatted_total}")
 
     @staticmethod
     def _extract_amount(value: Optional[float]) -> float:
