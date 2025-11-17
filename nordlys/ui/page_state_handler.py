@@ -76,9 +76,9 @@ class PageStateHandler:
             widget, RegnskapsanalysePage
         ):
             self.regnskap_page = widget
-            header = self._dataset_store.header
-            fiscal_year = header.fiscal_year if header else None
-            widget.set_dataframe(self._dataset_store.saft_df, fiscal_year)
+            widget.set_dataframe(
+                self._dataset_store.saft_df, self._dataset_store.current_year_text
+            )
             widget.update_comparison(self._latest_comparison_rows)
         elif key == "plan.vesentlighet" and isinstance(widget, SummaryPage):
             self.vesentlig_page = widget
@@ -87,9 +87,9 @@ class PageStateHandler:
             widget, SammenstillingsanalysePage
         ):
             self.sammenstilling_page = widget
-            header = self._dataset_store.header
-            fiscal_year = header.fiscal_year if header else None
-            widget.set_dataframe(self._dataset_store.saft_df, fiscal_year)
+            widget.set_dataframe(
+                self._dataset_store.saft_df, self._dataset_store.current_year_text
+            )
         elif key == "rev.salg" and isinstance(widget, SalesArPage):
             self.sales_ar_page = widget
             widget.set_checklist_items(self._revision_tasks.get("rev.salg", []))

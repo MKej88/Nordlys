@@ -1,7 +1,44 @@
 import pandas as pd
 import pytest
 
+from nordlys.saft.header import SaftHeader
+from nordlys.saft.loader import SaftLoadResult
+from nordlys.saft.validation import SaftValidationResult
 from nordlys.ui.data_manager.dataset_store import SaftDatasetStore
+
+
+def _make_result(
+    file_path: str,
+    *,
+    analysis_year: int | None,
+    fiscal_year: str | None,
+) -> SaftLoadResult:
+    header = SaftHeader(
+        company_name="Test AS",
+        orgnr="123456789",
+        fiscal_year=fiscal_year,
+        period_start="2023-01-01",
+        period_end="2023-12-31",
+        file_version="1.30",
+    )
+    return SaftLoadResult(
+        file_path=file_path,
+        header=header,
+        dataframe=pd.DataFrame({"Konto": []}),
+        customers={},
+        customer_sales=None,
+        suppliers={},
+        supplier_purchases=None,
+        cost_vouchers=[],
+        analysis_year=analysis_year,
+        summary={},
+        validation=SaftValidationResult(
+            audit_file_version=None,
+            version_family=None,
+            schema_version=None,
+            is_valid=None,
+        ),
+    )
 
 
 def test_customer_sales_total_and_balance_diff() -> None:
@@ -38,3 +75,42 @@ def test_customer_sales_balance_requires_both_sources() -> None:
 
     store._customer_sales = pd.DataFrame({"Kundenr": ["1"]})  # type: ignore[attr-defined]
     assert store.customer_sales_total is None
+
+
+def test_current_year_text_prefers_analysis_year() -> None:
+    store = SaftDatasetStore()
+    result = _make_result(
+        "fil1.xml",
+        analysis_year=2022,
+        fiscal_year="2020",
+    )
+    store.apply_batch([result])
+    assert store.activate("fil1.xml")
+    assert store.current_year == 2022
+    assert store.current_year_text == "2022"
+
+
+def test_current_year_text_falls_back_to_header_value() -> None:
+    store = SaftDatasetStore()
+    result = _make_result(
+        "fil2.xml",
+        analysis_year=None,
+        fiscal_year="2021",
+    )
+    store.apply_batch([result])
+    assert store.activate("fil2.xml")
+    assert store.current_year == 2021
+    assert store.current_year_text == "2021"
+
+
+def test_current_year_text_none_when_no_year_available() -> None:
+    store = SaftDatasetStore()
+    result = _make_result(
+        "fil3.xml",
+        analysis_year=None,
+        fiscal_year=None,
+    )
+    store.apply_batch([result])
+    assert store.activate("fil3.xml")
+    assert store.current_year is None
+    assert store.current_year_text is None

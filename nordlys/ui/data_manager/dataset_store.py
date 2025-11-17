@@ -265,6 +265,23 @@ class SaftDatasetStore:
         return self._current_result
 
     @property
+    def current_year(self) -> Optional[int]:
+        if self._current_key is None:
+            return None
+        return self._years.get(self._current_key)
+
+    @property
+    def current_year_text(self) -> Optional[str]:
+        year = self.current_year
+        if year is not None:
+            return str(year)
+        header = self._header
+        if header and header.fiscal_year:
+            text = str(header.fiscal_year).strip()
+            return text or None
+        return None
+
+    @property
     def dataset_order(self) -> List[str]:
         return list(self._order)
 
