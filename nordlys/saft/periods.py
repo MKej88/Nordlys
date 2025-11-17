@@ -91,13 +91,14 @@ def format_header_period(header: Optional[SaftHeader]) -> Optional[str]:
     start_year, start_month = _extract_year_month(header.period_start)
     end_year, end_month = _extract_year_month(header.period_end)
 
-    year_text = _sanitize_year(header.fiscal_year)
+    year_text: Optional[str] = _sanitize_year(header.fiscal_year)
     if year_text is None:
         year_text = _combine_years(start_year, end_year)
 
     start_label = _format_period(start_month)
     end_label = _format_period(end_month)
 
+    period_text: Optional[str]
     if start_label and end_label:
         period_text = (
             start_label if start_label == end_label else f"{start_label}–{end_label}"
