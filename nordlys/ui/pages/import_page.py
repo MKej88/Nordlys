@@ -9,6 +9,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import (
     QLabel,
+    QFrame,
     QGridLayout,
     QPlainTextEdit,
     QSizePolicy,
@@ -109,7 +110,11 @@ class ImportPage(QWidget):
         self.log_output = QPlainTextEdit()
         self.log_output.setReadOnly(True)
         self.log_output.setObjectName("logField")
+        self.log_output.setFrameShape(QFrame.NoFrame)
         self.log_output.setMinimumHeight(260)
+        self.log_output.setMaximumHeight(260)
+        self.log_output.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.log_output.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.log_card.add_widget(self.log_output)
         grid.addWidget(self.log_card, 1, 0)
 
