@@ -328,7 +328,8 @@ class SammenstillingsanalysePage(QWidget):
                     display = cell.display
                     if display is None and cell.value is not None:
                         display = str(cell.value)
-                    item = QTableWidgetItem(display or "")
+                    display_text = display or ""
+                    item = QTableWidgetItem(display_text)
                     flags = item.flags()
                     if cell.editable:
                         item.setFlags(flags | Qt.ItemIsEditable)
@@ -338,7 +339,10 @@ class SammenstillingsanalysePage(QWidget):
                         cell.sort_value if cell.sort_value is not None else cell.value
                     )
                     if isinstance(sort_value, (int, float)):
-                        item.setData(Qt.UserRole, float(sort_value))
+                        numeric_value = float(sort_value)
+                        item.setData(Qt.EditRole, numeric_value)
+                        item.setData(Qt.DisplayRole, display_text)
+                        item.setData(Qt.UserRole, numeric_value)
                     elif sort_value is not None:
                         item.setData(Qt.UserRole, sort_value)
                     if cell.user_value is not None:
