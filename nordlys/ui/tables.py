@@ -35,6 +35,8 @@ def create_table_widget() -> QTableWidget:
     table.setEditTriggers(QAbstractItemView.NoEditTriggers)
     table.setSelectionBehavior(QAbstractItemView.SelectRows)
     table.setFocusPolicy(Qt.NoFocus)
+    table.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
+    table.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
     table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
     table.verticalHeader().setVisible(False)
     table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
