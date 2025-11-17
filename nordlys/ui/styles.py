@@ -49,26 +49,24 @@ QPushButton#exportPdfButton:pressed { background-color: #c2410c; }
 QFrame#logListContainer {
     background-color: #f8fafc;
     border: 1px solid rgba(148, 163, 184, 0.35);
-    border-radius: 14px;
-    padding: 6px 0;
+    border-radius: 16px;
+    padding: 0;
 }
 QListWidget#logList {
     background: transparent;
     border: none;
+    padding: 0;
 }
 QListWidget#logList::item {
-    padding: 10px 14px;
+    padding: 12px 16px;
     margin: 0;
     border: none;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.2);
     background-color: transparent;
 }
-QListWidget#logList::item:alternate {
-    background-color: rgba(148, 163, 184, 0.12);
-}
 QListWidget#logList::item:selected {
-    background-color: rgba(37, 99, 235, 0.2);
+    background-color: rgba(37, 99, 235, 0.15);
     color: #0f172a;
-    border-radius: 8px;
 }
 #analysisSectionTitle { font-size: 16px; font-weight: 700; color: #0f172a; letter-spacing: 0.2px; border-bottom: 2px solid rgba(37, 99, 235, 0.35); padding-bottom: 6px; }
 #pageTitle { font-size: 30px; font-weight: 800; color: #0f172a; letter-spacing: 0.6px; }
