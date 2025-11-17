@@ -48,8 +48,16 @@ QPushButton#exportPdfButton:pressed { background-color: #c2410c; }
 #cardSubtitle { color: #475569; font-size: 13px; line-height: 1.5; }
 #logFieldContainer { background-color: rgba(241, 245, 249, 0.9); border-radius: 18px; border: 1px solid rgba(148, 163, 184, 0.45); }
 #logFieldContainer[focusState="focused"] { background-color: rgba(219, 234, 254, 0.7); border: 1px solid rgba(37, 99, 235, 0.55); }
-QPlainTextEdit#logField { background-color: transparent; border: none; padding: 0; }
-QPlainTextEdit#logField QWidget#qt_scrollarea_viewport { background-color: transparent; border-radius: 0; }
+QPlainTextEdit#logField {
+    background-color: transparent;
+    border: none;
+    padding: 0;
+    border-radius: 14px;
+}
+QPlainTextEdit#logField QWidget#qt_scrollarea_viewport {
+    background-color: transparent;
+    border-radius: 14px;
+}
 #analysisSectionTitle { font-size: 16px; font-weight: 700; color: #0f172a; letter-spacing: 0.2px; border-bottom: 2px solid rgba(37, 99, 235, 0.35); padding-bottom: 6px; }
 #pageTitle { font-size: 30px; font-weight: 800; color: #0f172a; letter-spacing: 0.6px; }
 QLabel#pageSubtitle { color: #1e293b; font-size: 15px; }
