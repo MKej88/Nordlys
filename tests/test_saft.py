@@ -4,6 +4,7 @@ import sys
 import time
 import xml.etree.ElementTree as ET
 import zipfile
+from datetime import date
 from decimal import Decimal
 
 import pandas as pd
@@ -20,7 +21,10 @@ from nordlys.saft import (
     SaftValidationResult,
     validate_saft_against_xsd,
 )
-from nordlys.saft.customer_analysis import build_customer_supplier_analysis
+from nordlys.saft.customer_analysis import (
+    _parse_date,
+    build_customer_supplier_analysis,
+)
 from nordlys.saft_customers import (
     build_customer_name_map,
     build_supplier_name_map,
@@ -162,6 +166,28 @@ def test_parse_header_and_customers():
     assert "K1" in customers
     assert customers["K1"].customer_number == "1001"
     assert customers["K1"].name == "Kunde 1"
+
+
+def test_parse_header_with_selection_dates():
+    xml = """
+    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <Header>
+        <SelectionCriteria>
+          <SelectionStartDate>2023-01-01</SelectionStartDate>
+          <SelectionEndDate>31.12.2023</SelectionEndDate>
+        </SelectionCriteria>
+      </Header>
+    </AuditFile>
+    """
+    root = ET.fromstring(xml)
+    header = parse_saft_header(root)
+    assert header.period_start == "2023-01-01"
+    assert header.period_end == "31.12.2023"
+
+
+def test_parse_date_supports_multiple_formats():
+    assert _parse_date("31.12.2023") == date(2023, 12, 31)
+    assert _parse_date("20231231") == date(2023, 12, 31)
 
 
 def test_parse_saldobalanse_and_summary():

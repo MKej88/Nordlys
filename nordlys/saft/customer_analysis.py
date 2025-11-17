@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from typing import Dict, List, MutableMapping, Optional, Tuple, TYPE_CHECKING
 import xml.etree.ElementTree as ET
 
@@ -153,12 +153,21 @@ def _parse_date(value: Optional[str]) -> Optional[date]:
     try:
         return date.fromisoformat(text)
     except ValueError:
+        pass
+    formats = (
+        "%Y-%m-%d",
+        "%d.%m.%Y",
+        "%d-%m-%Y",
+        "%d/%m/%Y",
+        "%Y.%m.%d",
+        "%Y%m%d",
+    )
+    for fmt in formats:
         try:
-            from datetime import datetime
-
-            return datetime.strptime(text, "%Y-%m-%d").date()
+            return datetime.strptime(text, fmt).date()
         except ValueError:
-            return None
+            continue
+    return None
 
 
 def _detect_transaction_span(
