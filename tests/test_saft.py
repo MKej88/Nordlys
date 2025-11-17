@@ -21,10 +21,12 @@ from nordlys.saft import (
     SaftValidationResult,
     validate_saft_against_xsd,
 )
+from nordlys.saft.header import SaftHeader
 from nordlys.saft.customer_analysis import (
     _parse_date,
     build_customer_supplier_analysis,
 )
+from nordlys.saft.periods import format_header_period
 from nordlys.saft_customers import (
     build_customer_name_map,
     build_supplier_name_map,
@@ -188,6 +190,42 @@ def test_parse_header_with_selection_dates():
 def test_parse_date_supports_multiple_formats():
     assert _parse_date("31.12.2023") == date(2023, 12, 31)
     assert _parse_date("20231231") == date(2023, 12, 31)
+
+
+def test_format_header_period_normalizes_dates():
+    header = SaftHeader(
+        company_name=None,
+        orgnr=None,
+        fiscal_year="2024",
+        period_start="2024-01-01",
+        period_end="2024-12-31",
+        file_version=None,
+    )
+    assert format_header_period(header) == "2024 P1–P12"
+
+
+def test_format_header_period_handles_month_tokens_without_year():
+    header = SaftHeader(
+        company_name=None,
+        orgnr=None,
+        fiscal_year="2025",
+        period_start="P1",
+        period_end="P12",
+        file_version=None,
+    )
+    assert format_header_period(header) == "2025 P1–P12"
+
+
+def test_format_header_period_builds_year_range_when_needed():
+    header = SaftHeader(
+        company_name=None,
+        orgnr=None,
+        fiscal_year=None,
+        period_start="2023-11-01",
+        period_end="2024-01-31",
+        file_version=None,
+    )
+    assert format_header_period(header) == "2023–2024 P11–P1"
 
 
 def test_parse_saldobalanse_and_summary():

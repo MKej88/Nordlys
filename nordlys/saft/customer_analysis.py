@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date
 from typing import Dict, List, MutableMapping, Optional, Tuple, TYPE_CHECKING
 import xml.etree.ElementTree as ET
 
 from ..helpers.lazy_imports import lazy_import, lazy_pandas
+from .dates import parse_saft_date
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -145,29 +146,7 @@ def build_customer_supplier_analysis(
 
 
 def _parse_date(value: Optional[str]) -> Optional[date]:
-    if value is None:
-        return None
-    text = value.strip()
-    if not text:
-        return None
-    try:
-        return date.fromisoformat(text)
-    except ValueError:
-        pass
-    formats = (
-        "%Y-%m-%d",
-        "%d.%m.%Y",
-        "%d-%m-%Y",
-        "%d/%m/%Y",
-        "%Y.%m.%d",
-        "%Y%m%d",
-    )
-    for fmt in formats:
-        try:
-            return datetime.strptime(text, fmt).date()
-        except ValueError:
-            continue
-    return None
+    return parse_saft_date(value)
 
 
 def _detect_transaction_span(
