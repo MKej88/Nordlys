@@ -99,7 +99,9 @@ def format_header_period(header: Optional[SaftHeader]) -> Optional[str]:
     end_label = _format_period(end_month)
 
     if start_label and end_label:
-        period_text = start_label if start_label == end_label else f"{start_label}–{end_label}"
+        period_text = (
+            start_label if start_label == end_label else f"{start_label}–{end_label}"
+        )
     else:
         period_text = start_label or end_label
 
