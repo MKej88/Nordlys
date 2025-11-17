@@ -108,9 +108,9 @@ QComboBox, QSpinBox { background-color: #ffffff; border: 1px solid rgba(148, 163
 QComboBox QAbstractItemView { border-radius: 8px; padding: 6px; }
 QComboBox::drop-down { border: none; width: 24px; }
 QComboBox::down-arrow { image: none; }
-QSpinBox::up-button, QSpinBox::down-button, QDoubleSpinBox::up-button, QDoubleSpinBox::down-button { border: none; background: transparent; width: 24px; }
-QSpinBox::up-arrow, QDoubleSpinBox::up-arrow { image: url("${up_icon}"); width: 14px; height: 14px; }
-QSpinBox::down-arrow, QDoubleSpinBox::down-arrow { image: url("${down_icon}"); width: 14px; height: 14px; }
+QSpinBox::up-button, QSpinBox::down-button, QDoubleSpinBox::up-button, QDoubleSpinBox::down-button { border: none; background: transparent; width: 0; height: 0; margin: 0; }
+QSpinBox::up-arrow, QDoubleSpinBox::up-arrow { image: none; }
+QSpinBox::down-arrow, QDoubleSpinBox::down-arrow { image: none; }
 QToolTip { background-color: #0f172a; color: #f8fafc; border: none; padding: 8px 10px; border-radius: 8px; }
 QTabWidget::pane { border: 1px solid rgba(148, 163, 184, 0.32); border-radius: 14px; background: #f4f7ff; margin-top: 12px; padding: 12px; }
 QTabWidget::tab-bar { left: 12px; }
