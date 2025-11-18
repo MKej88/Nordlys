@@ -163,30 +163,12 @@ class RegnskapsanalysePage(QWidget):
         self.multi_year_info.setWordWrap(True)
         multi_layout.addWidget(self.multi_year_info)
 
-        focus_layout = QHBoxLayout()
-        focus_layout.setContentsMargins(0, 0, 0, 0)
-        focus_layout.setSpacing(12)
-        self.multi_year_latest_label = QLabel(
-            "<b>Nyeste år</b><br>Ingen aktiv periode tilgjengelig ennå."
-        )
-        self.multi_year_latest_label.setTextFormat(Qt.RichText)
-        self.multi_year_latest_label.setWordWrap(True)
-        self.multi_year_latest_label.setObjectName("statusLabel")
-        focus_layout.addWidget(self.multi_year_latest_label, 1)
-        self.multi_year_average_label = QLabel(
-            "<b>Gjennomsnitt</b><br>Snitt beregnes når minst to perioder er importert."
-        )
-        self.multi_year_average_label.setTextFormat(Qt.RichText)
-        self.multi_year_average_label.setWordWrap(True)
-        self.multi_year_average_label.setObjectName("statusLabel")
-        focus_layout.addWidget(self.multi_year_average_label, 1)
-        multi_layout.addLayout(focus_layout)
-
         self.multi_year_table = create_table_widget()
         self._configure_analysis_table(self.multi_year_table, font_point_size=8)
         multi_layout.addWidget(self.multi_year_table)
         self.multi_year_table.hide()
 
+        multi_layout.addSpacing(16)
         self.multi_year_share_label = QLabel("% andel av salgsinntekter")
         self.multi_year_share_label.setObjectName("statusLabel")
         multi_layout.addWidget(self.multi_year_share_label)
@@ -387,12 +369,6 @@ class RegnskapsanalysePage(QWidget):
                 return snapshot
         return self._summary_history[-1]
 
-    def _history_without_active(self) -> List[SummarySnapshot]:
-        active = self._active_snapshot()
-        if active is None:
-            return list(self._summary_history)
-        return [snap for snap in self._summary_history if snap is not active]
-
     def _get_numeric(self, summary: Mapping[str, float], key: str) -> Optional[float]:
         value = summary.get(key)
         if value is None:
@@ -425,12 +401,6 @@ class RegnskapsanalysePage(QWidget):
             self.multi_year_info.setText(
                 "Importer ett eller flere datasett for å se historiske resultater."
             )
-            self.multi_year_latest_label.setText(
-                "<b>Nyeste år</b><br>Ingen aktiv periode tilgjengelig ennå."
-            )
-            self.multi_year_average_label.setText(
-                "<b>Gjennomsnitt</b><br>Snitt beregnes når minst to perioder er importert."
-            )
             return
 
         columns = ["Kategori"] + [
@@ -446,11 +416,19 @@ class RegnskapsanalysePage(QWidget):
             f"Viser {len(self._summary_history)} periode(r) fra importhistorikken."
         )
         self._schedule_table_height_adjustment(self.multi_year_table)
-        self._populate_multi_year_share_table(columns)
-        self._update_multi_year_focus()
+        include_average = self._populate_multi_year_share_table(columns)
         highlight_column = self._multi_year_active_column()
+        share_highlight_column = highlight_column
+        if (
+            include_average
+            and share_highlight_column is not None
+            and share_highlight_column > 1
+        ):
+            share_highlight_column += 1
         self._highlight_multi_year_column(self.multi_year_table, highlight_column)
-        self._highlight_multi_year_column(self.multi_year_share_table, highlight_column)
+        self._highlight_multi_year_column(
+            self.multi_year_share_table, share_highlight_column
+        )
 
     def _bruttofortjeneste(self, summary: Mapping[str, float]) -> Optional[float]:
         revenue = self._get_numeric(summary, "driftsinntekter")
@@ -488,8 +466,12 @@ class RegnskapsanalysePage(QWidget):
             rows.append(row)
         return rows
 
-    def _populate_multi_year_share_table(self, columns: Sequence[str]) -> None:
+    def _populate_multi_year_share_table(self, columns: Sequence[str]) -> bool:
         percent_rows: List[List[object]] = []
+        include_average = len(columns) > 2
+        share_columns: List[str] = list(columns)
+        if include_average:
+            share_columns = [columns[0], columns[1], "Gjennomsnitt", *columns[2:]]
         revenue_per_snapshot = [
             self._get_numeric(snapshot.summary, "salgsinntekter")
             or self._get_numeric(snapshot.summary, "sum_inntekter")
@@ -499,10 +481,18 @@ class RegnskapsanalysePage(QWidget):
 
         def _percent_row(label: str, key: str) -> None:
             row: List[object] = [label]
+            percentages: List[Optional[float]] = []
             for idx, snapshot in enumerate(self._summary_history):
                 numerator = self._get_numeric(snapshot.summary, key)
                 percent = self._ratio(numerator, revenue_per_snapshot[idx])
-                row.append(self._format_percent(percent))
+                percentages.append(percent)
+            formatted = [self._format_percent(value) for value in percentages]
+            if include_average:
+                avg_value = self._average(percentages)
+                row.extend([formatted[0], self._format_percent(avg_value)])
+                row.extend(formatted[1:])
+            else:
+                row.extend(formatted)
             percent_rows.append(row)
 
         _percent_row("Varekostnad", "varekostnad")
@@ -511,50 +501,17 @@ class RegnskapsanalysePage(QWidget):
         _percent_row("Annen kostnad", "annen_kost")
         _percent_row("Finanskostnader", "finanskostnader")
 
-        money_cols = set(range(1, len(columns)))
+        money_cols = set(range(1, len(share_columns)))
         populate_table(
             self.multi_year_share_table,
-            columns,
+            share_columns,
             percent_rows,
             money_cols=money_cols,
         )
         self.multi_year_share_table.show()
         self.multi_year_share_label.show()
         self._schedule_table_height_adjustment(self.multi_year_share_table)
-
-    def _update_multi_year_focus(self) -> None:
-        active = self._active_snapshot()
-        margin = self._result_margin(active.summary) if active else None
-        if active is None or margin is None:
-            self.multi_year_latest_label.setText(
-                "<b>Nyeste år</b><br>Ingen aktiv periode med beregnet resultatmargin."
-            )
-        else:
-            self.multi_year_latest_label.setText(
-                (
-                    f"<b>Nyeste år:</b> {active.label}<br>Resultatmargin "
-                    f"{self._format_percent(margin)}"
-                )
-            )
-
-        others = self._history_without_active()
-        other_margins = [self._result_margin(s.summary) for s in others]
-        valid = [value for value in other_margins if value is not None]
-        if not valid:
-            self.multi_year_average_label.setText(
-                (
-                    "<b>Gjennomsnitt</b><br>Snitt beregnes når minst én annen "
-                    "periode har resultatmargin."
-                )
-            )
-        else:
-            avg = sum(valid) / len(valid)
-            self.multi_year_average_label.setText(
-                (
-                    f"<b>Gjennomsnitt ({len(valid)} år)</b><br>"
-                    f"{self._format_percent(avg)}"
-                )
-            )
+        return include_average
 
     def _multi_year_active_column(self) -> Optional[int]:
         if not self._summary_history:
@@ -634,6 +591,12 @@ class RegnskapsanalysePage(QWidget):
         if numerator is None or denominator is None or abs(denominator) < 1e-6:
             return None
         return (numerator / denominator) * 100
+
+    def _average(self, values: Iterable[Optional[float]]) -> Optional[float]:
+        valid = [value for value in values if value is not None]
+        if not valid:
+            return None
+        return sum(valid) / len(valid)
 
     def _set_badge_value(self, key: str, value: str) -> None:
         badge = self.kpi_badges.get(key)
