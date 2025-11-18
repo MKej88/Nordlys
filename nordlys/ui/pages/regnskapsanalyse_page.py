@@ -557,7 +557,6 @@ class RegnskapsanalysePage(QWidget):
         highlight_brush = QBrush(QColor(59, 130, 246, 60))
         default_brush = QBrush()
         with suspend_table_updates(table):
-            header = table.horizontalHeader()
             for col in range(1, table.columnCount()):
                 header_item = table.horizontalHeaderItem(col)
                 if header_item is not None:
