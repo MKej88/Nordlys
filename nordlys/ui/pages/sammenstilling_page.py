@@ -2,19 +2,20 @@
 
 from __future__ import annotations
 
-import math
 from typing import Dict, List, Optional, Tuple
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QBrush, QColor
+from PySide6.QtCore import QEvent, Qt
+from PySide6.QtGui import QBrush, QColor, QPalette
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDoubleSpinBox,
     QHeaderView,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QSizePolicy,
     QStyle,
+    QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
@@ -28,14 +29,124 @@ except ImportError:  # PySide6 < 6.7
 from ... import regnskap
 from ...helpers.formatting import format_currency
 from ...helpers.lazy_imports import lazy_pandas
+from ..delegates import CompactRowDelegate
 from ..helpers import SignalBlocker
 from ..models import SaftTableCell
-from ..tables import apply_compact_row_heights, create_table_widget
+from ..tables import (
+    apply_compact_row_heights,
+    compact_row_base_height,
+    create_table_widget,
+)
 from ..widgets import CardFrame
 
 pd = lazy_pandas()
 
 __all__ = ["SammenstillingsanalysePage"]
+
+
+class _SortValueItem(QTableWidgetItem):
+    """QTableWidgetItem som alltid sorterer på verdien i Qt.UserRole."""
+
+    SORT_ROLE = Qt.UserRole
+
+    def __lt__(self, other: QTableWidgetItem) -> bool:  # type: ignore[override]
+        if not isinstance(other, QTableWidgetItem):
+            return super().__lt__(other)
+        left = self.data(self.SORT_ROLE)
+        right = other.data(self.SORT_ROLE)
+        left_is_none = left is None
+        right_is_none = right is None
+        if left_is_none and right_is_none:
+            return super().__lt__(other)
+        if left_is_none:
+            return True
+        if right_is_none:
+            return False
+        try:
+            return float(left) < float(right)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            left_str = str(left)
+            right_str = str(right)
+            return left_str < right_str
+
+
+class _CommentItemDelegate(CompactRowDelegate):
+    """Sørger for at tekst redigert i kommentarfeltet alltid er lesbar."""
+
+    _ROW_PROPERTY = "_comment_row"
+
+    def __init__(self, parent: QTableWidget) -> None:
+        super().__init__(parent)
+        self._expanded_rows: dict[int, int] = {}
+
+    def createEditor(self, parent, option, index):  # type: ignore[override]
+        editor = super().createEditor(parent, option, index)
+        if isinstance(editor, QLineEdit):
+            palette = editor.palette()
+            palette.setColor(QPalette.Text, QColor("#0f172a"))
+            palette.setColor(QPalette.PlaceholderText, QColor("#94a3b8"))
+            palette.setColor(QPalette.Base, QColor("#ffffff"))
+            palette.setColor(QPalette.Highlight, QColor("#bfdbfe"))
+            palette.setColor(QPalette.HighlightedText, QColor("#0f172a"))
+            editor.setPalette(palette)
+            editor.setAttribute(Qt.WA_StyledBackground, True)
+            editor.setAutoFillBackground(True)
+            editor.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+            editor.setTextMargins(6, 0, 6, 0)
+            editor.setContentsMargins(0, 0, 0, 0)
+            editor.setProperty(self._ROW_PROPERTY, index.row())
+            editor.installEventFilter(self)
+        return editor
+
+    def destroyEditor(self, editor, index):  # type: ignore[override]
+        if isinstance(editor, QLineEdit):
+            self._restore_row_height(editor)
+        super().destroyEditor(editor, index)
+
+    def eventFilter(self, obj, event):  # type: ignore[override]
+        if isinstance(obj, QLineEdit):
+            if event.type() == QEvent.FocusIn:
+                self._expand_row_for_editor(obj)
+            elif event.type() in {QEvent.FocusOut, QEvent.Hide}:
+                self._restore_row_height(obj)
+        return super().eventFilter(obj, event)
+
+    def _expand_row_for_editor(self, editor: QLineEdit) -> None:
+        table = self.parent()
+        if not isinstance(table, QTableWidget):
+            return
+        row = editor.property(self._ROW_PROPERTY)
+        if not isinstance(row, int):
+            return
+        header = table.verticalHeader()
+        if header is None:
+            return
+        current_height = header.sectionSize(row)
+        desired_height = max(
+            current_height,
+            editor.sizeHint().height() + 4,
+            compact_row_base_height(table) + 4,
+        )
+        if desired_height <= current_height:
+            return
+        self._expanded_rows[row] = current_height
+        header.resizeSection(row, desired_height)
+        table.setRowHeight(row, desired_height)
+
+    def _restore_row_height(self, editor: QLineEdit) -> None:
+        table = self.parent()
+        if not isinstance(table, QTableWidget):
+            return
+        row = editor.property(self._ROW_PROPERTY)
+        if not isinstance(row, int):
+            return
+        header = table.verticalHeader()
+        if header is None:
+            return
+        base_height = compact_row_base_height(table)
+        original_height = self._expanded_rows.pop(row, base_height)
+        header.resizeSection(row, original_height)
+        table.setRowHeight(row, original_height)
 
 
 class SammenstillingsanalysePage(QWidget):
@@ -83,11 +194,16 @@ class SammenstillingsanalysePage(QWidget):
             "Nå",
             "I fjor",
             "Endring (kr)",
-            "Endring (%)",
             "Kommentar",
         ]
 
         self.cost_table = create_table_widget()
+        self._comment_delegate = _CommentItemDelegate(self.cost_table)
+        self.cost_table.setItemDelegateForColumn(5, self._comment_delegate)
+        row_height_setter = getattr(self.cost_table, "setUniformRowHeights", None)
+        if callable(row_height_setter):
+            row_height_setter(True)
+        self.cost_table.setStyleSheet("QTableWidget::item { padding: 0px 6px; }")
         self.cost_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.cost_table.setSortingEnabled(True)
         self.cost_table.setMinimumHeight(360)
@@ -100,14 +216,14 @@ class SammenstillingsanalysePage(QWidget):
         header = self.cost_table.horizontalHeader()
         header.setMinimumSectionSize(0)
         header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(5, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(6, QHeaderView.Stretch)
+        header.setTextElideMode(Qt.ElideRight)
         self.cost_table.sortItems(0, Qt.AscendingOrder)
-        apply_compact_row_heights(self.cost_table)
+        self._refresh_cost_row_heights()
         self.cost_table.hide()
         self.cost_card.add_widget(self.cost_table)
 
@@ -147,7 +263,8 @@ class SammenstillingsanalysePage(QWidget):
         self.cost_table.setRowCount(0)
         self.cost_table.setColumnCount(len(self._cost_headers))
         self.cost_table.setHorizontalHeaderLabels(self._cost_headers)
-        apply_compact_row_heights(self.cost_table)
+        self._ensure_comment_delegate()
+        self._refresh_cost_row_heights()
         self.cost_info.setText(
             "Importer en SAF-T saldobalanse for å analysere kostnadskonti."
         )
@@ -198,7 +315,6 @@ class SammenstillingsanalysePage(QWidget):
             current_label,
             previous_label,
             "Endring (kr)",
-            "Endring (%)",
             "Kommentar",
         ]
 
@@ -215,13 +331,6 @@ class SammenstillingsanalysePage(QWidget):
             zip(konto_values, navn_values, current_values, previous_values)
         ):
             change_value = float(current - previous)
-            previous_abs = abs(previous)
-            if previous_abs > 1e-6:
-                change_percent = (change_value / previous_abs) * 100.0
-            elif abs(change_value) > 1e-6:
-                change_percent = math.copysign(math.inf, change_value)
-            else:
-                change_percent = 0.0
             rows.append(
                 (
                     konto or "",
@@ -229,7 +338,6 @@ class SammenstillingsanalysePage(QWidget):
                     float(current),
                     float(previous),
                     change_value,
-                    change_percent,
                 )
             )
 
@@ -242,7 +350,6 @@ class SammenstillingsanalysePage(QWidget):
             current,
             previous,
             change_value,
-            change_percent,
         ) in enumerate(rows):
             konto_display = konto or "—"
             konto_cell = SaftTableCell(
@@ -276,12 +383,6 @@ class SammenstillingsanalysePage(QWidget):
                 sort_value=change_value,
                 alignment=Qt.AlignRight | Qt.AlignVCenter,
             )
-            percent_cell = SaftTableCell(
-                value=change_percent,
-                display=self._format_percent(change_percent),
-                sort_value=change_percent,
-                alignment=Qt.AlignRight | Qt.AlignVCenter,
-            )
             comment_key = konto or f"row-{row_idx}"
             comment_text = self._cost_comments.get(comment_key, "")
             comment_cell = SaftTableCell(
@@ -299,7 +400,6 @@ class SammenstillingsanalysePage(QWidget):
                     current_cell,
                     previous_cell,
                     change_cell,
-                    percent_cell,
                     comment_cell,
                 ]
             )
@@ -319,6 +419,7 @@ class SammenstillingsanalysePage(QWidget):
         self.cost_table.setColumnCount(column_count)
         self.cost_table.setHorizontalHeaderLabels(headers)
         self.cost_table.setRowCount(len(rows))
+        self._ensure_comment_delegate()
         self._updating_cost_table = True
         sorting_enabled = self.cost_table.isSortingEnabled()
         self.cost_table.setSortingEnabled(False)
@@ -329,7 +430,7 @@ class SammenstillingsanalysePage(QWidget):
                     if display is None and cell.value is not None:
                         display = str(cell.value)
                     display_text = display or ""
-                    item = QTableWidgetItem(display_text)
+                    item = _SortValueItem(display_text)
                     flags = item.flags()
                     if cell.editable:
                         item.setFlags(flags | Qt.ItemIsEditable)
@@ -338,13 +439,16 @@ class SammenstillingsanalysePage(QWidget):
                     sort_value = (
                         cell.sort_value if cell.sort_value is not None else cell.value
                     )
-                    if isinstance(sort_value, (int, float)):
-                        numeric_value = float(sort_value)
-                        item.setData(Qt.EditRole, numeric_value)
+                    if sort_value is None:
+                        sort_payload: Optional[object] = display_text
+                    else:
+                        sort_payload = sort_value
+                    item.setData(Qt.UserRole, sort_payload)
+                    if isinstance(sort_payload, (int, float)):
+                        item.setData(Qt.EditRole, float(sort_payload))
                         item.setData(Qt.DisplayRole, display_text)
-                        item.setData(Qt.UserRole, numeric_value)
-                    elif sort_value is not None:
-                        item.setData(Qt.UserRole, sort_value)
+                    elif cell.editable:
+                        item.setData(Qt.EditRole, display_text)
                     if cell.user_value is not None:
                         item.setData(Qt.UserRole + 1, cell.user_value)
                     item.setTextAlignment(int(cell.alignment))
@@ -354,7 +458,7 @@ class SammenstillingsanalysePage(QWidget):
         finally:
             self._updating_cost_table = False
             self.cost_table.setSortingEnabled(sorting_enabled)
-        apply_compact_row_heights(self.cost_table)
+        self._refresh_cost_row_heights()
         header = self.cost_table.horizontalHeader()
         if header is not None:
             section = header.sortIndicatorSection()
@@ -365,17 +469,14 @@ class SammenstillingsanalysePage(QWidget):
         if callable(schedule_hook):
             schedule_hook()
 
-    @staticmethod
-    def _format_percent(value: Optional[float]) -> str:
-        if value is None:
-            return "—"
-        try:
-            numeric = float(value)
-        except (TypeError, ValueError):
-            return "—"
-        if math.isinf(numeric):
-            return "∞ %" if numeric > 0 else "-∞ %"
-        return f"{numeric:.1f} %"
+    def _ensure_comment_delegate(self) -> None:
+        if self.cost_table.columnCount() > 5:
+            self.cost_table.setItemDelegateForColumn(5, self._comment_delegate)
+
+    def _refresh_cost_row_heights(self) -> None:
+        """Henter samme kompakte radhøyde som brukes i Saldobalanse-visningen."""
+
+        apply_compact_row_heights(self.cost_table)
 
     def _apply_cost_highlighting(self) -> None:
         threshold = float(self.cost_threshold.value())
@@ -394,7 +495,7 @@ class SammenstillingsanalysePage(QWidget):
             highlight = threshold > 0.0 and numeric >= threshold
             brush = highlight_brush if highlight else None
             for col_idx in range(column_count):
-                if col_idx == 6:
+                if col_idx == 5:
                     continue
                 item = self.cost_table.item(row_idx, col_idx)
                 if item is not None:
@@ -409,7 +510,7 @@ class SammenstillingsanalysePage(QWidget):
             self._apply_cost_highlighting()
 
     def _on_cost_item_changed(self, item: QTableWidgetItem) -> None:
-        if self._updating_cost_table or item.column() != 6:
+        if self._updating_cost_table or item.column() != 5:
             return
         key = item.data(Qt.UserRole + 1)
         if not key:
@@ -426,6 +527,7 @@ class SammenstillingsanalysePage(QWidget):
             self._cost_comments[str(key)] = text
         else:
             self._cost_comments.pop(str(key), None)
+        self._refresh_cost_row_heights()
 
     def _auto_resize_cost_columns(self) -> None:
         """Tilpasser kolonnebreddene til innholdet uten å fjerne stretching."""
