@@ -7,7 +7,7 @@ from datetime import date, datetime
 from typing import Callable, Iterable, List, Optional, Sequence, Tuple, cast
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QTextOption
+from PySide6.QtGui import QColor, QPalette, QTextOption
 from PySide6.QtWidgets import (
     QFileDialog,
     QFrame,
@@ -226,6 +226,11 @@ class CostVoucherReviewPage(QWidget):
         self.txt_comment.setPlaceholderText(
             "Noter funn eller videre oppfølging for bilaget."
         )
+        palette = self.txt_comment.palette()
+        palette.setColor(QPalette.Text, QColor("#0f172a"))
+        palette.setColor(QPalette.PlaceholderText, QColor("#94a3b8"))
+        palette.setColor(QPalette.Base, QColor("#ffffff"))
+        self.txt_comment.setPalette(palette)
         self.txt_comment.setWordWrapMode(QTextOption.WrapAtWordBoundaryOrAnywhere)
         self.txt_comment.setTabChangesFocus(True)
         self.txt_comment.setAttribute(Qt.WA_StyledBackground, True)
