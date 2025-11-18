@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from typing import Dict, List, Optional, Tuple
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, Qt
 from PySide6.QtGui import QBrush, QColor, QPalette
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QSizePolicy,
     QStyle,
+    QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
@@ -32,7 +33,11 @@ from ...helpers.lazy_imports import lazy_pandas
 from ..delegates import CompactRowDelegate
 from ..helpers import SignalBlocker
 from ..models import SaftTableCell
-from ..tables import apply_compact_row_heights, create_table_widget
+from ..tables import (
+    apply_compact_row_heights,
+    compact_row_base_height,
+    create_table_widget,
+)
 from ..widgets import CardFrame
 
 pd = lazy_pandas()
@@ -42,6 +47,12 @@ __all__ = ["SammenstillingsanalysePage"]
 
 class _CommentItemDelegate(CompactRowDelegate):
     """Sørger for at tekst redigert i kommentarfeltet alltid er lesbar."""
+
+    _ROW_PROPERTY = "_comment_row"
+
+    def __init__(self, parent: QTableWidget) -> None:
+        super().__init__(parent)
+        self._expanded_rows: dict[int, int] = {}
 
     def createEditor(self, parent, option, index):  # type: ignore[override]
         editor = super().createEditor(parent, option, index)
@@ -55,7 +66,62 @@ class _CommentItemDelegate(CompactRowDelegate):
             editor.setPalette(palette)
             editor.setAttribute(Qt.WA_StyledBackground, True)
             editor.setAutoFillBackground(True)
+            editor.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+            editor.setTextMargins(6, 0, 6, 0)
+            editor.setContentsMargins(0, 0, 0, 0)
+            editor.setProperty(self._ROW_PROPERTY, index.row())
+            editor.installEventFilter(self)
         return editor
+
+    def destroyEditor(self, editor, index):  # type: ignore[override]
+        if isinstance(editor, QLineEdit):
+            self._restore_row_height(editor)
+        super().destroyEditor(editor, index)
+
+    def eventFilter(self, obj, event):  # type: ignore[override]
+        if isinstance(obj, QLineEdit):
+            if event.type() == QEvent.FocusIn:
+                self._expand_row_for_editor(obj)
+            elif event.type() in {QEvent.FocusOut, QEvent.Hide}:
+                self._restore_row_height(obj)
+        return super().eventFilter(obj, event)
+
+    def _expand_row_for_editor(self, editor: QLineEdit) -> None:
+        table = self.parent()
+        if not isinstance(table, QTableWidget):
+            return
+        row = editor.property(self._ROW_PROPERTY)
+        if not isinstance(row, int):
+            return
+        header = table.verticalHeader()
+        if header is None:
+            return
+        current_height = header.sectionSize(row)
+        desired_height = max(
+            current_height,
+            editor.sizeHint().height() + 4,
+            compact_row_base_height(table) + 4,
+        )
+        if desired_height <= current_height:
+            return
+        self._expanded_rows[row] = current_height
+        header.resizeSection(row, desired_height)
+        table.setRowHeight(row, desired_height)
+
+    def _restore_row_height(self, editor: QLineEdit) -> None:
+        table = self.parent()
+        if not isinstance(table, QTableWidget):
+            return
+        row = editor.property(self._ROW_PROPERTY)
+        if not isinstance(row, int):
+            return
+        header = table.verticalHeader()
+        if header is None:
+            return
+        base_height = compact_row_base_height(table)
+        original_height = self._expanded_rows.pop(row, base_height)
+        header.resizeSection(row, original_height)
+        table.setRowHeight(row, original_height)
 
 
 class SammenstillingsanalysePage(QWidget):
