@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
 
 from ... import saft_customers
 from ...helpers.formatting import format_currency, format_difference
-from ..tables import create_table_widget, populate_table
+from ..tables import apply_compact_row_heights, create_table_widget, populate_table
 from ..widgets import CardFrame, EmptyStateWidget, StatBadge
 
 __all__ = [
@@ -647,11 +647,7 @@ class CostVoucherReviewPage(QWidget):
             completed_count == row_count and completed_count > 0
         )
 
-        if needs_rebuild:
-            table.resizeRowsToContents()
-        else:
-            for row in rows_to_update:
-                table.resizeRowToContents(row)
+        apply_compact_row_heights(table)
 
         self._update_coverage_badges()
 
