@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from typing import Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QBrush, QColor
@@ -156,7 +156,7 @@ class RegnskapsanalysePage(QWidget):
         self.multi_year_widget = QWidget()
         multi_layout = QVBoxLayout(self.multi_year_widget)
         multi_layout.setContentsMargins(0, 0, 0, 0)
-        multi_layout.setSpacing(12)
+        multi_layout.setSpacing(8)
         self.multi_year_info = QLabel(
             "Importer flere SAF-T-filer for å sammenligne resultat over tid."
         )
@@ -165,16 +165,18 @@ class RegnskapsanalysePage(QWidget):
 
         focus_layout = QHBoxLayout()
         focus_layout.setContentsMargins(0, 0, 0, 0)
-        focus_layout.setSpacing(16)
+        focus_layout.setSpacing(12)
         self.multi_year_latest_label = QLabel(
-            "Ingen aktiv periode tilgjengelig ennå."
+            "<b>Nyeste år</b><br>Ingen aktiv periode tilgjengelig ennå."
         )
+        self.multi_year_latest_label.setTextFormat(Qt.RichText)
         self.multi_year_latest_label.setWordWrap(True)
         self.multi_year_latest_label.setObjectName("statusLabel")
         focus_layout.addWidget(self.multi_year_latest_label, 1)
         self.multi_year_average_label = QLabel(
-            "Snitt beregnes når minst to perioder er importert."
+            "<b>Gjennomsnitt</b><br>Snitt beregnes når minst to perioder er importert."
         )
+        self.multi_year_average_label.setTextFormat(Qt.RichText)
         self.multi_year_average_label.setWordWrap(True)
         self.multi_year_average_label.setObjectName("statusLabel")
         focus_layout.addWidget(self.multi_year_average_label, 1)
@@ -184,6 +186,15 @@ class RegnskapsanalysePage(QWidget):
         self._configure_analysis_table(self.multi_year_table, font_point_size=8)
         multi_layout.addWidget(self.multi_year_table)
         self.multi_year_table.hide()
+
+        self.multi_year_share_label = QLabel("% andel av salgsinntekter")
+        self.multi_year_share_label.setObjectName("statusLabel")
+        multi_layout.addWidget(self.multi_year_share_label)
+        self.multi_year_share_table = create_table_widget()
+        self._configure_analysis_table(self.multi_year_share_table, font_point_size=8)
+        multi_layout.addWidget(self.multi_year_share_table)
+        self.multi_year_share_table.hide()
+        self.multi_year_share_label.hide()
         self.section_stack.addWidget(self.multi_year_widget)
 
         self.key_metrics_widget = QWidget()
@@ -409,12 +420,16 @@ class RegnskapsanalysePage(QWidget):
     def _update_multi_year_section(self) -> None:
         if not self._summary_history:
             self.multi_year_table.hide()
+            self.multi_year_share_table.hide()
+            self.multi_year_share_label.hide()
             self.multi_year_info.setText(
                 "Importer ett eller flere datasett for å se historiske resultater."
             )
-            self.multi_year_latest_label.setText("Ingen aktiv periode tilgjengelig ennå.")
+            self.multi_year_latest_label.setText(
+                "<b>Nyeste år</b><br>Ingen aktiv periode tilgjengelig ennå."
+            )
             self.multi_year_average_label.setText(
-                "Snitt beregnes når minst to perioder er importert."
+                "<b>Gjennomsnitt</b><br>Snitt beregnes når minst to perioder er importert."
             )
             return
 
@@ -422,32 +437,7 @@ class RegnskapsanalysePage(QWidget):
             f"{snapshot.label}*" if snapshot.is_current else snapshot.label
             for snapshot in self._summary_history
         ]
-        row_specs = [
-            ("Driftsinntekter", lambda s: self._get_numeric(s, "driftsinntekter")),
-            ("Varekostnad", lambda s: self._get_numeric(s, "varekostnad")),
-            (
-                "Bruttofortjeneste",
-                lambda s: self._bruttofortjeneste(s),
-            ),
-            ("Lønn", lambda s: self._get_numeric(s, "lonn")),
-            ("Andre driftskostnader", lambda s: self._get_numeric(s, "andre_drift")),
-            ("EBITDA", lambda s: self._get_numeric(s, "ebitda")),
-            ("Avskrivninger", lambda s: self._get_numeric(s, "avskrivninger")),
-            ("EBIT", lambda s: self._get_numeric(s, "ebit")),
-            ("Netto finans", lambda s: self._get_numeric(s, "finans_netto")),
-            ("Skattekostnad", lambda s: self._get_numeric(s, "skattekostnad")),
-            ("Årsresultat", lambda s: self._get_numeric(s, "arsresultat")),
-            (
-                "Resultatmargin (%)",
-                lambda s: self._format_percent(self._result_margin(s)),
-            ),
-        ]
-        table_rows: List[List[object]] = []
-        for label, getter in row_specs:
-            row: List[object] = [label]
-            for snapshot in self._summary_history:
-                row.append(getter(snapshot.summary))
-            table_rows.append(row)
+        table_rows = self._multi_year_value_rows()
 
         money_cols = set(range(1, len(columns)))
         populate_table(self.multi_year_table, columns, table_rows, money_cols=money_cols)
@@ -456,7 +446,11 @@ class RegnskapsanalysePage(QWidget):
             f"Viser {len(self._summary_history)} periode(r) fra importhistorikken."
         )
         self._schedule_table_height_adjustment(self.multi_year_table)
+        self._populate_multi_year_share_table(columns)
         self._update_multi_year_focus()
+        highlight_column = self._multi_year_active_column()
+        self._highlight_multi_year_column(self.multi_year_table, highlight_column)
+        self._highlight_multi_year_column(self.multi_year_share_table, highlight_column)
 
     def _bruttofortjeneste(self, summary: Mapping[str, float]) -> Optional[float]:
         revenue = self._get_numeric(summary, "driftsinntekter")
@@ -465,16 +459,82 @@ class RegnskapsanalysePage(QWidget):
             return None
         return revenue - varekostnad
 
+    def _multi_year_value_rows(self) -> List[List[object]]:
+        snapshots = list(self._summary_history)
+        row_specs: List[Tuple[str, Iterable[object]]] = []
+
+        def _values_for(key: str) -> Iterable[object]:
+            for snapshot in snapshots:
+                yield self._get_numeric(snapshot.summary, key)
+
+        row_specs.append(("Annen inntekt", _values_for("annen_inntekt")))
+        row_specs.append(("Salgsinntekter", _values_for("salgsinntekter")))
+        row_specs.append(("Sum inntekter", _values_for("sum_inntekter")))
+        row_specs.append(("Varekostnad", _values_for("varekostnad")))
+        row_specs.append(("Lønnskostnader", _values_for("lonn")))
+        row_specs.append(("Av-/nedskrivning", _values_for("avskrivninger")))
+        row_specs.append(("Andre driftskostnader", _values_for("andre_drift")))
+        row_specs.append(("Annen kostnad", _values_for("annen_kost")))
+        row_specs.append(("Finansinntekter", _values_for("finansinntekter")))
+        row_specs.append(("Finanskostnader", _values_for("finanskostnader")))
+        row_specs.append(("Resultat før skatt", _values_for("resultat_for_skatt")))
+        row_specs.append(("Skattekostnad", _values_for("skattekostnad")))
+        row_specs.append(("Årsresultat", _values_for("arsresultat")))
+
+        rows: List[List[object]] = []
+        for label, values in row_specs:
+            row = [label]
+            row.extend(values)
+            rows.append(row)
+        return rows
+
+    def _populate_multi_year_share_table(self, columns: Sequence[str]) -> None:
+        percent_rows: List[List[object]] = []
+        revenue_per_snapshot = [
+            self._get_numeric(snapshot.summary, "salgsinntekter")
+            or self._get_numeric(snapshot.summary, "sum_inntekter")
+            or self._get_numeric(snapshot.summary, "driftsinntekter")
+            for snapshot in self._summary_history
+        ]
+
+        def _percent_row(label: str, key: str) -> None:
+            row: List[object] = [label]
+            for idx, snapshot in enumerate(self._summary_history):
+                numerator = self._get_numeric(snapshot.summary, key)
+                percent = self._ratio(numerator, revenue_per_snapshot[idx])
+                row.append(self._format_percent(percent))
+            percent_rows.append(row)
+
+        _percent_row("Varekostnad", "varekostnad")
+        _percent_row("Lønnskostnader", "lonn")
+        _percent_row("Andre driftskostnader", "andre_drift")
+        _percent_row("Annen kostnad", "annen_kost")
+        _percent_row("Finanskostnader", "finanskostnader")
+
+        money_cols = set(range(1, len(columns)))
+        populate_table(
+            self.multi_year_share_table,
+            columns,
+            percent_rows,
+            money_cols=money_cols,
+        )
+        self.multi_year_share_table.show()
+        self.multi_year_share_label.show()
+        self._schedule_table_height_adjustment(self.multi_year_share_table)
+
     def _update_multi_year_focus(self) -> None:
         active = self._active_snapshot()
         margin = self._result_margin(active.summary) if active else None
         if active is None or margin is None:
             self.multi_year_latest_label.setText(
-                "Ingen aktiv periode med beregnet resultatmargin."
+                "<b>Nyeste år</b><br>Ingen aktiv periode med beregnet resultatmargin."
             )
         else:
             self.multi_year_latest_label.setText(
-                f"{active.label}: resultatmargin {self._format_percent(margin)}"
+                (
+                    f"<b>Nyeste år:</b> {active.label}<br>Resultatmargin "
+                    f"{self._format_percent(margin)}"
+                )
             )
 
         others = self._history_without_active()
@@ -482,13 +542,56 @@ class RegnskapsanalysePage(QWidget):
         valid = [value for value in other_margins if value is not None]
         if not valid:
             self.multi_year_average_label.setText(
-                "Snitt beregnes når minst én annen periode har resultatmargin."
+                (
+                    "<b>Gjennomsnitt</b><br>Snitt beregnes når minst én annen "
+                    "periode har resultatmargin."
+                )
             )
         else:
             avg = sum(valid) / len(valid)
             self.multi_year_average_label.setText(
-                f"Snitt ({len(valid)} år): {self._format_percent(avg)}"
+                (
+                    f"<b>Gjennomsnitt ({len(valid)} år)</b><br>"
+                    f"{self._format_percent(avg)}"
+                )
             )
+
+    def _multi_year_active_column(self) -> Optional[int]:
+        if not self._summary_history:
+            return None
+        for idx, snapshot in enumerate(self._summary_history):
+            if snapshot.is_current:
+                return idx + 1
+        return len(self._summary_history)
+
+    def _highlight_multi_year_column(
+        self, table: QTableWidget, column: Optional[int]
+    ) -> None:
+        if column is None or table.columnCount() <= column:
+            return
+        highlight_brush = QBrush(QColor(59, 130, 246, 60))
+        default_brush = QBrush()
+        with suspend_table_updates(table):
+            header = table.horizontalHeader()
+            for col in range(1, table.columnCount()):
+                header_item = table.horizontalHeaderItem(col)
+                if header_item is not None:
+                    font = header_item.font()
+                    font.setBold(col == column)
+                    header_item.setFont(font)
+                for row in range(table.rowCount()):
+                    item = table.item(row, col)
+                    if item is None:
+                        continue
+                    font = item.font()
+                    if col == column:
+                        item.setBackground(highlight_brush)
+                        font.setBold(True)
+                    else:
+                        item.setBackground(default_brush)
+                        font.setBold(False)
+                    item.setFont(font)
+        table.viewport().update()
 
     def _update_key_metrics_section(self) -> None:
         active = self._active_snapshot()

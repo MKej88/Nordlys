@@ -6,6 +6,7 @@ import xml.etree.ElementTree as ET
 import zipfile
 from datetime import date
 from decimal import Decimal
+from typing import List, Sequence, Tuple
 
 import pandas as pd
 import pytest
@@ -158,6 +159,30 @@ def build_sample_root() -> ET.Element:
     return ET.fromstring(xml)
 
 
+def build_summary_frame(entries: Sequence[Tuple[int, float]]) -> pd.DataFrame:
+    konto_int = [konto for konto, _ in entries]
+    ub_debet: List[float] = []
+    ub_kredit: List[float] = []
+    for _, amount in entries:
+        if amount >= 0:
+            ub_debet.append(amount)
+            ub_kredit.append(0.0)
+        else:
+            ub_debet.append(0.0)
+            ub_kredit.append(-amount)
+    zeros = [0.0] * len(entries)
+    return pd.DataFrame(
+        {
+            "Konto": [str(konto) for konto in konto_int],
+            "Konto_int": konto_int,
+            "IB Debet": zeros,
+            "IB Kredit": zeros,
+            "UB Debet": ub_debet,
+            "UB Kredit": ub_kredit,
+        }
+    )
+
+
 def test_parse_header_and_customers():
     root = build_sample_root()
     header = parse_saft_header(root)
@@ -237,6 +262,36 @@ def test_parse_saldobalanse_and_summary():
     assert summary["driftsinntekter"] == 1000
     assert summary["varekostnad"] == 600
     assert summary["ebitda"] == 400
+    assert summary["sum_inntekter"] == summary["driftsinntekter"]
+    assert summary["annen_inntekt"] == 0
+    assert summary["resultat_for_skatt"] == summary["ebt"]
+
+
+def test_summary_breaks_out_income_and_finance_accounts():
+    df = build_summary_frame(
+        [
+            (3000, -1000.0),
+            (3800, -200.0),
+            (3900, -100.0),
+            (4000, 250.0),
+            (5000, 100.0),
+            (6000, 50.0),
+            (6100, 25.0),
+            (6200, 55.0),
+            (7000, 75.0),
+            (8000, -20.0),
+            (8100, 5.0),
+        ]
+    )
+    summary = ns4102_summary_from_tb(df)
+    assert summary["sum_inntekter"] == pytest.approx(1300.0)
+    assert summary["annen_inntekt"] == pytest.approx(300.0)
+    assert summary["salgsinntekter"] == pytest.approx(1000.0)
+    assert summary["andre_drift"] == pytest.approx(80.0)
+    assert summary["annen_kost"] == pytest.approx(75.0)
+    assert summary["finansinntekter"] == pytest.approx(20.0)
+    assert summary["finanskostnader"] == pytest.approx(5.0)
+    assert summary["resultat_for_skatt"] == pytest.approx(760.0)
 
 
 @pytest.mark.parametrize(
