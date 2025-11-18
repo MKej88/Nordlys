@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import math
 import random
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Callable, Iterable, List, Optional, Sequence, Tuple, cast
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QPalette, QTextOption
 from PySide6.QtWidgets import (
     QFileDialog,
     QFrame,
@@ -21,6 +23,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QSpinBox,
     QTabWidget,
+    QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
@@ -28,7 +31,12 @@ from PySide6.QtWidgets import (
 
 from ... import saft_customers
 from ...helpers.formatting import format_currency, format_difference
-from ..tables import create_table_widget, populate_table
+from ..tables import (
+    apply_compact_row_heights,
+    compact_row_base_height,
+    create_table_widget,
+    populate_table,
+)
 from ..widgets import CardFrame, EmptyStateWidget, StatBadge
 
 __all__ = [
@@ -89,6 +97,7 @@ class CostVoucherReviewPage(QWidget):
         self._results: List[Optional[VoucherReviewResult]] = []
         self._current_index: int = -1
         self._sample_started_at: Optional[datetime] = None
+        self._total_available_amount: float = 0.0
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -128,6 +137,10 @@ class CostVoucherReviewPage(QWidget):
         self.lbl_available.setObjectName("infoLabel")
         self.control_card.add_widget(self.lbl_available)
 
+        self.lbl_total_amount = QLabel("Sum inngående faktura: —")
+        self.lbl_total_amount.setObjectName("infoLabel")
+        self.control_card.add_widget(self.lbl_total_amount)
+
         input_layout.addWidget(self.control_card, 0, Qt.AlignTop)
         input_layout.addStretch(1)
 
@@ -137,6 +150,11 @@ class CostVoucherReviewPage(QWidget):
         selection_layout = QVBoxLayout(selection_container)
         selection_layout.setContentsMargins(0, 0, 0, 0)
         selection_layout.setSpacing(24)
+
+        selection_content_row = QHBoxLayout()
+        selection_content_row.setContentsMargins(0, 0, 0, 0)
+        selection_content_row.setSpacing(24)
+        selection_content_row.setAlignment(Qt.AlignTop)
 
         self.detail_card = CardFrame("Gjennomgang av bilag")
         self.detail_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -210,9 +228,20 @@ class CostVoucherReviewPage(QWidget):
         self.detail_card.add_widget(comment_label)
 
         self.txt_comment = QPlainTextEdit()
+        self.txt_comment.setObjectName("commentInput")
         self.txt_comment.setPlaceholderText(
             "Noter funn eller videre oppfølging for bilaget."
         )
+        palette = self.txt_comment.palette()
+        palette.setColor(QPalette.Text, QColor("#0f172a"))
+        palette.setColor(QPalette.PlaceholderText, QColor("#94a3b8"))
+        palette.setColor(QPalette.Base, QColor("#ffffff"))
+        self.txt_comment.setPalette(palette)
+        self.txt_comment.setWordWrapMode(QTextOption.WrapAtWordBoundaryOrAnywhere)
+        self.txt_comment.setTabChangesFocus(True)
+        self.txt_comment.setAttribute(Qt.WA_StyledBackground, True)
+        self.txt_comment.setAutoFillBackground(True)
+        self.txt_comment.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.txt_comment.setFixedHeight(100)
         self.detail_card.add_widget(self.txt_comment)
 
@@ -238,7 +267,37 @@ class CostVoucherReviewPage(QWidget):
         button_row.addWidget(self.btn_next)
         self.detail_card.add_layout(button_row)
 
-        selection_layout.addWidget(self.detail_card)
+        selection_content_row.addWidget(self.detail_card, 1)
+
+        stats_column_layout = QVBoxLayout()
+        stats_column_layout.setContentsMargins(0, 0, 0, 0)
+        stats_column_layout.setSpacing(12)
+        stats_column_layout.setAlignment(Qt.AlignTop)
+
+        selection_stats_layout = QHBoxLayout()
+        selection_stats_layout.setContentsMargins(0, 0, 0, 0)
+        selection_stats_layout.setSpacing(12)
+        selection_stats_layout.addStretch(1)
+        self.selection_badge_total_amount = StatBadge(
+            "Sum inngående faktura",
+            "Beløp fra innlastet fil",
+        )
+        self.selection_badge_reviewed_amount = StatBadge(
+            "Sum kontrollert",
+            "Kostnad på vurderte bilag",
+        )
+        self.selection_badge_coverage = StatBadge(
+            "Dekning",
+            "Andel av sum som er kontrollert",
+        )
+        selection_stats_layout.addWidget(self.selection_badge_total_amount)
+        selection_stats_layout.addWidget(self.selection_badge_reviewed_amount)
+        selection_stats_layout.addWidget(self.selection_badge_coverage)
+        stats_column_layout.addLayout(selection_stats_layout)
+        stats_column_layout.addStretch(1)
+        selection_content_row.addLayout(stats_column_layout)
+
+        selection_layout.addLayout(selection_content_row)
 
         self.tab_widget.addTab(selection_container, "Utvalg")
 
@@ -249,6 +308,28 @@ class CostVoucherReviewPage(QWidget):
 
         self.summary_card = CardFrame("Oppsummering av kontrollerte bilag")
         self.summary_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+        stats_layout = QHBoxLayout()
+        stats_layout.setContentsMargins(0, 0, 0, 0)
+        stats_layout.setSpacing(12)
+        self.badge_total_amount = StatBadge(
+            "Sum inngående faktura",
+            "Beløp fra innlastet fil",
+        )
+        self.badge_reviewed_amount = StatBadge(
+            "Sum kontrollert",
+            "Kostnad på vurderte bilag",
+        )
+        self.badge_coverage = StatBadge(
+            "Dekning",
+            "Andel av sum som er kontrollert",
+        )
+        stats_layout.addWidget(self.badge_total_amount)
+        stats_layout.addWidget(self.badge_reviewed_amount)
+        stats_layout.addWidget(self.badge_coverage)
+        stats_layout.addStretch(1)
+        self.summary_card.add_layout(stats_layout)
+
         self.lbl_summary = QLabel("Ingen bilag kontrollert ennå.")
         self.lbl_summary.setObjectName("statusLabel")
         self.summary_card.add_widget(self.lbl_summary)
@@ -294,9 +375,11 @@ class CostVoucherReviewPage(QWidget):
         self.tab_widget.setCurrentIndex(0)
 
         self.detail_card.setEnabled(False)
+        self._update_coverage_badges()
 
     def set_vouchers(self, vouchers: Sequence["saft_customers.CostVoucher"]) -> None:
         self._vouchers = list(vouchers)
+        self._total_available_amount = self._sum_voucher_amounts(self._vouchers)
         self._sample = []
         self._results = []
         self._current_index = -1
@@ -305,6 +388,7 @@ class CostVoucherReviewPage(QWidget):
         self.btn_start_sample.setText("Start bilagskontroll")
         self._clear_current_display()
         self._refresh_summary_table(force_rebuild=True)
+        self._update_total_amount_label()
         self.tab_widget.setCurrentIndex(0)
         self.tab_widget.setTabEnabled(1, False)
         self.tab_widget.setTabEnabled(2, False)
@@ -505,6 +589,7 @@ class CostVoucherReviewPage(QWidget):
             self.btn_export_pdf.setEnabled(False)
             self.lbl_summary.setText("Ingen bilag kontrollert ennå.")
             self.tab_widget.setTabEnabled(2, False)
+            self._update_coverage_badges()
             return
 
         table = self.summary_table
@@ -568,11 +653,10 @@ class CostVoucherReviewPage(QWidget):
             completed_count == row_count and completed_count > 0
         )
 
-        if needs_rebuild:
-            table.resizeRowsToContents()
-        else:
-            for row in rows_to_update:
-                table.resizeRowToContents(row)
+        apply_compact_row_heights(table)
+        self._expand_rows_for_multiline_comments(table)
+
+        self._update_coverage_badges()
 
     def _get_current_result(self) -> Optional[VoucherReviewResult]:
         if 0 <= self._current_index < len(self._results):
@@ -609,6 +693,28 @@ class CostVoucherReviewPage(QWidget):
         self.value_status.setProperty("statusState", state)
         self.value_status.style().unpolish(self.value_status)
         self.value_status.style().polish(self.value_status)
+
+    def _expand_rows_for_multiline_comments(self, table: QTableWidget) -> None:
+        header = table.verticalHeader()
+        if header is None:
+            return
+        minimum_height = compact_row_base_height(table)
+        row_count = table.rowCount()
+        if row_count == 0:
+            return
+        comment_column = 5
+        for row in range(row_count):
+            item = table.item(row, comment_column)
+            if item is None:
+                continue
+            text = item.text().strip()
+            if "\n" not in text:
+                continue
+            header.setSectionResizeMode(row, QHeaderView.ResizeToContents)
+            table.resizeRowToContents(row)
+            header.setSectionResizeMode(row, QHeaderView.Fixed)
+            if table.rowHeight(row) < minimum_height:
+                table.setRowHeight(row, minimum_height)
 
     def _find_next_unreviewed(self, start: int = 0) -> Optional[int]:
         if not self._sample:
@@ -657,6 +763,63 @@ class CostVoucherReviewPage(QWidget):
         if value is None:
             return "–"
         return value.strftime("%d.%m.%Y")
+
+    def _sum_voucher_amounts(
+        self, vouchers: Iterable["saft_customers.CostVoucher"]
+    ) -> float:
+        total = 0.0
+        for voucher in vouchers:
+            total += self._extract_amount(voucher.amount)
+        return total
+
+    def _sum_reviewed_amount(self) -> float:
+        total = 0.0
+        for result in self._results:
+            if result is None:
+                continue
+            total += self._extract_amount(result.voucher.amount)
+        return total
+
+    def _update_total_amount_label(self) -> None:
+        formatted_total = format_currency(self._total_available_amount)
+        self.lbl_total_amount.setText(f"Sum inngående faktura: {formatted_total}")
+
+    @staticmethod
+    def _extract_amount(value: Optional[float]) -> float:
+        try:
+            numeric = float(value) if value is not None else 0.0
+        except (TypeError, ValueError):
+            return 0.0
+        if not math.isfinite(numeric):
+            return 0.0
+        return numeric
+
+    def _update_coverage_badges(self) -> None:
+        total_available = self._total_available_amount
+        reviewed = self._sum_reviewed_amount()
+        total_text = format_currency(total_available)
+        reviewed_text = format_currency(reviewed)
+        for badge in (
+            self.badge_total_amount,
+            self.selection_badge_total_amount,
+        ):
+            badge.set_value(total_text)
+        for badge in (
+            self.badge_reviewed_amount,
+            self.selection_badge_reviewed_amount,
+        ):
+            badge.set_value(reviewed_text)
+        if total_available <= 0:
+            coverage_text = "—"
+        else:
+            coverage = (reviewed / total_available) * 100
+            coverage_text = f"{coverage:.1f} %"
+        for badge in (
+            self.badge_coverage,
+            self.selection_badge_coverage,
+        ):
+            badge.set_value(coverage_text)
+        self._update_total_amount_label()
 
     def _on_export_pdf(self) -> None:
         if not self._results or any(result is None for result in self._results):

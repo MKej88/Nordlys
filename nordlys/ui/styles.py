@@ -119,6 +119,22 @@ QTabBar::tab:selected { background: #2563eb; color: #f8fafc; }
 QTabBar::tab:hover { background: rgba(37, 99, 235, 0.35); color: #0f172a; }
 QTabBar::tab:!selected { border: 1px solid rgba(148, 163, 184, 0.35); }
 #analysisDivider { background-color: rgba(148, 163, 184, 0.45); border-radius: 2px; margin: 4px 0; }
+QLineEdit, QPlainTextEdit, QTextEdit {
+    background-color: #ffffff;
+    border: 1px solid rgba(148, 163, 184, 0.5);
+    border-radius: 10px;
+    padding: 10px 12px;
+    color: #0f172a;
+    selection-background-color: rgba(37, 99, 235, 0.25);
+    selection-color: #0f172a;
+}
+QLineEdit:focus, QPlainTextEdit:focus, QTextEdit:focus {
+    border-color: #2563eb;
+    background-color: #ffffff;
+}
+QPlainTextEdit#commentInput {
+    min-height: 100px;
+}
 QScrollBar:vertical { background: rgba(148, 163, 184, 0.18); width: 12px; margin: 8px 2px 8px 0; border-radius: 6px; }
 QScrollBar::handle:vertical { background: #2563eb; min-height: 24px; border-radius: 6px; }
 QScrollBar::handle:vertical:hover { background: #1d4ed8; }
