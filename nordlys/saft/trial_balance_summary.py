@@ -114,15 +114,22 @@ def ns4102_summary_from_tb(df: "pd.DataFrame") -> Dict[str, float]:
     if not mask.any():
         return {
             "driftsinntekter": 0.0,
+            "sum_inntekter": 0.0,
+            "salgsinntekter": 0.0,
+            "annen_inntekt": 0.0,
             "varekostnad": 0.0,
             "lonn": 0.0,
             "avskrivninger": 0.0,
             "andre_drift": 0.0,
+            "annen_kost": 0.0,
+            "finansinntekter": 0.0,
+            "finanskostnader": 0.0,
             "ebitda": 0.0,
             "ebit": 0.0,
             "finans_netto": 0.0,
             "skattekostnad": 0.0,
             "ebt": 0.0,
+            "resultat_for_skatt": 0.0,
             "arsresultat": 0.0,
             "eiendeler_UB": 0.0,
             "egenkapital_UB": 0.0,
@@ -172,16 +179,32 @@ def ns4102_summary_from_tb(df: "pd.DataFrame") -> Dict[str, float]:
     def sum_ub(start: int, stop: int) -> float:
         return _sum_with_prefix(ub_prefix, start, stop)
 
-    driftsinntekter = -sum_end(3000, 3999)
+    sum_salg_total = -sum_end(3000, 3999)
+    annen_inntekt = -(sum_end(3800, 3899) + sum_end(3900, 3999))
+    salgsinntekter = sum_salg_total - annen_inntekt
+    driftsinntekter = sum_salg_total
     varekostnad = sum_end(4000, 4999)
     lonn = sum_end(5000, 5999)
-    avskr = sum_end(6000, 6099) + sum_end(7800, 7899)
-    andre_drift = sum_end(6100, 7999) - sum_end(7800, 7899)
+    avskr = sum_end(6000, 6099)
+    andre_drift = sum_end(6100, 6999)
+    annen_kost = sum_end(7000, 7999)
     ebitda = driftsinntekter - (varekostnad + lonn + andre_drift)
     ebit = ebitda - avskr
+    finansinntekter = -sum_end(8000, 8099)
+    finanskostnader = sum_end(8100, 8199)
     finans = -(sum_end(8000, 8299) + sum_end(8400, 8899))
     skatt = sum_end(8300, 8399)
     ebt = ebit + finans
+    resultat_for_skatt = (
+        driftsinntekter
+        - varekostnad
+        - lonn
+        - avskr
+        - andre_drift
+        - annen_kost
+        + finansinntekter
+        - finanskostnader
+    )
     arsresultat = ebt - skatt
     anlegg_UB = sum_ub(1000, 1399)
     omlop_UB = sum_ub(1400, 1999)
@@ -199,15 +222,22 @@ def ns4102_summary_from_tb(df: "pd.DataFrame") -> Dict[str, float]:
 
     return {
         "driftsinntekter": driftsinntekter,
+        "sum_inntekter": sum_salg_total,
+        "salgsinntekter": salgsinntekter,
+        "annen_inntekt": annen_inntekt,
         "varekostnad": varekostnad,
         "lonn": lonn,
         "avskrivninger": avskr,
         "andre_drift": andre_drift,
+        "annen_kost": annen_kost,
+        "finansinntekter": finansinntekter,
+        "finanskostnader": finanskostnader,
         "ebitda": ebitda,
         "ebit": ebit,
         "finans_netto": finans,
         "skattekostnad": skatt,
         "ebt": ebt,
+        "resultat_for_skatt": resultat_for_skatt,
         "arsresultat": arsresultat,
         "eiendeler_UB": eiendeler_netto,
         "egenkapital_UB": egenkap_UB,

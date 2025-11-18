@@ -13,7 +13,7 @@ pd = lazy_pandas()
 saft = lazy_import("nordlys.saft")
 saft_customers = lazy_import("nordlys.saft_customers")
 
-__all__ = ["DatasetMetadata", "SaftDatasetStore"]
+__all__ = ["DatasetMetadata", "SaftDatasetStore", "SummarySnapshot"]
 
 
 @dataclass(frozen=True)
@@ -22,6 +22,16 @@ class DatasetMetadata:
 
     key: str
     result: SaftLoadResult
+
+
+@dataclass(frozen=True)
+class SummarySnapshot:
+    """Representerer et sammendrag av et historisk datasett."""
+
+    label: str
+    summary: Dict[str, float]
+    year: Optional[int]
+    is_current: bool
 
 
 class SaftDatasetStore:
@@ -284,6 +294,31 @@ class SaftDatasetStore:
     @property
     def dataset_order(self) -> List[str]:
         return list(self._order)
+
+    def recent_summaries(self, limit: int = 5) -> List[SummarySnapshot]:
+        """Returnerer de siste sammendragene i kronologisk rekkefølge."""
+
+        if limit <= 0:
+            return []
+
+        collected: List[SummarySnapshot] = []
+        for key in reversed(self._order):
+            result = self._results.get(key)
+            if result is None or not result.summary:
+                continue
+            label = self.dataset_label(result)
+            snapshot = SummarySnapshot(
+                label=label,
+                summary=result.summary,
+                year=self._years.get(key),
+                is_current=(key == self._current_key),
+            )
+            collected.append(snapshot)
+            if len(collected) >= limit:
+                break
+
+        collected.reverse()
+        return collected
 
     # endregion
 

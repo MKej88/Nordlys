@@ -79,6 +79,7 @@ class PageStateHandler:
             widget.set_dataframe(
                 self._dataset_store.saft_df, self._dataset_store.current_year_text
             )
+            widget.set_summary_history(self._dataset_store.recent_summaries())
             widget.update_comparison(self._latest_comparison_rows)
         elif key == "plan.vesentlighet" and isinstance(widget, SummaryPage):
             self.vesentlig_page = widget

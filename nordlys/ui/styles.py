@@ -69,6 +69,7 @@ QListWidget#logList::item:selected {
     color: #0f172a;
 }
 #analysisSectionTitle { font-size: 16px; font-weight: 700; color: #0f172a; letter-spacing: 0.2px; border-bottom: 2px solid rgba(37, 99, 235, 0.35); padding-bottom: 6px; }
+#analysisSectionTitle[tightSpacing="true"] { padding-bottom: 0px; margin-bottom: 0px; }
 #pageTitle { font-size: 30px; font-weight: 800; color: #0f172a; letter-spacing: 0.6px; }
 QLabel#pageSubtitle { color: #1e293b; font-size: 15px; }
 #statusLabel { color: #1f2937; font-size: 14px; line-height: 1.6; }

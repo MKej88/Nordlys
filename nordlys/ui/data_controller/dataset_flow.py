@@ -31,6 +31,9 @@ class DatasetFlowController:
             if pages.import_page:
                 pages.import_page.update_invoice_count(None)
                 pages.import_page.update_misc_info(None)
+            if pages.regnskap_page:
+                pages.regnskap_page.set_dataframe(None, None)
+                pages.regnskap_page.set_summary_history([])
             return
 
         store.apply_batch(results)
@@ -191,6 +194,7 @@ class DatasetFlowController:
         fiscal_year = store.current_year_text
         if pages.regnskap_page:
             pages.regnskap_page.set_dataframe(saft_df, fiscal_year)
+            pages.regnskap_page.set_summary_history(store.recent_summaries())
         if pages.sammenstilling_page:
             pages.sammenstilling_page.set_dataframe(saft_df, fiscal_year)
         brreg_status = self._process_brreg_result(result)

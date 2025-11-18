@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
-from typing import List, Optional, Sequence, Tuple
+import math
+from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
+    QGridLayout,
     QHeaderView,
     QHBoxLayout,
     QLabel,
+    QPushButton,
     QSizePolicy,
+    QStackedLayout,
     QTableWidget,
     QVBoxLayout,
     QWidget,
@@ -22,7 +26,9 @@ except ImportError:  # PySide6 < 6.7
     QWIDGETSIZE_MAX = 16777215
 
 from ... import regnskap
+from ...helpers.formatting import format_currency
 from ...helpers.lazy_imports import lazy_pandas
+from ..data_manager.dataset_store import SummarySnapshot
 from ..delegates import BOTTOM_BORDER_ROLE, TOP_BORDER_ROLE
 from ..delegates import AnalysisTableDelegate
 from ..tables import (
@@ -32,7 +38,7 @@ from ..tables import (
     populate_table,
     suspend_table_updates,
 )
-from ..widgets import CardFrame
+from ..widgets import CardFrame, StatBadge
 
 pd = lazy_pandas()
 
@@ -51,11 +57,41 @@ class RegnskapsanalysePage(QWidget):
         self.analysis_card = CardFrame(
             "Regnskapsanalyse",
             (
-                "Balansepostene til venstre og resultatpostene til høyre for enkel "
-                "sammenligning."
+                "Balanseposter, resultat og nøkkeltall samlet i én visning. "
+                "Velg seksjonene under for å bytte fokus."
             ),
         )
         self.analysis_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+        self._section_buttons: List[QPushButton] = []
+        self._section_container = QWidget()
+        section_layout = QVBoxLayout(self._section_container)
+        section_layout.setContentsMargins(0, 0, 0, 0)
+        section_layout.setSpacing(16)
+
+        nav_layout = QHBoxLayout()
+        nav_layout.setContentsMargins(0, 0, 0, 0)
+        nav_layout.setSpacing(12)
+        section_layout.addLayout(nav_layout)
+
+        self.section_stack = QStackedLayout()
+        section_layout.addLayout(self.section_stack)
+
+        for idx, title in enumerate(
+            ["Siste 2 år", "Resultat flere år", "Nøkkeltall", "Oppsummering"]
+        ):
+            button = QPushButton(title)
+            button.setCheckable(True)
+            button.setAutoExclusive(True)
+            button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            button.clicked.connect(
+                lambda checked, index=idx: self._set_active_section(index)
+            )
+            button.setObjectName("analysisSectionButton")
+            nav_layout.addWidget(button)
+            self._section_buttons.append(button)
+        nav_layout.addStretch(1)
+
         self.balance_section = QWidget()
         self.balance_section.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         balance_layout = QVBoxLayout(self.balance_section)
@@ -110,11 +146,135 @@ class RegnskapsanalysePage(QWidget):
         analysis_layout.setAlignment(self.balance_section, Qt.AlignTop)
         analysis_layout.setAlignment(self.result_section, Qt.AlignTop)
 
-        self.analysis_card.add_widget(analysis_container)
+        last_two_widget = QWidget()
+        last_two_layout = QVBoxLayout(last_two_widget)
+        last_two_layout.setContentsMargins(0, 0, 0, 0)
+        last_two_layout.setSpacing(0)
+        last_two_layout.addWidget(analysis_container)
+        self.section_stack.addWidget(last_two_widget)
+
+        self.multi_year_widget = QWidget()
+        multi_layout = QVBoxLayout(self.multi_year_widget)
+        multi_layout.setContentsMargins(0, 0, 0, 0)
+        multi_layout.setSpacing(4)
+        self.multi_year_info = QLabel(
+            "Importer flere SAF-T-filer for å sammenligne resultat over tid."
+        )
+        self.multi_year_info.setWordWrap(True)
+        multi_layout.addWidget(self.multi_year_info)
+
+        self.multi_year_table = create_table_widget()
+        self._configure_analysis_table(self.multi_year_table, font_point_size=8)
+        multi_layout.addWidget(self.multi_year_table)
+        self.multi_year_table.hide()
+
+        self.multi_year_share_container = QWidget()
+        share_layout = QVBoxLayout(self.multi_year_share_container)
+        share_layout.setContentsMargins(0, 0, 0, 0)
+        share_layout.setSpacing(0)
+
+        self.multi_year_share_label = QLabel("% andel av salgsinntekter")
+        self.multi_year_share_label.setObjectName("analysisSectionTitle")
+        self.multi_year_share_label.setContentsMargins(0, 0, 0, 0)
+        self.multi_year_share_label.setProperty("tightSpacing", True)
+        self.multi_year_share_label.style().unpolish(self.multi_year_share_label)
+        self.multi_year_share_label.style().polish(self.multi_year_share_label)
+        share_layout.addWidget(self.multi_year_share_label)
+
+        self.multi_year_share_table = create_table_widget()
+        self.multi_year_share_table.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Fixed
+        )
+        self._configure_analysis_table(self.multi_year_share_table, font_point_size=8)
+        share_layout.addWidget(self.multi_year_share_table)
+
+        multi_layout.addWidget(self.multi_year_share_container)
+        self.multi_year_share_table.hide()
+        self.multi_year_share_container.hide()
+        self.section_stack.addWidget(self.multi_year_widget)
+
+        self.key_metrics_widget = QWidget()
+        key_layout = QVBoxLayout(self.key_metrics_widget)
+        key_layout.setContentsMargins(0, 0, 0, 0)
+        key_layout.setSpacing(12)
+        self.key_metrics_info = QLabel(
+            "Importer en SAF-T-fil for å beregne nøkkeltall."
+        )
+        self.key_metrics_info.setWordWrap(True)
+        self.key_metrics_info.setObjectName("statusLabel")
+        key_layout.addWidget(self.key_metrics_info)
+
+        self.kpi_grid = QGridLayout()
+        self.kpi_grid.setContentsMargins(0, 0, 0, 0)
+        self.kpi_grid.setHorizontalSpacing(16)
+        self.kpi_grid.setVerticalSpacing(16)
+        key_layout.addLayout(self.kpi_grid)
+
+        self.kpi_badges: Dict[str, StatBadge] = {}
+        for idx, (key, title, desc) in enumerate(
+            [
+                ("revenue", "Driftsinntekter", "Sum av kontogruppe 3xxx."),
+                ("ebitda_margin", "EBITDA-margin", "EBITDA i prosent av salg."),
+                ("ebit_margin", "EBIT-margin", "Driftsresultat i prosent av salg."),
+                ("result_margin", "Resultatmargin", "Årsresultat i prosent av salg."),
+                (
+                    "equity_ratio",
+                    "Egenkapitalandel",
+                    "Egenkapital i prosent av eiendeler.",
+                ),
+            ]
+        ):
+            badge = StatBadge(title, desc)
+            row = idx // 2
+            col = idx % 2
+            self.kpi_grid.addWidget(badge, row, col)
+            self.kpi_badges[key] = badge
+        key_layout.addStretch(1)
+        self.section_stack.addWidget(self.key_metrics_widget)
+
+        self.summary_widget = QWidget()
+        summary_layout = QVBoxLayout(self.summary_widget)
+        summary_layout.setContentsMargins(0, 0, 0, 0)
+        summary_layout.setSpacing(12)
+        self.summary_profit_label = self._create_summary_label("Lønnsomhet")
+        self.summary_liquidity_label = self._create_summary_label("Likviditet")
+        self.summary_soliditet_label = self._create_summary_label("Soliditet")
+        self.summary_unusual_label = self._create_summary_label("Unormalt")
+        self.summary_focus_label = self._create_summary_label("Fokus for revisjonen")
+        for widget_label in (
+            self.summary_profit_label,
+            self.summary_liquidity_label,
+            self.summary_soliditet_label,
+            self.summary_unusual_label,
+            self.summary_focus_label,
+        ):
+            summary_layout.addWidget(widget_label)
+        summary_layout.addStretch(1)
+        self.section_stack.addWidget(self.summary_widget)
+
+        self.analysis_card.add_widget(self._section_container)
         layout.addWidget(self.analysis_card, 1)
 
+        self._set_active_section(0)
+
+        self._summary_history: List[SummarySnapshot] = []
+        self._comparison_rows: Optional[
+            Sequence[Tuple[str, Optional[float], Optional[float], Optional[float]]]
+        ] = None
         self._prepared_df: Optional[pd.DataFrame] = None
         self._fiscal_year: Optional[str] = None
+        self.set_summary_history([])
+
+    def _set_active_section(self, index: int) -> None:
+        count = self.section_stack.count()
+        if count == 0:
+            return
+        safe_index = max(0, min(index, count - 1))
+        self.section_stack.setCurrentIndex(safe_index)
+        for idx, button in enumerate(self._section_buttons):
+            button.blockSignals(True)
+            button.setChecked(idx == safe_index)
+            button.blockSignals(False)
 
     def set_dataframe(
         self, df: Optional[pd.DataFrame], fiscal_year: Optional[str] = None
@@ -131,6 +291,12 @@ class RegnskapsanalysePage(QWidget):
         self._prepared_df = regnskap.prepare_regnskap_dataframe(df)
         self._update_balance_table()
         self._update_result_table()
+
+    def set_summary_history(self, snapshots: Sequence[SummarySnapshot]) -> None:
+        self._summary_history = list(snapshots)
+        self._update_multi_year_section()
+        self._update_key_metrics_section()
+        self._update_summary_section()
 
     def _year_headers(self) -> Tuple[str, str]:
         if self._fiscal_year and self._fiscal_year.isdigit():
@@ -204,6 +370,397 @@ class RegnskapsanalysePage(QWidget):
         self._lock_analysis_column_widths(self.result_table)
         self._schedule_table_height_adjustment(self.result_table)
 
+    def _create_summary_label(self, title: str) -> QLabel:
+        label = QLabel(self._summary_html(title, "Ingen vurdering tilgjengelig ennå."))
+        label.setWordWrap(True)
+        label.setObjectName("statusLabel")
+        return label
+
+    def _summary_html(self, title: str, body: str) -> str:
+        return f"<b>{title}</b><br>{body}"
+
+    def _active_snapshot(self) -> Optional[SummarySnapshot]:
+        if not self._summary_history:
+            return None
+        for snapshot in self._summary_history:
+            if snapshot.is_current:
+                return snapshot
+        return self._summary_history[-1]
+
+    def _get_numeric(self, summary: Mapping[str, float], key: str) -> Optional[float]:
+        value = summary.get(key)
+        if value is None:
+            return None
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            return None
+        if not math.isfinite(numeric):
+            return None
+        return numeric
+
+    def _result_margin(self, summary: Mapping[str, float]) -> Optional[float]:
+        revenue = self._get_numeric(summary, "driftsinntekter")
+        result = self._get_numeric(summary, "arsresultat")
+        if revenue is None or abs(revenue) < 1e-6 or result is None:
+            return None
+        return (result / revenue) * 100
+
+    def _format_percent(self, value: Optional[float]) -> str:
+        if value is None:
+            return "—"
+        return f"{value:.1f} %"
+
+    def _update_multi_year_section(self) -> None:
+        if not self._summary_history:
+            self.multi_year_table.hide()
+            self.multi_year_share_table.hide()
+            self.multi_year_share_container.hide()
+            self.multi_year_info.setText(
+                "Importer ett eller flere datasett for å se historiske resultater."
+            )
+            self.multi_year_info.show()
+            return
+
+        columns = ["Kategori"] + [
+            f"{snapshot.label}*" if snapshot.is_current else snapshot.label
+            for snapshot in self._summary_history
+        ]
+        table_rows = self._multi_year_value_rows()
+
+        money_cols = set(range(1, len(columns)))
+        populate_table(
+            self.multi_year_table, columns, table_rows, money_cols=money_cols
+        )
+        self.multi_year_table.show()
+        self.multi_year_info.hide()
+        self._schedule_table_height_adjustment(self.multi_year_table, extra_padding=0)
+        highlight_column = self._multi_year_active_column()
+        share_highlight_column = self._populate_multi_year_share_table(
+            columns, highlight_column
+        )
+        self._highlight_multi_year_column(self.multi_year_table, highlight_column)
+        self._highlight_multi_year_column(
+            self.multi_year_share_table, share_highlight_column
+        )
+
+    def _bruttofortjeneste(self, summary: Mapping[str, float]) -> Optional[float]:
+        revenue = self._get_numeric(summary, "driftsinntekter")
+        varekostnad = self._get_numeric(summary, "varekostnad")
+        if revenue is None or varekostnad is None:
+            return None
+        return revenue - varekostnad
+
+    def _multi_year_value_rows(self) -> List[List[object]]:
+        snapshots = list(self._summary_history)
+        row_specs: List[Tuple[str, Iterable[object]]] = []
+
+        def _values_for(key: str) -> Iterable[object]:
+            for snapshot in snapshots:
+                yield self._get_numeric(snapshot.summary, key)
+
+        row_specs.append(("Annen inntekt", _values_for("annen_inntekt")))
+        row_specs.append(("Salgsinntekter", _values_for("salgsinntekter")))
+        row_specs.append(("Sum inntekter", _values_for("sum_inntekter")))
+        row_specs.append(("Varekostnad", _values_for("varekostnad")))
+        row_specs.append(("Lønnskostnader", _values_for("lonn")))
+        row_specs.append(("Av-/nedskrivning", _values_for("avskrivninger")))
+        row_specs.append(("Andre driftskostnader", _values_for("andre_drift")))
+        row_specs.append(("Annen kostnad", _values_for("annen_kost")))
+        row_specs.append(("Finansinntekter", _values_for("finansinntekter")))
+        row_specs.append(("Finanskostnader", _values_for("finanskostnader")))
+        row_specs.append(("Resultat før skatt", _values_for("resultat_for_skatt")))
+        row_specs.append(("Skattekostnad", _values_for("skattekostnad")))
+        row_specs.append(("Årsresultat", _values_for("arsresultat")))
+
+        rows: List[List[object]] = []
+        for label, values in row_specs:
+            row = [label]
+            row.extend(values)
+            rows.append(row)
+        return rows
+
+    def _populate_multi_year_share_table(
+        self, columns: Sequence[str], highlight_column: Optional[int]
+    ) -> Optional[int]:
+        percent_rows: List[List[object]] = []
+        include_average = len(columns) > 2
+        share_columns: List[str] = list(columns)
+        average_insert_at: Optional[int] = None
+        spacer_insert_at: Optional[int] = None
+        share_highlight_column = highlight_column
+        if include_average and highlight_column is not None and highlight_column > 1:
+            insertion_index = min(highlight_column, len(share_columns))
+            share_columns.insert(insertion_index, "Gjennomsnitt")
+            share_columns.insert(insertion_index + 1, "")
+            average_insert_at = insertion_index
+            spacer_insert_at = insertion_index + 1
+            if (
+                share_highlight_column is not None
+                and share_highlight_column >= insertion_index
+            ):
+                share_highlight_column += 2
+        elif include_average:
+            average_insert_at = len(share_columns)
+            share_columns.append("Gjennomsnitt")
+        revenue_per_snapshot = [
+            self._get_numeric(snapshot.summary, "salgsinntekter")
+            or self._get_numeric(snapshot.summary, "sum_inntekter")
+            or self._get_numeric(snapshot.summary, "driftsinntekter")
+            for snapshot in self._summary_history
+        ]
+
+        def _percent_row(label: str, key: str) -> None:
+            row: List[object] = [label]
+            percentages: List[Optional[float]] = []
+            for idx, snapshot in enumerate(self._summary_history):
+                numerator = self._get_numeric(snapshot.summary, key)
+                percent = self._ratio(numerator, revenue_per_snapshot[idx])
+                percentages.append(percent)
+            formatted = [self._format_percent(value) for value in percentages]
+            values: List[object] = list(formatted)
+            if include_average and average_insert_at is not None:
+                avg_value = self._average_without_current(percentages)
+                avg_text = self._format_percent(avg_value)
+                values.insert(average_insert_at - 1, avg_text)
+                if spacer_insert_at is not None:
+                    values.insert(spacer_insert_at - 1, "")
+            row.extend(values)
+            percent_rows.append(row)
+
+        _percent_row("Varekostnad", "varekostnad")
+        _percent_row("Lønnskostnader", "lonn")
+        _percent_row("Andre driftskostnader", "andre_drift")
+        _percent_row("Annen kostnad", "annen_kost")
+        _percent_row("Finanskostnader", "finanskostnader")
+
+        money_cols = set(range(1, len(share_columns)))
+        populate_table(
+            self.multi_year_share_table,
+            share_columns,
+            percent_rows,
+            money_cols=money_cols,
+        )
+        self.multi_year_share_table.show()
+        self.multi_year_share_container.show()
+        self._schedule_table_height_adjustment(
+            self.multi_year_share_table, extra_padding=0
+        )
+        return share_highlight_column
+
+    def _multi_year_active_column(self) -> Optional[int]:
+        if not self._summary_history:
+            return None
+        for idx, snapshot in enumerate(self._summary_history):
+            if snapshot.is_current:
+                return idx + 1
+        return len(self._summary_history)
+
+    def _highlight_multi_year_column(
+        self, table: QTableWidget, column: Optional[int]
+    ) -> None:
+        if column is None or table.columnCount() <= column:
+            return
+        highlight_brush = QBrush(QColor(59, 130, 246, 60))
+        default_brush = QBrush()
+        with suspend_table_updates(table):
+            for col in range(1, table.columnCount()):
+                header_item = table.horizontalHeaderItem(col)
+                if header_item is not None:
+                    font = header_item.font()
+                    font.setBold(col == column)
+                    header_item.setFont(font)
+                for row in range(table.rowCount()):
+                    item = table.item(row, col)
+                    if item is None:
+                        continue
+                    font = item.font()
+                    if col == column:
+                        item.setBackground(highlight_brush)
+                        font.setBold(True)
+                    else:
+                        item.setBackground(default_brush)
+                        font.setBold(False)
+                    item.setFont(font)
+        table.viewport().update()
+
+    def _update_key_metrics_section(self) -> None:
+        active = self._active_snapshot()
+        if not active:
+            self.key_metrics_info.setText(
+                "Importer en SAF-T-fil for å beregne nøkkeltall."
+            )
+            self.key_metrics_info.show()
+            for badge in self.kpi_badges.values():
+                badge.set_value("—")
+            return
+
+        self.key_metrics_info.hide()
+        summary = active.summary
+        revenue = self._get_numeric(summary, "driftsinntekter")
+        ebitda = self._get_numeric(summary, "ebitda")
+        ebit = self._get_numeric(summary, "ebit")
+        equity = self._get_numeric(summary, "egenkapital_UB")
+        assets = self._get_numeric(summary, "eiendeler_UB")
+
+        self._set_badge_value("revenue", format_currency(revenue))
+        self._set_badge_value(
+            "ebitda_margin", self._format_percent(self._ratio(ebitda, revenue))
+        )
+        self._set_badge_value(
+            "ebit_margin", self._format_percent(self._ratio(ebit, revenue))
+        )
+        self._set_badge_value(
+            "result_margin",
+            self._format_percent(self._result_margin(summary)),
+        )
+        self._set_badge_value(
+            "equity_ratio",
+            self._format_percent(self._ratio(equity, assets)),
+        )
+
+    def _ratio(
+        self, numerator: Optional[float], denominator: Optional[float]
+    ) -> Optional[float]:
+        if numerator is None or denominator is None or abs(denominator) < 1e-6:
+            return None
+        return (numerator / denominator) * 100
+
+    def _average(self, values: Iterable[Optional[float]]) -> Optional[float]:
+        valid = [value for value in values if value is not None]
+        if not valid:
+            return None
+        return sum(valid) / len(valid)
+
+    def _average_without_current(
+        self, values: Sequence[Optional[float]]
+    ) -> Optional[float]:
+        if len(values) <= 1:
+            return None
+        return self._average(values[:-1])
+
+    def _set_badge_value(self, key: str, value: str) -> None:
+        badge = self.kpi_badges.get(key)
+        if badge:
+            badge.set_value(value or "—")
+
+    def _update_summary_section(self) -> None:
+        active = self._active_snapshot()
+        if not active:
+            self.summary_profit_label.setText(
+                self._summary_html("Lønnsomhet", "Ingen data er tilgjengelig ennå.")
+            )
+            self.summary_liquidity_label.setText(
+                self._summary_html(
+                    "Likviditet",
+                    "Importer et datasett for å vurdere kontantstrøm.",
+                )
+            )
+            self.summary_soliditet_label.setText(
+                self._summary_html(
+                    "Soliditet", "Ingen beregning uten eiendeler og egenkapital."
+                )
+            )
+            self.summary_unusual_label.setText(
+                self._summary_html(
+                    "Unormalt",
+                    "Ingen balanse- eller sammenligningstall er tilgjengelig.",
+                )
+            )
+            self.summary_focus_label.setText(
+                self._summary_html(
+                    "Fokus for revisjonen",
+                    "Ingen anbefalinger før et datasett er importert.",
+                )
+            )
+            return
+
+        summary = active.summary
+        margin = self._result_margin(summary)
+        profit_text = (
+            "Resultatmargin kan ikke beregnes uten driftsinntekter."
+            if margin is None
+            else (
+                f"Negativ resultatmargin på {self._format_percent(margin)} krever oppfølging."
+                if margin < 0
+                else f"Resultatmargin på {self._format_percent(margin)} viser positiv lønnsomhet."
+            )
+        )
+        self.summary_profit_label.setText(self._summary_html("Lønnsomhet", profit_text))
+
+        assets = self._get_numeric(summary, "eiendeler_UB")
+        debt = self._get_numeric(summary, "gjeld_UB")
+        if assets is not None and debt is not None and abs(debt) > 1e-6:
+            liquidity_ratio = assets / debt
+        else:
+            liquidity_ratio = None
+        if liquidity_ratio is None:
+            liquidity_text = (
+                "Likviditet kan ikke vurderes uten tall for eiendeler og gjeld."
+            )
+        else:
+            liquidity_text = (
+                f"Likviditetsindikator (eiendeler/gjeld) på {liquidity_ratio:.1f} tyder på at "
+                "eiendelene dekker kortsiktige forpliktelser."
+            )
+        self.summary_liquidity_label.setText(
+            self._summary_html("Likviditet", liquidity_text)
+        )
+
+        equity = self._get_numeric(summary, "egenkapital_UB")
+        equity_ratio = self._ratio(equity, assets)
+        if equity_ratio is None:
+            solid_text = "Egenkapitalandel kan ikke beregnes uten eiendeler."
+        elif equity_ratio < 25:
+            solid_text = f"Lav egenkapitalandel på {self._format_percent(equity_ratio)} må følges opp."
+        else:
+            solid_text = f"Egenkapitalandel på {self._format_percent(equity_ratio)} vurderes som betryggende."
+        self.summary_soliditet_label.setText(
+            self._summary_html("Soliditet", solid_text)
+        )
+
+        balance_diff = self._get_numeric(summary, "balanse_diff")
+        if balance_diff is None or abs(balance_diff) < 1:
+            unusual_text = "Ingen balanseavvik er registrert i SAF-T-sammendraget."
+        else:
+            unusual_text = f"Balanseavvik på {format_currency(balance_diff)} bør undersøkes nærmere."
+        comparison_notice = self._comparison_notice()
+        if comparison_notice:
+            unusual_text = f"{unusual_text} {comparison_notice}"
+        self.summary_unusual_label.setText(self._summary_html("Unormalt", unusual_text))
+
+        focus_reasons: List[str] = []
+        if margin is not None and margin < 0:
+            focus_reasons.append("Underskudd krever fokus på lønnsomhet.")
+        if equity_ratio is not None and equity_ratio < 25:
+            focus_reasons.append("Lav egenkapitalandel påvirker soliditeten.")
+        if balance_diff is not None and abs(balance_diff) > 10000:
+            focus_reasons.append("Betydelig balanseavvik må forklares.")
+        if not focus_reasons:
+            focus_text = "Ingen kritiske funn i nøkkeltallene for nåværende datasett."
+        else:
+            focus_text = " ".join(focus_reasons[:2])
+        self.summary_focus_label.setText(
+            self._summary_html("Fokus for revisjonen", focus_text)
+        )
+
+    def _comparison_notice(self) -> Optional[str]:
+        if not self._comparison_rows:
+            return None
+        for label, saf_value, brreg_value, _ in self._comparison_rows:
+            if (
+                label.lower().startswith("driftsinntekter")
+                and saf_value is not None
+                and brreg_value is not None
+            ):
+                diff = saf_value - brreg_value
+                if abs(diff) > 1000:
+                    return (
+                        "SAF-T avviker fra Regnskapsregisteret med "
+                        f"{format_currency(diff)} på driftsinntekter."
+                    )
+        return None
+
     def _configure_analysis_table(
         self,
         table: QTableWidget,
@@ -239,22 +796,35 @@ class RegnskapsanalysePage(QWidget):
             header.setSectionResizeMode(col, QHeaderView.ResizeToContents)
         table.resizeColumnsToContents()
 
-    def _schedule_table_height_adjustment(self, table: QTableWidget) -> None:
-        QTimer.singleShot(0, lambda tbl=table: self._set_analysis_table_height(tbl))
+    def _schedule_table_height_adjustment(
+        self, table: QTableWidget, *, extra_padding: int = 16
+    ) -> None:
+        QTimer.singleShot(
+            0,
+            lambda tbl=table, padding=extra_padding: self._set_analysis_table_height(
+                tbl, padding
+            ),
+        )
 
-    def _set_analysis_table_height(self, table: QTableWidget) -> None:
+    def _set_analysis_table_height(
+        self, table: QTableWidget, extra_padding: int = 16
+    ) -> None:
         if table.rowCount() == 0:
             self._reset_analysis_table_height(table)
             return
         header_height = table.horizontalHeader().height()
-        default_row = (
-            table.verticalHeader().defaultSectionSize()
-            or compact_row_base_height(table)
-        )
-        rows_height = default_row * table.rowCount()
-        grid_extra = max(0, table.rowCount() - 1)
-        rows_height += grid_extra
-        buffer = max(16, default_row // 2)
+        vertical_header = table.verticalHeader()
+        rows_height = vertical_header.length() if vertical_header else 0
+        if rows_height <= 0:
+            rows_height = 0
+            for row in range(table.rowCount()):
+                height = table.rowHeight(row)
+                if height <= 0 and vertical_header is not None:
+                    height = vertical_header.sectionSize(row)
+                if height <= 0:
+                    height = compact_row_base_height(table)
+                rows_height += height
+        buffer = max(0, extra_padding)
         frame = table.frameWidth() * 2
         margins = table.contentsMargins()
         total = (
@@ -355,4 +925,5 @@ class RegnskapsanalysePage(QWidget):
             Sequence[Tuple[str, Optional[float], Optional[float], Optional[float]]]
         ],
     ) -> None:
-        return
+        self._comparison_rows = list(_rows) if _rows else None
+        self._update_summary_section()
