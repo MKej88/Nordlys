@@ -88,6 +88,10 @@ class SammenstillingsanalysePage(QWidget):
         ]
 
         self.cost_table = create_table_widget()
+        row_height_setter = getattr(self.cost_table, "setUniformRowHeights", None)
+        if callable(row_height_setter):
+            row_height_setter(True)
+        self.cost_table.setStyleSheet("QTableWidget::item { padding: 0px 6px; }")
         self.cost_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.cost_table.setSortingEnabled(True)
         self.cost_table.setMinimumHeight(360)
@@ -107,7 +111,7 @@ class SammenstillingsanalysePage(QWidget):
         header.setSectionResizeMode(5, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(6, QHeaderView.Stretch)
         self.cost_table.sortItems(0, Qt.AscendingOrder)
-        apply_compact_row_heights(self.cost_table)
+        self._refresh_cost_row_heights()
         self.cost_table.hide()
         self.cost_card.add_widget(self.cost_table)
 
@@ -147,7 +151,7 @@ class SammenstillingsanalysePage(QWidget):
         self.cost_table.setRowCount(0)
         self.cost_table.setColumnCount(len(self._cost_headers))
         self.cost_table.setHorizontalHeaderLabels(self._cost_headers)
-        apply_compact_row_heights(self.cost_table)
+        self._refresh_cost_row_heights()
         self.cost_info.setText(
             "Importer en SAF-T saldobalanse for å analysere kostnadskonti."
         )
@@ -354,7 +358,7 @@ class SammenstillingsanalysePage(QWidget):
         finally:
             self._updating_cost_table = False
             self.cost_table.setSortingEnabled(sorting_enabled)
-        apply_compact_row_heights(self.cost_table)
+        self._refresh_cost_row_heights()
         header = self.cost_table.horizontalHeader()
         if header is not None:
             section = header.sortIndicatorSection()
@@ -364,6 +368,11 @@ class SammenstillingsanalysePage(QWidget):
         schedule_hook = getattr(window, "_schedule_responsive_update", None)
         if callable(schedule_hook):
             schedule_hook()
+
+    def _refresh_cost_row_heights(self) -> None:
+        """Henter samme kompakte radhøyde som brukes i Saldobalanse-visningen."""
+
+        apply_compact_row_heights(self.cost_table)
 
     @staticmethod
     def _format_percent(value: Optional[float]) -> str:
@@ -426,6 +435,7 @@ class SammenstillingsanalysePage(QWidget):
             self._cost_comments[str(key)] = text
         else:
             self._cost_comments.pop(str(key), None)
+        self._refresh_cost_row_heights()
 
     def _auto_resize_cost_columns(self) -> None:
         """Tilpasser kolonnebreddene til innholdet uten å fjerne stretching."""
