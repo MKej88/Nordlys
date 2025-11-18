@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QSpinBox,
     QTabWidget,
+    QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
@@ -30,7 +31,12 @@ from PySide6.QtWidgets import (
 
 from ... import saft_customers
 from ...helpers.formatting import format_currency, format_difference
-from ..tables import apply_compact_row_heights, create_table_widget, populate_table
+from ..tables import (
+    apply_compact_row_heights,
+    compact_row_base_height,
+    create_table_widget,
+    populate_table,
+)
 from ..widgets import CardFrame, EmptyStateWidget, StatBadge
 
 __all__ = [
@@ -648,6 +654,7 @@ class CostVoucherReviewPage(QWidget):
         )
 
         apply_compact_row_heights(table)
+        self._expand_rows_for_multiline_comments(table)
 
         self._update_coverage_badges()
 
@@ -686,6 +693,28 @@ class CostVoucherReviewPage(QWidget):
         self.value_status.setProperty("statusState", state)
         self.value_status.style().unpolish(self.value_status)
         self.value_status.style().polish(self.value_status)
+
+    def _expand_rows_for_multiline_comments(self, table: QTableWidget) -> None:
+        header = table.verticalHeader()
+        if header is None:
+            return
+        minimum_height = compact_row_base_height(table)
+        row_count = table.rowCount()
+        if row_count == 0:
+            return
+        comment_column = 5
+        for row in range(row_count):
+            item = table.item(row, comment_column)
+            if item is None:
+                continue
+            text = item.text().strip()
+            if "\n" not in text:
+                continue
+            header.setSectionResizeMode(row, QHeaderView.ResizeToContents)
+            table.resizeRowToContents(row)
+            header.setSectionResizeMode(row, QHeaderView.Fixed)
+            if table.rowHeight(row) < minimum_height:
+                table.setRowHeight(row, minimum_height)
 
     def _find_next_unreviewed(self, start: int = 0) -> Optional[int]:
         if not self._sample:
