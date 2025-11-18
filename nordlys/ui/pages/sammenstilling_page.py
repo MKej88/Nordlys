@@ -6,13 +6,14 @@ import math
 from typing import Dict, List, Optional, Tuple
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QBrush, QColor
+from PySide6.QtGui import QBrush, QColor, QPalette
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDoubleSpinBox,
     QHeaderView,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QSizePolicy,
     QStyle,
     QTableWidgetItem,
@@ -28,6 +29,7 @@ except ImportError:  # PySide6 < 6.7
 from ... import regnskap
 from ...helpers.formatting import format_currency
 from ...helpers.lazy_imports import lazy_pandas
+from ..delegates import CompactRowDelegate
 from ..helpers import SignalBlocker
 from ..models import SaftTableCell
 from ..tables import apply_compact_row_heights, create_table_widget
@@ -36,6 +38,24 @@ from ..widgets import CardFrame
 pd = lazy_pandas()
 
 __all__ = ["SammenstillingsanalysePage"]
+
+
+class _CommentItemDelegate(CompactRowDelegate):
+    """Sørger for at tekst redigert i kommentarfeltet alltid er lesbar."""
+
+    def createEditor(self, parent, option, index):  # type: ignore[override]
+        editor = super().createEditor(parent, option, index)
+        if isinstance(editor, QLineEdit):
+            palette = editor.palette()
+            palette.setColor(QPalette.Text, QColor("#0f172a"))
+            palette.setColor(QPalette.PlaceholderText, QColor("#94a3b8"))
+            palette.setColor(QPalette.Base, QColor("#ffffff"))
+            palette.setColor(QPalette.Highlight, QColor("#bfdbfe"))
+            palette.setColor(QPalette.HighlightedText, QColor("#0f172a"))
+            editor.setPalette(palette)
+            editor.setAttribute(Qt.WA_StyledBackground, True)
+            editor.setAutoFillBackground(True)
+        return editor
 
 
 class SammenstillingsanalysePage(QWidget):
@@ -88,6 +108,8 @@ class SammenstillingsanalysePage(QWidget):
         ]
 
         self.cost_table = create_table_widget()
+        self._comment_delegate = _CommentItemDelegate(self.cost_table)
+        self.cost_table.setItemDelegateForColumn(6, self._comment_delegate)
         row_height_setter = getattr(self.cost_table, "setUniformRowHeights", None)
         if callable(row_height_setter):
             row_height_setter(True)
@@ -151,6 +173,7 @@ class SammenstillingsanalysePage(QWidget):
         self.cost_table.setRowCount(0)
         self.cost_table.setColumnCount(len(self._cost_headers))
         self.cost_table.setHorizontalHeaderLabels(self._cost_headers)
+        self._ensure_comment_delegate()
         self._refresh_cost_row_heights()
         self.cost_info.setText(
             "Importer en SAF-T saldobalanse for å analysere kostnadskonti."
@@ -323,6 +346,7 @@ class SammenstillingsanalysePage(QWidget):
         self.cost_table.setColumnCount(column_count)
         self.cost_table.setHorizontalHeaderLabels(headers)
         self.cost_table.setRowCount(len(rows))
+        self._ensure_comment_delegate()
         self._updating_cost_table = True
         sorting_enabled = self.cost_table.isSortingEnabled()
         self.cost_table.setSortingEnabled(False)
@@ -368,6 +392,10 @@ class SammenstillingsanalysePage(QWidget):
         schedule_hook = getattr(window, "_schedule_responsive_update", None)
         if callable(schedule_hook):
             schedule_hook()
+
+    def _ensure_comment_delegate(self) -> None:
+        if self.cost_table.columnCount() > 6:
+            self.cost_table.setItemDelegateForColumn(6, self._comment_delegate)
 
     def _refresh_cost_row_heights(self) -> None:
         """Henter samme kompakte radhøyde som brukes i Saldobalanse-visningen."""
