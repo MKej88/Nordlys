@@ -217,7 +217,11 @@ class RegnskapsanalysePage(QWidget):
                 ("ebitda_margin", "EBITDA-margin", "EBITDA i prosent av salg."),
                 ("ebit_margin", "EBIT-margin", "Driftsresultat i prosent av salg."),
                 ("result_margin", "Resultatmargin", "Årsresultat i prosent av salg."),
-                ("equity_ratio", "Egenkapitalandel", "Egenkapital i prosent av eiendeler."),
+                (
+                    "equity_ratio",
+                    "Egenkapitalandel",
+                    "Egenkapital i prosent av eiendeler.",
+                ),
             ]
         ):
             badge = StatBadge(title, desc)
@@ -425,12 +429,12 @@ class RegnskapsanalysePage(QWidget):
         table_rows = self._multi_year_value_rows()
 
         money_cols = set(range(1, len(columns)))
-        populate_table(self.multi_year_table, columns, table_rows, money_cols=money_cols)
+        populate_table(
+            self.multi_year_table, columns, table_rows, money_cols=money_cols
+        )
         self.multi_year_table.show()
         self.multi_year_info.hide()
-        self._schedule_table_height_adjustment(
-            self.multi_year_table, extra_padding=0
-        )
+        self._schedule_table_height_adjustment(self.multi_year_table, extra_padding=0)
         highlight_column = self._multi_year_active_column()
         share_highlight_column = self._populate_multi_year_share_table(
             columns, highlight_column
@@ -491,7 +495,10 @@ class RegnskapsanalysePage(QWidget):
             share_columns.insert(insertion_index + 1, "")
             average_insert_at = insertion_index
             spacer_insert_at = insertion_index + 1
-            if share_highlight_column is not None and share_highlight_column >= insertion_index:
+            if (
+                share_highlight_column is not None
+                and share_highlight_column >= insertion_index
+            ):
                 share_highlight_column += 2
         elif include_average:
             average_insert_at = len(share_columns)
@@ -679,9 +686,7 @@ class RegnskapsanalysePage(QWidget):
                 else f"Resultatmargin på {self._format_percent(margin)} viser positiv lønnsomhet."
             )
         )
-        self.summary_profit_label.setText(
-            self._summary_html("Lønnsomhet", profit_text)
-        )
+        self.summary_profit_label.setText(self._summary_html("Lønnsomhet", profit_text))
 
         assets = self._get_numeric(summary, "eiendeler_UB")
         debt = self._get_numeric(summary, "gjeld_UB")
@@ -690,7 +695,9 @@ class RegnskapsanalysePage(QWidget):
         else:
             liquidity_ratio = None
         if liquidity_ratio is None:
-            liquidity_text = "Likviditet kan ikke vurderes uten tall for eiendeler og gjeld."
+            liquidity_text = (
+                "Likviditet kan ikke vurderes uten tall for eiendeler og gjeld."
+            )
         else:
             liquidity_text = (
                 f"Likviditetsindikator (eiendeler/gjeld) på {liquidity_ratio:.1f} tyder på at "
@@ -705,13 +712,9 @@ class RegnskapsanalysePage(QWidget):
         if equity_ratio is None:
             solid_text = "Egenkapitalandel kan ikke beregnes uten eiendeler."
         elif equity_ratio < 25:
-            solid_text = (
-                f"Lav egenkapitalandel på {self._format_percent(equity_ratio)} må følges opp."
-            )
+            solid_text = f"Lav egenkapitalandel på {self._format_percent(equity_ratio)} må følges opp."
         else:
-            solid_text = (
-                f"Egenkapitalandel på {self._format_percent(equity_ratio)} vurderes som betryggende."
-            )
+            solid_text = f"Egenkapitalandel på {self._format_percent(equity_ratio)} vurderes som betryggende."
         self.summary_soliditet_label.setText(
             self._summary_html("Soliditet", solid_text)
         )
@@ -720,15 +723,11 @@ class RegnskapsanalysePage(QWidget):
         if balance_diff is None or abs(balance_diff) < 1:
             unusual_text = "Ingen balanseavvik er registrert i SAF-T-sammendraget."
         else:
-            unusual_text = (
-                f"Balanseavvik på {format_currency(balance_diff)} bør undersøkes nærmere."
-            )
+            unusual_text = f"Balanseavvik på {format_currency(balance_diff)} bør undersøkes nærmere."
         comparison_notice = self._comparison_notice()
         if comparison_notice:
             unusual_text = f"{unusual_text} {comparison_notice}"
-        self.summary_unusual_label.setText(
-            self._summary_html("Unormalt", unusual_text)
-        )
+        self.summary_unusual_label.setText(self._summary_html("Unormalt", unusual_text))
 
         focus_reasons: List[str] = []
         if margin is not None and margin < 0:
