@@ -1618,8 +1618,10 @@ def test_validate_saft_against_xsd_known_version(tmp_path):
 
 def test_validate_saft_against_xsd_without_dependency(monkeypatch, tmp_path):
     saft_module = sys.modules["nordlys.saft"]
+    validation_module = sys.modules["nordlys.saft.validation"]
     monkeypatch.setattr(saft_module, "XMLSCHEMA_AVAILABLE", False, raising=False)
-    monkeypatch.setattr(saft_module, "XMLSchema", None, raising=False)
+    monkeypatch.setattr(validation_module, "XMLSCHEMA_AVAILABLE", False, raising=False)
+    monkeypatch.setattr(validation_module, "XMLSchema", None, raising=False)
     xml_path = tmp_path / "saft_12.xml"
     xml_path.write_text(
         '<AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">'
@@ -1633,6 +1635,51 @@ def test_validate_saft_against_xsd_without_dependency(monkeypatch, tmp_path):
     assert result.version_family == "1.2"
     assert result.is_valid is None
     assert "xmlschema" in (result.details or "").lower()
+
+
+def test_validate_saft_against_xsd_uses_lazy_xmlresource(monkeypatch, tmp_path):
+    validation_module = sys.modules["nordlys.saft.validation"]
+    xml_path = tmp_path / "saft_lazy.xml"
+    xml_path.write_text(
+        '<AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">'
+        "  <Header>"
+        "    <AuditFileVersion>1.30</AuditFileVersion>"
+        "  </Header>"
+        "</AuditFile>",
+        encoding="utf-8",
+    )
+    schema_path = tmp_path / "schema.xsd"
+    schema_path.write_text("<schema />", encoding="utf-8")
+
+    call_info: dict[str, object] = {}
+
+    class FakeSchema:
+        def __init__(self, path: str) -> None:
+            assert path == str(schema_path)
+
+        def validate(self, resource: object) -> None:
+            call_info["resource"] = resource
+
+    class FakeResource:
+        def __init__(self, source: str, **kwargs) -> None:
+            call_info["source"] = source
+            call_info["lazy"] = kwargs.get("lazy")
+
+    monkeypatch.setattr(validation_module, "XMLSCHEMA_AVAILABLE", True, raising=False)
+    monkeypatch.setattr(validation_module, "XMLSchema", FakeSchema, raising=False)
+    monkeypatch.setattr(validation_module, "XMLResource", FakeResource, raising=False)
+    monkeypatch.setattr(validation_module, "_ensure_xmlschema_loaded", lambda: True)
+    monkeypatch.setattr(
+        validation_module,
+        "_schema_info_for_family",
+        lambda _: (schema_path, "1.30"),
+    )
+
+    result = validation_module.validate_saft_against_xsd(xml_path, version="1.30")
+
+    assert result.is_valid is True
+    assert call_info["source"] == str(xml_path)
+    assert call_info["lazy"] is True
 
 
 def test_load_saft_files_parallel_progress(monkeypatch):
@@ -1678,3 +1725,23 @@ def test_load_saft_files_parallel_progress(monkeypatch):
     percentages = [percent for percent, _ in progress_events]
     assert all(earlier <= later for earlier, later in zip(percentages, percentages[1:]))
     assert progress_events[-1] == (100, "Import fullført.")
+
+
+def test_suggest_max_workers_limits_large_imports(monkeypatch, tmp_path):
+    from nordlys.saft import loader
+
+    files = []
+    for idx in range(5):
+        path = tmp_path / f"file_{idx}.xml"
+        path.write_bytes(b"x" * (idx + 1))
+        files.append(str(path))
+
+    monkeypatch.setattr(loader, "HEAVY_SAFT_FILE_BYTES", 1)
+    monkeypatch.setattr(loader, "HEAVY_SAFT_TOTAL_BYTES", 5)
+
+    limited = loader._suggest_max_workers(files, cpu_limit=8)
+    assert limited == loader.HEAVY_SAFT_MAX_WORKERS
+
+    # Når datasettet er lite skal ikke heuristikken begrense.
+    unrestricted = loader._suggest_max_workers(files[:2], cpu_limit=2)
+    assert unrestricted == 2

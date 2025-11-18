@@ -26,12 +26,13 @@ XMLSCHEMA_AVAILABLE: bool = _XMLSCHEMA_SPEC is not None
 
 XMLSchemaException = Exception
 XMLSchema = None  # type: ignore[assignment]
+XMLResource = None  # type: ignore[assignment]
 
 
 def _ensure_xmlschema_loaded() -> bool:
     """Laster ``xmlschema`` først når det faktisk trengs."""
 
-    global XMLSchema, XMLSchemaException, XMLSCHEMA_AVAILABLE
+    global XMLSchema, XMLSchemaException, XMLResource, XMLSCHEMA_AVAILABLE
 
     if XMLSchema is not None:
         return True
@@ -48,7 +49,20 @@ def _ensure_xmlschema_loaded() -> bool:
 
     XMLSchema = xmlschema_module.XMLSchema  # type: ignore[attr-defined,assignment]
     XMLSchemaException = xmlschema_module.XMLSchemaException  # type: ignore[attr-defined]
+    XMLResource = getattr(xmlschema_module, "XMLResource", None)  # type: ignore[attr-defined,assignment]
     return True
+
+
+def _build_xml_resource(xml_path: Path) -> str | Path | object:
+    """Returnerer en XMLResource med lazy-parsing når det er støttet."""
+
+    if XMLResource is None:
+        return str(xml_path)
+
+    try:
+        return XMLResource(str(xml_path), lazy=True)  # type: ignore[misc]
+    except TypeError:  # pragma: no cover - eldgamle xmlschema-versjoner
+        return XMLResource(str(xml_path))  # type: ignore[misc]
 
 
 @dataclass
@@ -143,7 +157,8 @@ def validate_saft_against_xsd(
     try:
         assert XMLSchema is not None  # for typekontroll
         schema = XMLSchema(str(schema_path))  # type: ignore[misc]
-        schema.validate(str(xml_path))
+        resource = _build_xml_resource(xml_path)
+        schema.validate(resource)
     except XMLSchemaException as exc:  # pragma: no cover - variasjon i tekst
         return SaftValidationResult(
             audit_file_version=audit_version,

@@ -23,6 +23,10 @@ from .trial_balance import compute_trial_balance
 
 _LOGGER = logging.getLogger(__name__)
 
+HEAVY_SAFT_FILE_BYTES = 25 * 1024 * 1024  # 25 MB
+HEAVY_SAFT_TOTAL_BYTES = 150 * 1024 * 1024  # 150 MB samlet
+HEAVY_SAFT_MAX_WORKERS = 2
+
 if TYPE_CHECKING:
     import pandas as pd
 
@@ -203,8 +207,7 @@ def load_saft_files(
 
             return _inner
 
-    cpu_count = os.cpu_count() or 1
-    max_workers = min(total, cpu_count)
+    max_workers = _suggest_max_workers(paths)
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {}
@@ -251,3 +254,33 @@ def load_saft_files(
         raise first_exception
 
     return successful_results
+
+
+def _suggest_max_workers(
+    paths: Sequence[str], *, cpu_limit: Optional[int] = None
+) -> int:
+    """Velger et trådantall som unngår minnepress ved store filer."""
+
+    if not paths:
+        return 1
+
+    cpu_count = cpu_limit if cpu_limit is not None else (os.cpu_count() or 1)
+    desired = max(1, min(len(paths), cpu_count))
+    if desired == 1:
+        return 1
+
+    heavy_files = 0
+    total_bytes = 0
+    for path in paths:
+        try:
+            size = Path(path).stat().st_size
+        except OSError:
+            continue
+        total_bytes += size
+        if size >= HEAVY_SAFT_FILE_BYTES:
+            heavy_files += 1
+
+    if heavy_files >= 3 or total_bytes >= HEAVY_SAFT_TOTAL_BYTES:
+        return min(desired, HEAVY_SAFT_MAX_WORKERS)
+
+    return desired
