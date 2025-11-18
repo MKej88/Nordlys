@@ -1,3 +1,5 @@
+from typing import Dict, List, Optional
+
 import pandas as pd
 import pytest
 
@@ -12,6 +14,7 @@ def _make_result(
     *,
     analysis_year: int | None,
     fiscal_year: str | None,
+    summary: Optional[Dict[str, float]] = None,
 ) -> SaftLoadResult:
     header = SaftHeader(
         company_name="Test AS",
@@ -31,7 +34,7 @@ def _make_result(
         supplier_purchases=None,
         cost_vouchers=[],
         analysis_year=analysis_year,
-        summary={},
+        summary=summary or {},
         validation=SaftValidationResult(
             audit_file_version=None,
             version_family=None,
@@ -114,3 +117,33 @@ def test_current_year_text_none_when_no_year_available() -> None:
     assert store.activate("fil3.xml")
     assert store.current_year is None
     assert store.current_year_text is None
+
+
+def test_recent_summaries_limits_and_marks_current() -> None:
+    store = SaftDatasetStore()
+    results: List[SaftLoadResult] = []
+    for idx in range(6):
+        summary = {
+            "driftsinntekter": float(100 * (idx + 1)),
+            "arsresultat": float(10 * (idx + 1)),
+        }
+        result = _make_result(
+            f"fil{idx}.xml",
+            analysis_year=2020 + idx,
+            fiscal_year=str(2020 + idx),
+            summary=summary,
+        )
+        results.append(result)
+
+    store.apply_batch(results)
+    assert store.activate("fil5.xml")
+
+    snapshots = store.recent_summaries(limit=5)
+    assert len(snapshots) == 5
+    assert snapshots[-1].is_current
+    assert snapshots[-1].label == store.dataset_label(results[-1])
+
+    # Eldste verdier skal fjernes når limit er mindre enn totalt antall
+    assert snapshots[0].label == store.dataset_label(results[1])
+    margins = [snap.summary.get("arsresultat") for snap in snapshots]
+    assert margins[0] == pytest.approx(20.0)
