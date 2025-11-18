@@ -156,7 +156,7 @@ class RegnskapsanalysePage(QWidget):
         self.multi_year_widget = QWidget()
         multi_layout = QVBoxLayout(self.multi_year_widget)
         multi_layout.setContentsMargins(0, 0, 0, 0)
-        multi_layout.setSpacing(8)
+        multi_layout.setSpacing(4)
         self.multi_year_info = QLabel(
             "Importer flere SAF-T-filer for å sammenligne resultat over tid."
         )
@@ -168,9 +168,8 @@ class RegnskapsanalysePage(QWidget):
         multi_layout.addWidget(self.multi_year_table)
         self.multi_year_table.hide()
 
-        multi_layout.addSpacing(16)
         self.multi_year_share_label = QLabel("% andel av salgsinntekter")
-        self.multi_year_share_label.setObjectName("statusLabel")
+        self.multi_year_share_label.setObjectName("analysisSectionTitle")
         multi_layout.addWidget(self.multi_year_share_label)
         self.multi_year_share_table = create_table_widget()
         self._configure_analysis_table(self.multi_year_share_table, font_point_size=8)
@@ -401,6 +400,7 @@ class RegnskapsanalysePage(QWidget):
             self.multi_year_info.setText(
                 "Importer ett eller flere datasett for å se historiske resultater."
             )
+            self.multi_year_info.show()
             return
 
         columns = ["Kategori"] + [
@@ -412,19 +412,12 @@ class RegnskapsanalysePage(QWidget):
         money_cols = set(range(1, len(columns)))
         populate_table(self.multi_year_table, columns, table_rows, money_cols=money_cols)
         self.multi_year_table.show()
-        self.multi_year_info.setText(
-            f"Viser {len(self._summary_history)} periode(r) fra importhistorikken."
-        )
+        self.multi_year_info.hide()
         self._schedule_table_height_adjustment(self.multi_year_table)
-        include_average = self._populate_multi_year_share_table(columns)
         highlight_column = self._multi_year_active_column()
-        share_highlight_column = highlight_column
-        if (
-            include_average
-            and share_highlight_column is not None
-            and share_highlight_column > 1
-        ):
-            share_highlight_column += 1
+        share_highlight_column = self._populate_multi_year_share_table(
+            columns, highlight_column
+        )
         self._highlight_multi_year_column(self.multi_year_table, highlight_column)
         self._highlight_multi_year_column(
             self.multi_year_share_table, share_highlight_column
@@ -466,12 +459,26 @@ class RegnskapsanalysePage(QWidget):
             rows.append(row)
         return rows
 
-    def _populate_multi_year_share_table(self, columns: Sequence[str]) -> bool:
+    def _populate_multi_year_share_table(
+        self, columns: Sequence[str], highlight_column: Optional[int]
+    ) -> Optional[int]:
         percent_rows: List[List[object]] = []
         include_average = len(columns) > 2
         share_columns: List[str] = list(columns)
-        if include_average:
-            share_columns = [columns[0], columns[1], "Gjennomsnitt", *columns[2:]]
+        average_insert_at: Optional[int] = None
+        spacer_insert_at: Optional[int] = None
+        share_highlight_column = highlight_column
+        if include_average and highlight_column is not None and highlight_column > 1:
+            insertion_index = min(highlight_column, len(share_columns))
+            share_columns.insert(insertion_index, "Gjennomsnitt")
+            share_columns.insert(insertion_index + 1, "")
+            average_insert_at = insertion_index
+            spacer_insert_at = insertion_index + 1
+            if share_highlight_column is not None and share_highlight_column >= insertion_index:
+                share_highlight_column += 2
+        elif include_average:
+            average_insert_at = len(share_columns)
+            share_columns.append("Gjennomsnitt")
         revenue_per_snapshot = [
             self._get_numeric(snapshot.summary, "salgsinntekter")
             or self._get_numeric(snapshot.summary, "sum_inntekter")
@@ -487,12 +494,14 @@ class RegnskapsanalysePage(QWidget):
                 percent = self._ratio(numerator, revenue_per_snapshot[idx])
                 percentages.append(percent)
             formatted = [self._format_percent(value) for value in percentages]
-            if include_average:
-                avg_value = self._average(percentages)
-                row.extend([formatted[0], self._format_percent(avg_value)])
-                row.extend(formatted[1:])
-            else:
-                row.extend(formatted)
+            values: List[object] = list(formatted)
+            if include_average and average_insert_at is not None:
+                avg_value = self._average_without_current(percentages)
+                avg_text = self._format_percent(avg_value)
+                values.insert(average_insert_at - 1, avg_text)
+                if spacer_insert_at is not None:
+                    values.insert(spacer_insert_at - 1, "")
+            row.extend(values)
             percent_rows.append(row)
 
         _percent_row("Varekostnad", "varekostnad")
@@ -511,7 +520,7 @@ class RegnskapsanalysePage(QWidget):
         self.multi_year_share_table.show()
         self.multi_year_share_label.show()
         self._schedule_table_height_adjustment(self.multi_year_share_table)
-        return include_average
+        return share_highlight_column
 
     def _multi_year_active_column(self) -> Optional[int]:
         if not self._summary_history:
@@ -597,6 +606,13 @@ class RegnskapsanalysePage(QWidget):
         if not valid:
             return None
         return sum(valid) / len(valid)
+
+    def _average_without_current(
+        self, values: Sequence[Optional[float]]
+    ) -> Optional[float]:
+        if len(values) <= 1:
+            return None
+        return self._average(values[:-1])
 
     def _set_badge_value(self, key: str, value: str) -> None:
         badge = self.kpi_badges.get(key)
