@@ -1575,7 +1575,7 @@ def test_save_outputs_faller_til_xlsxwriter(tmp_path, monkeypatch):
 
 
 def test_format_helpers():
-    assert format_currency(1234.5) == "1,235"
+    assert format_currency(1234.5) == "1 235"
     assert format_difference(2000, 1500) == "500"
 
 

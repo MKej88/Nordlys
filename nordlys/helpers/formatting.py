@@ -30,13 +30,19 @@ def _round_half_up(value: Optional[float]) -> Optional[int]:
     return int(quantized)
 
 
+def _format_thousands(value: int) -> str:
+    """Formaterer heltall med mellomrom som tusenskille."""
+
+    return f"{value:,}".replace(",", " ")
+
+
 def format_currency(value: Optional[float]) -> str:
-    """Formatterer beløp til heltall med tusenskilletegn."""
+    """Formatterer beløp til heltall med mellomrom som tusenskilletegn."""
 
     rounded = _round_half_up(value)
     if rounded is None:
         return "—"
-    return f"{rounded:,.0f}"
+    return _format_thousands(rounded)
 
 
 def format_difference(a: Optional[float], b: Optional[float]) -> str:
@@ -56,7 +62,7 @@ def format_difference(a: Optional[float], b: Optional[float]) -> str:
     rounded = _round_half_up(difference)
     if rounded is None:
         return "—"
-    return f"{rounded:,.0f}"
+    return _format_thousands(rounded)
 
 
 __all__ = ["format_currency", "format_difference"]
