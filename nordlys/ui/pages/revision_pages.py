@@ -7,6 +7,7 @@ from datetime import date, datetime
 from typing import Callable, Iterable, List, Optional, Sequence, Tuple, cast
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QPalette, QTextOption
 from PySide6.QtWidgets import (
     QFileDialog,
     QFrame,
@@ -22,6 +23,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QSpinBox,
     QTabWidget,
+    QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
@@ -29,7 +31,12 @@ from PySide6.QtWidgets import (
 
 from ... import saft_customers
 from ...helpers.formatting import format_currency, format_difference
-from ..tables import create_table_widget, populate_table
+from ..tables import (
+    apply_compact_row_heights,
+    compact_row_base_height,
+    create_table_widget,
+    populate_table,
+)
 from ..widgets import CardFrame, EmptyStateWidget, StatBadge
 
 __all__ = [
@@ -221,9 +228,20 @@ class CostVoucherReviewPage(QWidget):
         self.detail_card.add_widget(comment_label)
 
         self.txt_comment = QPlainTextEdit()
+        self.txt_comment.setObjectName("commentInput")
         self.txt_comment.setPlaceholderText(
             "Noter funn eller videre oppfølging for bilaget."
         )
+        palette = self.txt_comment.palette()
+        palette.setColor(QPalette.Text, QColor("#0f172a"))
+        palette.setColor(QPalette.PlaceholderText, QColor("#94a3b8"))
+        palette.setColor(QPalette.Base, QColor("#ffffff"))
+        self.txt_comment.setPalette(palette)
+        self.txt_comment.setWordWrapMode(QTextOption.WrapAtWordBoundaryOrAnywhere)
+        self.txt_comment.setTabChangesFocus(True)
+        self.txt_comment.setAttribute(Qt.WA_StyledBackground, True)
+        self.txt_comment.setAutoFillBackground(True)
+        self.txt_comment.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.txt_comment.setFixedHeight(100)
         self.detail_card.add_widget(self.txt_comment)
 
@@ -635,11 +653,8 @@ class CostVoucherReviewPage(QWidget):
             completed_count == row_count and completed_count > 0
         )
 
-        if needs_rebuild:
-            table.resizeRowsToContents()
-        else:
-            for row in rows_to_update:
-                table.resizeRowToContents(row)
+        apply_compact_row_heights(table)
+        self._expand_rows_for_multiline_comments(table)
 
         self._update_coverage_badges()
 
@@ -678,6 +693,28 @@ class CostVoucherReviewPage(QWidget):
         self.value_status.setProperty("statusState", state)
         self.value_status.style().unpolish(self.value_status)
         self.value_status.style().polish(self.value_status)
+
+    def _expand_rows_for_multiline_comments(self, table: QTableWidget) -> None:
+        header = table.verticalHeader()
+        if header is None:
+            return
+        minimum_height = compact_row_base_height(table)
+        row_count = table.rowCount()
+        if row_count == 0:
+            return
+        comment_column = 5
+        for row in range(row_count):
+            item = table.item(row, comment_column)
+            if item is None:
+                continue
+            text = item.text().strip()
+            if "\n" not in text:
+                continue
+            header.setSectionResizeMode(row, QHeaderView.ResizeToContents)
+            table.resizeRowToContents(row)
+            header.setSectionResizeMode(row, QHeaderView.Fixed)
+            if table.rowHeight(row) < minimum_height:
+                table.setRowHeight(row, minimum_height)
 
     def _find_next_unreviewed(self, start: int = 0) -> Optional[int]:
         if not self._sample:
