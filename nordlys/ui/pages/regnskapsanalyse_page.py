@@ -413,7 +413,9 @@ class RegnskapsanalysePage(QWidget):
         populate_table(self.multi_year_table, columns, table_rows, money_cols=money_cols)
         self.multi_year_table.show()
         self.multi_year_info.hide()
-        self._schedule_table_height_adjustment(self.multi_year_table)
+        self._schedule_table_height_adjustment(
+            self.multi_year_table, extra_padding=4
+        )
         highlight_column = self._multi_year_active_column()
         share_highlight_column = self._populate_multi_year_share_table(
             columns, highlight_column
@@ -519,7 +521,9 @@ class RegnskapsanalysePage(QWidget):
         )
         self.multi_year_share_table.show()
         self.multi_year_share_label.show()
-        self._schedule_table_height_adjustment(self.multi_year_share_table)
+        self._schedule_table_height_adjustment(
+            self.multi_year_share_table, extra_padding=4
+        )
         return share_highlight_column
 
     def _multi_year_active_column(self) -> Optional[int]:
@@ -779,10 +783,19 @@ class RegnskapsanalysePage(QWidget):
             header.setSectionResizeMode(col, QHeaderView.ResizeToContents)
         table.resizeColumnsToContents()
 
-    def _schedule_table_height_adjustment(self, table: QTableWidget) -> None:
-        QTimer.singleShot(0, lambda tbl=table: self._set_analysis_table_height(tbl))
+    def _schedule_table_height_adjustment(
+        self, table: QTableWidget, *, extra_padding: int = 16
+    ) -> None:
+        QTimer.singleShot(
+            0,
+            lambda tbl=table, padding=extra_padding: self._set_analysis_table_height(
+                tbl, padding
+            ),
+        )
 
-    def _set_analysis_table_height(self, table: QTableWidget) -> None:
+    def _set_analysis_table_height(
+        self, table: QTableWidget, extra_padding: int = 16
+    ) -> None:
         if table.rowCount() == 0:
             self._reset_analysis_table_height(table)
             return
@@ -794,7 +807,7 @@ class RegnskapsanalysePage(QWidget):
         rows_height = default_row * table.rowCount()
         grid_extra = max(0, table.rowCount() - 1)
         rows_height += grid_extra
-        buffer = max(16, default_row // 2)
+        buffer = max(extra_padding, default_row // 2)
         frame = table.frameWidth() * 2
         margins = table.contentsMargins()
         total = (
