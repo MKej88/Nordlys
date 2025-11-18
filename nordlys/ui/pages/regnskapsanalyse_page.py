@@ -425,7 +425,7 @@ class RegnskapsanalysePage(QWidget):
         self.multi_year_table.show()
         self.multi_year_info.hide()
         self._schedule_table_height_adjustment(
-            self.multi_year_table, extra_padding=4
+            self.multi_year_table, extra_padding=0
         )
         highlight_column = self._multi_year_active_column()
         share_highlight_column = self._populate_multi_year_share_table(
@@ -811,13 +811,17 @@ class RegnskapsanalysePage(QWidget):
             self._reset_analysis_table_height(table)
             return
         header_height = table.horizontalHeader().height()
-        default_row = (
-            table.verticalHeader().defaultSectionSize()
-            or compact_row_base_height(table)
-        )
-        rows_height = default_row * table.rowCount()
-        grid_extra = max(0, table.rowCount() - 1)
-        rows_height += grid_extra
+        vertical_header = table.verticalHeader()
+        rows_height = vertical_header.length() if vertical_header else 0
+        if rows_height <= 0:
+            rows_height = 0
+            for row in range(table.rowCount()):
+                height = table.rowHeight(row)
+                if height <= 0 and vertical_header is not None:
+                    height = vertical_header.sectionSize(row)
+                if height <= 0:
+                    height = compact_row_base_height(table)
+                rows_height += height
         buffer = max(0, extra_padding)
         frame = table.frameWidth() * 2
         margins = table.contentsMargins()
