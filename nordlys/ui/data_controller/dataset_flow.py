@@ -188,11 +188,10 @@ class DatasetFlowController:
 
         if pages.vesentlig_page:
             pages.vesentlig_page.update_summary(store.saft_summary)
+        fiscal_year = store.current_year_text
         if pages.regnskap_page:
-            fiscal_year = header.fiscal_year if header else None
             pages.regnskap_page.set_dataframe(saft_df, fiscal_year)
         if pages.sammenstilling_page:
-            fiscal_year = header.fiscal_year if header else None
             pages.sammenstilling_page.set_dataframe(saft_df, fiscal_year)
         brreg_status = self._process_brreg_result(result)
 
