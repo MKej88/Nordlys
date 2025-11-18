@@ -171,10 +171,14 @@ class RegnskapsanalysePage(QWidget):
         self.multi_year_share_container = QWidget()
         share_layout = QVBoxLayout(self.multi_year_share_container)
         share_layout.setContentsMargins(0, 0, 0, 0)
-        share_layout.setSpacing(2)
+        share_layout.setSpacing(0)
 
         self.multi_year_share_label = QLabel("% andel av salgsinntekter")
         self.multi_year_share_label.setObjectName("analysisSectionTitle")
+        self.multi_year_share_label.setContentsMargins(0, 0, 0, 0)
+        self.multi_year_share_label.setProperty("tightSpacing", True)
+        self.multi_year_share_label.style().unpolish(self.multi_year_share_label)
+        self.multi_year_share_label.style().polish(self.multi_year_share_label)
         share_layout.addWidget(self.multi_year_share_label)
 
         self.multi_year_share_table = create_table_widget()
