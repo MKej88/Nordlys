@@ -144,10 +144,17 @@ def standard_tb_frame(df: pd.DataFrame) -> pd.DataFrame:
         }
     )
     filtered = result[columns]
-    zero_mask = (
-        filtered["IB"].abs().le(1e-9)
-        & filtered["Endringer"].abs().le(1e-9)
-        & filtered["UB"].abs().le(1e-9)
+
+    numeric_view = filtered[["IB", "Endringer", "UB"]].apply(
+        pd.to_numeric, errors="coerce"
     )
+    has_numbers = numeric_view.notna().any(axis=1)
+    filtered = filtered[has_numbers]
+
+    if filtered.empty:
+        return filtered.reset_index(drop=True)
+
+    numeric_view = numeric_view.loc[filtered.index].fillna(0.0).abs()
+    zero_mask = numeric_view.le(1e-9).all(axis=1)
     filtered = filtered[~zero_mask]
     return filtered.reset_index(drop=True)

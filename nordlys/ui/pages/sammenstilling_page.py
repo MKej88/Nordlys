@@ -303,10 +303,25 @@ class SammenstillingsanalysePage(QWidget):
             inplace=True,
         )
 
-        current_values = pd.to_numeric(cost_df.get("UB"), errors="coerce").fillna(0.0)
-        previous_values = pd.to_numeric(cost_df.get("forrige"), errors="coerce").fillna(
-            0.0
-        )
+        current_values = pd.to_numeric(cost_df.get("UB"), errors="coerce")
+        previous_values = pd.to_numeric(cost_df.get("forrige"), errors="coerce")
+        current_filled = current_values.fillna(0.0)
+        previous_filled = previous_values.fillna(0.0)
+
+        has_amounts = (current_filled != 0.0) | (previous_filled != 0.0)
+        cost_df = cost_df.loc[has_amounts].copy()
+
+        if cost_df.empty:
+            self.cost_table.hide()
+            self.cost_info.setText(
+                "Fant ingen kostnadskonti med tall i den importerte saldobalansen."
+            )
+            self.cost_info.show()
+            self._cost_highlight_widget.hide()
+            return
+
+        current_values = current_filled.loc[cost_df.index]
+        previous_values = previous_filled.loc[cost_df.index]
 
         current_label, previous_label = self._year_headers()
         headers = [
