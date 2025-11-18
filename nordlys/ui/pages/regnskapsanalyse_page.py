@@ -807,7 +807,7 @@ class RegnskapsanalysePage(QWidget):
         rows_height = default_row * table.rowCount()
         grid_extra = max(0, table.rowCount() - 1)
         rows_height += grid_extra
-        buffer = max(extra_padding, default_row // 2)
+        buffer = max(0, extra_padding)
         frame = table.frameWidth() * 2
         margins = table.contentsMargins()
         total = (
