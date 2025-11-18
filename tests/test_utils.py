@@ -43,7 +43,8 @@ def test_format_currency_invalid() -> None:
 def test_format_currency_rounding() -> None:
     assert format_currency(2.5) == "3"
     assert format_currency(-2.5) == "-3"
-    assert format_currency(1234.5) == "1,235"
+    assert format_currency(1234.5) == "1 235"
+    assert format_currency(4163652) == "4 163 652"
 
 
 def test_format_difference_valid() -> None:
