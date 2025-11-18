@@ -168,14 +168,25 @@ class RegnskapsanalysePage(QWidget):
         multi_layout.addWidget(self.multi_year_table)
         self.multi_year_table.hide()
 
+        self.multi_year_share_container = QWidget()
+        share_layout = QVBoxLayout(self.multi_year_share_container)
+        share_layout.setContentsMargins(0, 0, 0, 0)
+        share_layout.setSpacing(2)
+
         self.multi_year_share_label = QLabel("% andel av salgsinntekter")
         self.multi_year_share_label.setObjectName("analysisSectionTitle")
-        multi_layout.addWidget(self.multi_year_share_label)
+        share_layout.addWidget(self.multi_year_share_label)
+
         self.multi_year_share_table = create_table_widget()
+        self.multi_year_share_table.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Fixed
+        )
         self._configure_analysis_table(self.multi_year_share_table, font_point_size=8)
-        multi_layout.addWidget(self.multi_year_share_table)
+        share_layout.addWidget(self.multi_year_share_table)
+
+        multi_layout.addWidget(self.multi_year_share_container)
         self.multi_year_share_table.hide()
-        self.multi_year_share_label.hide()
+        self.multi_year_share_container.hide()
         self.section_stack.addWidget(self.multi_year_widget)
 
         self.key_metrics_widget = QWidget()
@@ -396,7 +407,7 @@ class RegnskapsanalysePage(QWidget):
         if not self._summary_history:
             self.multi_year_table.hide()
             self.multi_year_share_table.hide()
-            self.multi_year_share_label.hide()
+            self.multi_year_share_container.hide()
             self.multi_year_info.setText(
                 "Importer ett eller flere datasett for å se historiske resultater."
             )
@@ -520,9 +531,9 @@ class RegnskapsanalysePage(QWidget):
             money_cols=money_cols,
         )
         self.multi_year_share_table.show()
-        self.multi_year_share_label.show()
+        self.multi_year_share_container.show()
         self._schedule_table_height_adjustment(
-            self.multi_year_share_table, extra_padding=4
+            self.multi_year_share_table, extra_padding=0
         )
         return share_highlight_column
 
