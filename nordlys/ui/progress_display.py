@@ -28,12 +28,16 @@ class _ProgressAnimator(QObject):
         self._last_report_time = time.monotonic()
         self._idle_seconds = 1.6
         self._finish_seconds = 4.0
+        self._max_idle_lead = 8
 
     def report_progress(self, percent: int) -> None:
         clamped = max(0, min(100, int(percent)))
         if clamped > self._reported_target:
             self._reported_target = clamped
             self._floating_target = max(self._floating_target, clamped)
+        else:
+            self._reported_target = max(self._reported_target, clamped)
+        self._apply_idle_cap()
         if clamped == 100:
             self._floating_target = 100
         self._last_report_time = time.monotonic()
@@ -52,10 +56,18 @@ class _ProgressAnimator(QObject):
     def _on_tick(self) -> None:
         idle_time = time.monotonic() - self._last_report_time
 
-        if self._floating_target < 99 and idle_time > self._idle_seconds:
-            self._floating_target = min(99, self._floating_target + 1)
-        elif self._floating_target >= 99 and idle_time > self._finish_seconds:
+        max_idle_target = min(99, self._reported_target + self._max_idle_lead)
+
+        if (
+            self._floating_target < max_idle_target
+            and self._reported_target < 100
+            and idle_time > self._idle_seconds
+        ):
+            self._floating_target = min(max_idle_target, self._floating_target + 1)
+        elif self._reported_target >= 100 and idle_time > self._finish_seconds:
             self._floating_target = 100
+
+        self._apply_idle_cap()
 
         target = max(self._floating_target, self._reported_target)
         if target == 0 and self._display_value == 0:
@@ -72,6 +84,14 @@ class _ProgressAnimator(QObject):
 
         if self._display_value >= 100:
             self._timer.stop()
+
+    def _apply_idle_cap(self) -> None:
+        if self._reported_target >= 100:
+            self._floating_target = 100
+            return
+        cap = min(99, self._reported_target + self._max_idle_lead)
+        self._floating_target = min(self._floating_target, cap)
+        self._floating_target = max(self._floating_target, self._reported_target)
 
 
 class ImportProgressDisplay:
