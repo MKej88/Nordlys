@@ -204,10 +204,7 @@ def compute_balance_analysis(prepared: "pd.DataFrame") -> List[AnalysisRow]:
     ek_rows.append(_make_row("Sum kortsiktig gjeld", kortsiktig_sum, kortsiktig_sum_py))
 
     sum_ek_gjeld = (
-        egenkapital_current
-        + avsetninger_current
-        + sum_langsiktig
-        + kortsiktig_sum
+        egenkapital_current + avsetninger_current + sum_langsiktig + kortsiktig_sum
     )
     sum_ek_gjeld_py = (
         egenkapital_previous
