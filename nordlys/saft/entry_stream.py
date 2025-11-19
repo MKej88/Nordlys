@@ -10,11 +10,21 @@ from typing import Iterator, List, Optional, TypedDict
 from .entry_helpers import (
     _parse_amount_element,
     _sourceline,
+    get_amount,
+    get_tx_customer_id,
+    get_tx_supplier_id,
 )
 from .xml_helpers import _clean_text, _local_name
 from .validation import ensure_saft_validated
 
-__all__ = ["SaftEntry", "iter_saft_entries", "check_trial_balance"]
+__all__ = [
+    "SaftEntry",
+    "iter_saft_entries",
+    "check_trial_balance",
+    "get_amount",
+    "get_tx_customer_id",
+    "get_tx_supplier_id",
+]
 
 
 class SaftEntry(TypedDict, total=False):
