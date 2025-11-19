@@ -23,9 +23,9 @@ QMainWindow { background-color: #e9effb; }
 #navTree { background: transparent; border: none; color: #dbeafe; font-size: 14px; }
 #navTree:focus { outline: none; border: none; }
 QTreeWidget::item:focus { outline: none; }
-#navTree::item { height: 36px; padding: 8px 12px; border-radius: 12px; margin: 4px 0; color: #e2e8f0; }
-#navTree::item:selected { background-color: #1d4ed8; color: #f8fafc; font-weight: 700; }
-#navTree::item:hover { background-color: rgba(59, 130, 246, 0.26); color: #f8fafc; }
+#navTree::item { height: 34px; padding: 6px 10px; border-radius: 10px; margin: 2px 0; }
+#navTree::item:selected { background-color: rgba(59, 130, 246, 0.35); color: #f8fafc; font-weight: 600; }
+#navTree::item:hover { background-color: rgba(59, 130, 246, 0.18); }
 QPushButton { background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 #2563eb, stop:1 #1d4ed8); color: #f8fafc; border-radius: 10px; padding: 10px 20px; font-weight: 600; letter-spacing: 0.2px; }
 QPushButton:focus { outline: none; }
 QPushButton:disabled { background-color: #94a3b8; color: #e5e7eb; }
