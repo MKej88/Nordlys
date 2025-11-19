@@ -25,6 +25,7 @@ class _ProgressAnimator(QObject):
         self._floating_target = 0
         self._last_report_time = time.monotonic()
         self._idle_seconds = 1.6
+        self._finish_seconds = 4.0
 
     def report_progress(self, percent: int) -> None:
         clamped = max(0, min(100, int(percent)))
@@ -47,8 +48,12 @@ class _ProgressAnimator(QObject):
         self._last_report_time = time.monotonic()
 
     def _on_tick(self) -> None:
-        if self._floating_target < 99 and self._should_increase_floating_target():
+        idle_time = time.monotonic() - self._last_report_time
+
+        if self._floating_target < 99 and idle_time > self._idle_seconds:
             self._floating_target = min(99, self._floating_target + 1)
+        elif self._floating_target >= 99 and idle_time > self._finish_seconds:
+            self._floating_target = 100
 
         target = max(self._floating_target, self._reported_target)
         if target == 0 and self._display_value == 0:
@@ -65,10 +70,6 @@ class _ProgressAnimator(QObject):
 
         if self._display_value >= 100:
             self._timer.stop()
-
-    def _should_increase_floating_target(self) -> bool:
-        return (time.monotonic() - self._last_report_time) > self._idle_seconds
-
 
 class ImportProgressDisplay:
     """Samlet kontroll over statusetikett, fremdriftsbar og dialog."""

@@ -46,11 +46,11 @@ QPushButton#exportPdfButton:pressed { background-color: #c2410c; }
 #card { background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 #ffffff, stop:1 #f8fbff); border-radius: 20px; border: 1px solid rgba(148, 163, 184, 0.32); }
 #cardTitle { font-size: 20px; font-weight: 700; color: #0f172a; letter-spacing: 0.2px; }
 #cardSubtitle { color: #475569; font-size: 13px; line-height: 1.5; }
-#taskProgressDialog { background-color: rgba(11, 17, 32, 0.92); border-radius: 28px; }
+#taskProgressDialog { background-color: rgba(15, 23, 42, 0.95); border-radius: 28px; }
 #taskProgressPanel { background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 #ffffff, stop:1 #f1f5ff); border-radius: 22px; border: 1px solid rgba(148, 163, 184, 0.28); }
 #taskProgressTitle { font-size: 18px; font-weight: 700; color: #0f172a; }
 #taskProgressDetail { color: #475569; font-size: 13px; line-height: 1.5; }
-QProgressBar#taskProgressBar { background-color: rgba(148, 163, 184, 0.18); border: none; border-radius: 12px; height: 16px; padding: 4px; color: #0f172a; font-weight: 600; }
+QProgressBar#taskProgressBar { background-color: rgba(148, 163, 184, 0.18); border: none; border-radius: 12px; height: 18px; padding: 4px 10px; color: #f8fafc; font-weight: 700; letter-spacing: 0.4px; }
 QProgressBar#taskProgressBar::chunk { background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 #2563eb, stop:1 #1d4ed8); border-radius: 10px; }
 QFrame#logListContainer {
     background-color: #f8fafc;

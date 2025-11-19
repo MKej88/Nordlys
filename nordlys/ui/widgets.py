@@ -34,8 +34,8 @@ class TaskProgressDialog(QDialog):
         super().__init__(parent)
         self.setModal(False)
         self.setObjectName("taskProgressDialog")
-        # Bruk tom tittel slik at vinduet ikke viser teksten «Laster data …»
-        self.setWindowTitle("")
+        # Gi vinduet en tydelig avsender i tittelfeltet
+        self.setWindowTitle("Nordlys")
         self.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
         self.setWindowFlag(Qt.WindowCloseButtonHint, False)
         self.setAttribute(Qt.WA_TranslucentBackground, True)
