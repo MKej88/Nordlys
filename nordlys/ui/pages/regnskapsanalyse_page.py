@@ -470,8 +470,6 @@ class RegnskapsanalysePage(QWidget):
         row_specs.append(("Finansinntekter", _values_for("finansinntekter")))
         row_specs.append(("Finanskostnader", _values_for("finanskostnader")))
         row_specs.append(("Resultat før skatt", _values_for("resultat_for_skatt")))
-        row_specs.append(("Skattekostnad", _values_for("skattekostnad")))
-        row_specs.append(("Årsresultat", _values_for("arsresultat")))
 
         rows: List[List[object]] = []
         for label, values in row_specs:
