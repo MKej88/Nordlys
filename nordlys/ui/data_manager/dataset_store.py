@@ -505,7 +505,8 @@ class SaftDatasetStore:
                 previous_map = mapping_frame.groupby("_key")["_value"].sum()
 
         if current_keys is not None and previous_map is not None:
-            df["forrige"] = current_keys.map(previous_map)
+            mapped = current_keys.map(previous_map)
+            df["forrige"] = mapped.fillna(0.0)
 
         prev = prev.add_prefix("Forrige ")
         df = pd.concat([df, prev], axis=1)
