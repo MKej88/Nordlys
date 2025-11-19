@@ -147,3 +147,20 @@ def test_recent_summaries_limits_and_marks_current() -> None:
     assert snapshots[0].label == store.dataset_label(results[1])
     margins = [snap.summary.get("arsresultat") for snap in snapshots]
     assert margins[0] == pytest.approx(20.0)
+
+
+def test_prepare_dataframe_with_previous_fills_missing_history() -> None:
+    store = SaftDatasetStore()
+    current = pd.DataFrame(
+        {
+            "Konto": ["1000", "2000"],
+            "UB_netto": [100.0, 200.0],
+        }
+    )
+    previous = pd.DataFrame({"Konto": ["1000"], "UB_netto": [50.0]})
+
+    combined = store._prepare_dataframe_with_previous(current, previous)
+    history = list(combined["forrige"].values)
+
+    assert history[0] == pytest.approx(50.0)
+    assert history[1] == pytest.approx(0.0)
