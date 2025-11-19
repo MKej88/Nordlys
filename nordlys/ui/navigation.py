@@ -8,6 +8,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QBrush, QColor, QFont
 from PySide6.QtWidgets import (
     QFrame,
+    QHeaderView,
     QLabel,
     QSizePolicy,
     QTreeWidget,
@@ -35,7 +36,7 @@ class NavigationPanel(QFrame):
         super().__init__()
         self.setObjectName("navPanel")
         self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
-        self.setMinimumWidth(240)
+        self.setMinimumWidth(280)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 32, 24, 32)
         layout.setSpacing(24)
@@ -59,6 +60,10 @@ class NavigationPanel(QFrame):
         self.tree.setRootIsDecorated(False)
         self.tree.setItemsExpandable(False)
         self.tree.setFocusPolicy(Qt.NoFocus)
+        header = self.tree.header()
+        header.setSectionResizeMode(QHeaderView.ResizeToContents)
+        header.setStretchLastSection(True)
+        self.tree.setColumnWidth(0, 220)
         layout.addWidget(self.tree, 1)
 
     def add_root(self, title: str, key: str | None = None) -> NavigationItem:
