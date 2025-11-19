@@ -34,7 +34,8 @@ class TaskProgressDialog(QDialog):
         super().__init__(parent)
         self.setModal(False)
         self.setObjectName("taskProgressDialog")
-        self.setWindowTitle("Laster data …")
+        # Bruk tom tittel slik at vinduet ikke viser teksten «Laster data …»
+        self.setWindowTitle("")
         self.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
         self.setWindowFlag(Qt.WindowCloseButtonHint, False)
         self.setAttribute(Qt.WA_TranslucentBackground, True)
@@ -65,7 +66,8 @@ class TaskProgressDialog(QDialog):
         self._progress_bar = QProgressBar()
         self._progress_bar.setObjectName("taskProgressBar")
         self._progress_bar.setRange(0, 100)
-        self._progress_bar.setTextVisible(False)
+        self._progress_bar.setTextVisible(True)
+        self._progress_bar.setFormat("%p%")
         layout.addWidget(self._progress_bar)
 
         self._detail_label = QLabel()
