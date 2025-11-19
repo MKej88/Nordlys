@@ -56,6 +56,9 @@ def _extract_vat_code(line: ET.Element, ns: NamespaceMap) -> Optional[str]:
         code_element = _find(tax_info, "n1:TaxCode", ns)
         code = _clean_text(code_element.text if code_element is not None else None)
         if not code:
+            type_element = _find(tax_info, "n1:TaxType", ns)
+            code = _clean_text(type_element.text if type_element is not None else None)
+        if not code:
             continue
         codes.append(code)
     if not codes:
