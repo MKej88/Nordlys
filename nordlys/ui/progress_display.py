@@ -14,7 +14,9 @@ from .widgets import TaskProgressDialog
 class _ProgressAnimator(QObject):
     """Gir fremdriftsbaren en jevn og aldri-stoppende animasjon."""
 
-    def __init__(self, on_value_changed: Callable[[int], None], parent: QWidget) -> None:
+    def __init__(
+        self, on_value_changed: Callable[[int], None], parent: QWidget
+    ) -> None:
         super().__init__(parent)
         self._on_value_changed = on_value_changed
         self._timer = QTimer(self)
@@ -70,6 +72,7 @@ class _ProgressAnimator(QObject):
 
         if self._display_value >= 100:
             self._timer.stop()
+
 
 class ImportProgressDisplay:
     """Samlet kontroll over statusetikett, fremdriftsbar og dialog."""
