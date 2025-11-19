@@ -68,6 +68,7 @@ class TaskProgressDialog(QDialog):
         self._progress_bar.setRange(0, 100)
         self._progress_bar.setTextVisible(True)
         self._progress_bar.setFormat("%p%")
+        self._progress_bar.setAlignment(Qt.AlignCenter)
         layout.addWidget(self._progress_bar)
 
         self._detail_label = QLabel()
