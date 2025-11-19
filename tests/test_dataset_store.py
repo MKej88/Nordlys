@@ -119,6 +119,28 @@ def test_current_year_text_none_when_no_year_available() -> None:
     assert store.current_year_text is None
 
 
+def test_apply_batch_appends_to_existing_results() -> None:
+    store = SaftDatasetStore()
+    latest = _make_result(
+        "2024.xml",
+        analysis_year=2024,
+        fiscal_year="2024",
+    )
+    previous = _make_result(
+        "2023.xml",
+        analysis_year=2023,
+        fiscal_year="2023",
+    )
+
+    store.apply_batch([latest])
+    assert store.dataset_order == ["2024.xml"]
+
+    store.apply_batch([previous])
+
+    assert store.dataset_order == ["2023.xml", "2024.xml"]
+    assert store.dataset_items()[1].result is latest
+
+
 def test_recent_summaries_limits_and_marks_current() -> None:
     store = SaftDatasetStore()
     results: List[SaftLoadResult] = []

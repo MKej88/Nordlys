@@ -71,14 +71,16 @@ class SaftDatasetStore:
     def apply_batch(self, results: Sequence[SaftLoadResult]) -> None:
         """Lagrer resultatene fra SAF-T-importen i intern struktur."""
 
-        self._results = {res.file_path: res for res in results}
-        self._positions = {res.file_path: idx for idx, res in enumerate(results)}
-        self._years = {
-            res.file_path: self._resolve_dataset_year(res) for res in results
-        }
-        self._orgnrs = {
-            res.file_path: self._resolve_dataset_orgnr(res) for res in results
-        }
+        next_position = max(self._positions.values(), default=-1) + 1
+        for res in results:
+            if res.file_path not in self._positions:
+                self._positions[res.file_path] = next_position
+                next_position += 1
+
+            self._results[res.file_path] = res
+            self._years[res.file_path] = self._resolve_dataset_year(res)
+            self._orgnrs[res.file_path] = self._resolve_dataset_orgnr(res)
+
         self._order = self._sorted_dataset_keys()
         self._current_key = None
         self._current_result = None
