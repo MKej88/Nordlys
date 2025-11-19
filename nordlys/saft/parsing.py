@@ -2,14 +2,8 @@
 
 from __future__ import annotations
 
-from .entry_stream import (
-    SaftEntry,
-    check_trial_balance,
-    get_amount,
-    get_tx_customer_id,
-    get_tx_supplier_id,
-    iter_saft_entries,
-)
+from .entry_helpers import get_amount, get_tx_customer_id, get_tx_supplier_id
+from .entry_stream import SaftEntry, check_trial_balance, iter_saft_entries
 from .xml_helpers import (
     _clean_text,
     _find,
