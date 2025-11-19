@@ -10,9 +10,6 @@ from typing import Iterator, List, Optional, TypedDict
 from .entry_helpers import (
     _parse_amount_element,
     _sourceline,
-    get_amount,
-    get_tx_customer_id,
-    get_tx_supplier_id,
 )
 from .xml_helpers import _clean_text, _local_name
 from .validation import ensure_saft_validated
