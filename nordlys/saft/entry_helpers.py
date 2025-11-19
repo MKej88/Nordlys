@@ -341,4 +341,3 @@ def _parse_amount_element(
                 xml_path=xml_path,
             )
     return Decimal("0")
-

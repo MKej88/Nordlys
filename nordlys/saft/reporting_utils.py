@@ -110,4 +110,3 @@ def _is_revenue_account(account: str) -> bool:
     if not normalized:
         return False
     return normalized[0] == "3"
-

@@ -645,4 +645,3 @@ def compute_purchases_per_supplier(
     df = pandas.DataFrame(rows)
     df["Innkjøp eks mva"] = df["Innkjøp eks mva"].astype(float).round(2)
     return df.sort_values("Innkjøp eks mva", ascending=False).reset_index(drop=True)
-
