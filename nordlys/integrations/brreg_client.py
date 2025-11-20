@@ -206,7 +206,10 @@ def _fetch_json(
 def fetch_regnskapsregister(orgnr: str) -> BrregServiceResult:
     """Henter data fra Regnskapsregisteret for et organisasjonsnummer."""
 
-    normalized = _normalize_orgnr(orgnr)
+    try:
+        normalized = _normalize_orgnr(orgnr)
+    except ValueError as exc:
+        return BrregServiceResult(None, "invalid_orgnr", str(exc), False)
     url = BRREG_URL_TMPL.format(orgnr=normalized)
     return _fetch_json(url, "Regnskapsregisteret", list_policy=_ListPolicy.PASSTHROUGH)
 
@@ -214,7 +217,10 @@ def fetch_regnskapsregister(orgnr: str) -> BrregServiceResult:
 def fetch_enhetsregister(orgnr: str) -> BrregServiceResult:
     """Henter enhetsdata for et organisasjonsnummer."""
 
-    normalized = _normalize_orgnr(orgnr)
+    try:
+        normalized = _normalize_orgnr(orgnr)
+    except ValueError as exc:
+        return BrregServiceResult(None, "invalid_orgnr", str(exc), False)
     url = ENHETSREGISTER_URL_TMPL.format(orgnr=normalized)
     return _fetch_json(url, "Enhetsregisteret", list_policy=_ListPolicy.FIRST_DICT)
 
@@ -229,7 +235,11 @@ def _normalize_orgnr(orgnr: str) -> str:
 def get_company_status(orgnr: str) -> CompanyStatus:
     """Returnerer statusfelt for et selskap basert på Enhetsregisteret."""
 
-    normalized = _normalize_orgnr(orgnr)
+    try:
+        normalized = _normalize_orgnr(orgnr)
+    except ValueError:
+        cleaned = "".join(ch for ch in str(orgnr) if ch.isdigit())
+        return CompanyStatus(cleaned, None, None, None, None)
     result = fetch_enhetsregister(normalized)
     if result.error_code:
         message = result.error_message or result.error_code
