@@ -5,6 +5,7 @@ import pytest
 
 from nordlys.saft.header import SaftHeader
 from nordlys.saft.loader import SaftLoadResult
+from nordlys.saft.masterfiles import SupplierInfo
 from nordlys.saft.validation import SaftValidationResult
 from nordlys.ui.data_manager.dataset_store import SaftDatasetStore
 
@@ -186,3 +187,25 @@ def test_prepare_dataframe_with_previous_fills_missing_history() -> None:
 
     assert history[0] == pytest.approx(50.0)
     assert history[1] == pytest.approx(0.0)
+
+
+def test_prepare_supplier_purchases_fills_missing_names() -> None:
+    store = SaftDatasetStore()
+    supplier = SupplierInfo(
+        supplier_id="SUP-1",
+        supplier_number="100",
+        name="Brus AS",
+    )
+    store._ingest_suppliers({supplier.supplier_id: supplier})
+
+    purchases = pd.DataFrame(
+        {
+            "Leverandørnr": ["100", "SUP-1"],
+            "Leverandørnavn": ["", ""],
+            "Innkjøp eks mva": [200.0, 150.0],
+        }
+    )
+
+    prepared = store._prepare_supplier_purchases(purchases)
+
+    assert list(prepared["Leverandørnavn"]) == ["Brus AS", "Brus AS"]
