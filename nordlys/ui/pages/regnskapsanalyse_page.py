@@ -167,6 +167,7 @@ class RegnskapsanalysePage(QWidget):
         self.multi_year_table = create_table_widget()
         self.multi_year_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self._configure_analysis_table(self.multi_year_table, font_point_size=8)
+        self.multi_year_table.setItemDelegate(self._table_delegate)
         multi_layout.addWidget(self.multi_year_table)
         self.multi_year_table.hide()
 
@@ -361,6 +362,8 @@ class RegnskapsanalysePage(QWidget):
                 table_rows.append((row.label, "", "", ""))
             else:
                 table_rows.append((row.label, row.current, row.previous, row.change))
+            if row.label in {"Sum inntekter", "Annen kostnad"}:
+                table_rows.append(("", "", "", ""))
         populate_table(
             self.result_table,
             ["Kategori", current_label, previous_label, "Endring"],
@@ -370,6 +373,7 @@ class RegnskapsanalysePage(QWidget):
         self.result_info.hide()
         self.result_table.show()
         self._apply_change_coloring(self.result_table)
+        self._apply_result_styles(self.result_table)
         self._lock_analysis_column_widths(self.result_table)
         self._schedule_table_height_adjustment(self.result_table)
 
@@ -435,6 +439,7 @@ class RegnskapsanalysePage(QWidget):
         populate_table(
             self.multi_year_table, columns, table_rows, money_cols=money_cols
         )
+        self._apply_result_styles(self.multi_year_table)
         self.multi_year_table.show()
         self.multi_year_info.hide()
         self._schedule_table_height_adjustment(self.multi_year_table, extra_padding=0)
@@ -462,14 +467,16 @@ class RegnskapsanalysePage(QWidget):
             for snapshot in snapshots:
                 yield self._get_numeric(snapshot.summary, key)
 
-        row_specs.append(("Annen inntekt", _values_for("annen_inntekt")))
         row_specs.append(("Salgsinntekter", _values_for("salgsinntekter")))
+        row_specs.append(("Annen inntekt", _values_for("annen_inntekt")))
         row_specs.append(("Sum inntekter", _values_for("sum_inntekter")))
+        row_specs.append(("", ("" for _ in snapshots)))
         row_specs.append(("Varekostnad", _values_for("varekostnad")))
         row_specs.append(("Lønnskostnader", _values_for("lonn")))
         row_specs.append(("Av-/nedskrivning", _values_for("avskrivninger")))
         row_specs.append(("Andre driftskostnader", _values_for("andre_drift")))
         row_specs.append(("Annen kostnad", _values_for("annen_kost")))
+        row_specs.append(("", ("" for _ in snapshots)))
         row_specs.append(("Finansinntekter", _values_for("finansinntekter")))
         row_specs.append(("Finanskostnader", _values_for("finanskostnader")))
         row_specs.append(("Resultat før skatt", _values_for("resultat_for_skatt")))
@@ -886,6 +893,37 @@ class RegnskapsanalysePage(QWidget):
                     item.setFont(font)
                     item.setData(BOTTOM_BORDER_ROLE, has_bottom_border)
                     item.setData(TOP_BORDER_ROLE, has_top_border)
+        table.viewport().update()
+
+    def _apply_result_styles(self, table: QTableWidget) -> None:
+        bold_labels = {"Sum inntekter", "Resultat før skatt"}
+        bottom_border_labels = {"Annen inntekt", "Finanskostnader"}
+        spacer_after_labels = {"Sum inntekter", "Annen kostnad"}
+        base_height = compact_row_base_height(table)
+        spacer_height = max(base_height + 6, int(base_height * 1.6))
+        with suspend_table_updates(table):
+            labels: List[str] = []
+            for row_idx in range(table.rowCount()):
+                label_item = table.item(row_idx, 0)
+                labels.append(label_item.text().strip() if label_item else "")
+            for row_idx, label_text in enumerate(labels):
+                prev_label = labels[row_idx - 1] if row_idx > 0 else ""
+                is_spacer_row = not label_text and prev_label in spacer_after_labels
+                row_height = spacer_height if is_spacer_row else base_height
+                if table.rowHeight(row_idx) < row_height:
+                    table.setRowHeight(row_idx, row_height)
+                is_bold = label_text in bold_labels
+                has_bottom_border = label_text in bottom_border_labels
+                for col_idx in range(table.columnCount()):
+                    item = table.item(row_idx, col_idx)
+                    if item is None:
+                        continue
+                    if col_idx == 0:
+                        font = item.font()
+                        font.setBold(is_bold)
+                        item.setFont(font)
+                    item.setData(BOTTOM_BORDER_ROLE, has_bottom_border)
+                    item.setData(TOP_BORDER_ROLE, False)
         table.viewport().update()
 
     def _apply_change_coloring(self, table: QTableWidget) -> None:
