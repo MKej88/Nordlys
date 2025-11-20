@@ -61,6 +61,10 @@ def _make_header(label: str) -> AnalysisRow:
     )
 
 
+def _value_or_zero(value: Optional[float]) -> float:
+    return value if value is not None else 0.0
+
+
 def compute_balance_analysis(prepared: "pd.DataFrame") -> List[AnalysisRow]:
     """Beregner balanseaggregater basert på kontonummer-prefikser."""
 
@@ -79,9 +83,10 @@ def compute_balance_analysis(prepared: "pd.DataFrame") -> List[AnalysisRow]:
     assets_rows.append(_make_header("Eiendeler"))
 
     def _add_asset_row(label: str, current: float, previous: float) -> None:
-        assets_current_values.append(current)
-        assets_previous_values.append(previous)
-        assets_rows.append(_make_row(label, current, previous))
+        row = _make_row(label, current, previous)
+        assets_current_values.append(_value_or_zero(row.current))
+        assets_previous_values.append(_value_or_zero(row.previous))
+        assets_rows.append(row)
 
     immaterielle = sum_ub("10")
     immaterielle_py = sum_py("10")
@@ -147,6 +152,8 @@ def compute_balance_analysis(prepared: "pd.DataFrame") -> List[AnalysisRow]:
     egenkapital_py = -sum_py("20")
     egenkapital_row = _make_row("Egenkapital", egenkapital, egenkapital_py)
     ek_rows.append(egenkapital_row)
+    egenkapital_current = _value_or_zero(egenkapital_row.current)
+    egenkapital_previous = _value_or_zero(egenkapital_row.previous)
 
     avsetninger = -sum_ub("21")
     avsetninger_py = -sum_py("21")
@@ -154,6 +161,8 @@ def compute_balance_analysis(prepared: "pd.DataFrame") -> List[AnalysisRow]:
         "Avsetninger for forpliktelser", avsetninger, avsetninger_py
     )
     ek_rows.append(avsetninger_row)
+    avsetninger_current = _value_or_zero(avsetninger_row.current)
+    avsetninger_previous = _value_or_zero(avsetninger_row.previous)
 
     ek_rows.append(_make_header("Langsiktig gjeld"))
     annen_langsiktig = -sum_ub("22")
@@ -162,9 +171,11 @@ def compute_balance_analysis(prepared: "pd.DataFrame") -> List[AnalysisRow]:
         "Annen langsiktig gjeld", annen_langsiktig, annen_langsiktig_py
     )
     ek_rows.append(annen_langsiktig_row)
+    annen_langsiktig_current = _value_or_zero(annen_langsiktig_row.current)
+    annen_langsiktig_previous = _value_or_zero(annen_langsiktig_row.previous)
 
-    sum_langsiktig = annen_langsiktig
-    sum_langsiktig_py = annen_langsiktig_py
+    sum_langsiktig = annen_langsiktig_current
+    sum_langsiktig_py = annen_langsiktig_previous
     ek_rows.append(_make_row("Sum langsiktig gjeld", sum_langsiktig, sum_langsiktig_py))
 
     ek_rows.append(_make_header("Kortsiktig gjeld"))
@@ -185,15 +196,21 @@ def compute_balance_analysis(prepared: "pd.DataFrame") -> List[AnalysisRow]:
     for label, prefix in kortsiktig_kategorier:
         current_value = -sum_ub(prefix)
         previous_value = -sum_py(prefix)
-        kortsiktig_sum += current_value
-        kortsiktig_sum_py += previous_value
-        ek_rows.append(_make_row(label, current_value, previous_value))
+        row = _make_row(label, current_value, previous_value)
+        kortsiktig_sum += _value_or_zero(row.current)
+        kortsiktig_sum_py += _value_or_zero(row.previous)
+        ek_rows.append(row)
 
     ek_rows.append(_make_row("Sum kortsiktig gjeld", kortsiktig_sum, kortsiktig_sum_py))
 
-    sum_ek_gjeld = egenkapital + avsetninger + sum_langsiktig + kortsiktig_sum
+    sum_ek_gjeld = (
+        egenkapital_current + avsetninger_current + sum_langsiktig + kortsiktig_sum
+    )
     sum_ek_gjeld_py = (
-        egenkapital_py + avsetninger_py + sum_langsiktig_py + kortsiktig_sum_py
+        egenkapital_previous
+        + avsetninger_previous
+        + sum_langsiktig_py
+        + kortsiktig_sum_py
     )
 
     ek_rows.append(_make_row("Sum egenkapital og gjeld", sum_ek_gjeld, sum_ek_gjeld_py))
