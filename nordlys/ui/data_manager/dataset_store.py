@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Tuple
 
 from ...industry_groups import IndustryClassification
-from ...saft.loader import SaftLoadResult
 from ...helpers.lazy_imports import lazy_import, lazy_pandas
+
+if TYPE_CHECKING:
+    from ...saft.loader import SaftLoadResult
 
 pd = lazy_pandas()
 saft = lazy_import("nordlys.saft")

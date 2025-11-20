@@ -4,15 +4,17 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Sequence, Tuple
+from typing import TYPE_CHECKING, List, Optional, Sequence, Tuple
 
 from PySide6.QtWidgets import QMessageBox
 
-from ...saft.loader import SaftLoadResult
 from ...saft.periods import format_header_period
 from ...helpers.formatting import format_currency
 from .context import ControllerContext
 from .messaging import ImportMessenger
+
+if TYPE_CHECKING:
+    from ...saft.loader import SaftLoadResult
 
 
 class DatasetFlowController:
