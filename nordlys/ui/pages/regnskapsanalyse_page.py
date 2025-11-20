@@ -156,7 +156,8 @@ class RegnskapsanalysePage(QWidget):
         self.multi_year_widget = QWidget()
         multi_layout = QVBoxLayout(self.multi_year_widget)
         multi_layout.setContentsMargins(0, 0, 0, 0)
-        multi_layout.setSpacing(4)
+        multi_layout.setSpacing(10)
+        multi_layout.setAlignment(Qt.AlignTop)
         self.multi_year_info = QLabel(
             "Importer flere SAF-T-filer for å sammenligne resultat over tid."
         )
@@ -164,13 +165,14 @@ class RegnskapsanalysePage(QWidget):
         multi_layout.addWidget(self.multi_year_info)
 
         self.multi_year_table = create_table_widget()
+        self.multi_year_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self._configure_analysis_table(self.multi_year_table, font_point_size=8)
         multi_layout.addWidget(self.multi_year_table)
         self.multi_year_table.hide()
 
         self.multi_year_share_container = QWidget()
         share_layout = QVBoxLayout(self.multi_year_share_container)
-        share_layout.setContentsMargins(0, 0, 0, 0)
+        share_layout.setContentsMargins(0, 8, 0, 0)
         share_layout.setSpacing(0)
 
         self.multi_year_share_label = QLabel("% andel av salgsinntekter")
@@ -189,6 +191,7 @@ class RegnskapsanalysePage(QWidget):
         share_layout.addWidget(self.multi_year_share_table)
 
         multi_layout.addWidget(self.multi_year_share_container)
+        multi_layout.addStretch(1)
         self.multi_year_share_table.hide()
         self.multi_year_share_container.hide()
         self.section_stack.addWidget(self.multi_year_widget)
