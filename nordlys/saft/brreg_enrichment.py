@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from threading import Lock
 from dataclasses import dataclass
 from typing import Dict, Optional, Tuple, TYPE_CHECKING
 
@@ -29,6 +30,17 @@ class BrregEnrichment:
     industry_error: Optional[str]
 
 
+_ENRICHMENT_CACHE: Dict[str, BrregEnrichment] = {}
+_CACHE_LOCK = Lock()
+
+
+def _clear_enrichment_cache() -> None:
+    """Tømmer cache. Eksponert for tester."""
+
+    with _CACHE_LOCK:
+        _ENRICHMENT_CACHE.clear()
+
+
 def enrich_from_header(header: Optional["SaftHeader"]) -> BrregEnrichment:
     """Hent data fra Brønnøysundregistrene og gjør bransjeklassifisering."""
 
@@ -43,6 +55,11 @@ def enrich_from_header(header: Optional["SaftHeader"]) -> BrregEnrichment:
             industry_error="SAF-T mangler organisasjonsnummer.",
         )
 
+    with _CACHE_LOCK:
+        cached = _ENRICHMENT_CACHE.get(header.orgnr)
+    if cached:
+        return cached
+
     with ThreadPoolExecutor(max_workers=2) as executor:
         brreg_future = executor.submit(fetch_brreg, header.orgnr)
         industry_future = executor.submit(
@@ -55,14 +72,18 @@ def enrich_from_header(header: Optional["SaftHeader"]) -> BrregEnrichment:
         )
 
     brreg_map = map_brreg_metrics(brreg_json) if brreg_json else None
-
-    return BrregEnrichment(
+    result = BrregEnrichment(
         brreg_json=brreg_json,
         brreg_map=brreg_map,
         brreg_error=brreg_error,
         industry=industry,
         industry_error=industry_error,
     )
+
+    with _CACHE_LOCK:
+        _ENRICHMENT_CACHE[header.orgnr] = result
+
+    return result
 
 
 def _resolve_brreg_future(future) -> Tuple[Optional[Dict[str, object]], Optional[str]]:
