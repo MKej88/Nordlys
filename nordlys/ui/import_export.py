@@ -4,16 +4,22 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Sequence, cast
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Sequence, cast
 
 from PySide6.QtCore import QObject, Slot
 from PySide6.QtWidgets import QFileDialog, QLabel, QMessageBox, QProgressBar, QWidget
 
 from ..core.task_runner import TaskRunner
-from ..saft.loader import SaftLoadResult, load_saft_files
+from ..helpers.lazy_imports import lazy_import
 from .data_manager import SaftDatasetStore
 from .excel_export import export_dataset_to_excel
 from .progress_display import ImportProgressDisplay
+
+if TYPE_CHECKING:
+    from ..saft.loader import SaftLoadResult
+
+
+saft_loader = lazy_import("nordlys.saft.loader")
 
 
 @dataclass
@@ -116,7 +122,7 @@ class ImportExportController(QObject):
             self._log_import_event(f"Forbereder: {Path(name).name}")
         description = "Importer SAF-T"
         task_id = self._task_runner.run(
-            load_saft_files,
+            saft_loader.load_saft_files,
             file_names,
             description=description,
         )
@@ -194,11 +200,8 @@ class ImportExportController(QObject):
         self._load_error_handler(message)
 
     def _handle_load_finished(self, result_obj: object) -> None:
-        if isinstance(result_obj, list):
-            casted = [cast(SaftLoadResult, item) for item in result_obj]
-        else:
-            casted = [cast(SaftLoadResult, result_obj)]
-        self._apply_results(casted)
+        casted_results = self._cast_results(result_obj)
+        self._apply_results(casted_results)
         self._finalize_loading()
 
     # endregion
@@ -213,6 +216,12 @@ class ImportExportController(QObject):
     # endregion
 
     # region Hjelpere
+    def _cast_results(self, result_obj: object) -> List["SaftLoadResult"]:
+        result_type = saft_loader.SaftLoadResult
+        if isinstance(result_obj, list):
+            return [cast(result_type, item) for item in result_obj]
+        return [cast(result_type, result_obj)]
+
     def _format_task_error(self, exc_str: str) -> str:
         text = exc_str.strip()
         if not text:
