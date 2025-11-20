@@ -259,6 +259,36 @@ def test_compute_result_analysis_rounds_negative_values_to_nearest_integer():
     assert resultat.current == -150
 
 
+def test_sum_inntekter_includes_bade_salg_og_annen_inntekt():
+    df = pd.DataFrame(
+        [
+            {
+                "Konto": "3800",
+                "Kontonavn": "Annen inntekt",
+                "IB Kredit": 0.0,
+                "UB Kredit": 100.0,
+            },
+            {
+                "Konto": "3900",
+                "Kontonavn": "Annen inntekt",
+                "IB Kredit": 0.0,
+                "UB Kredit": 50.0,
+            },
+        ]
+    )
+
+    prepared = prepare_regnskap_dataframe(df)
+    rows = compute_result_analysis(prepared)
+
+    salgsinntekter = row_by_label(rows, "Salgsinntekter")
+    annen_inntekt = row_by_label(rows, "Annen inntekt")
+    sum_inntekter = row_by_label(rows, "Sum inntekter")
+
+    assert salgsinntekter.current == 0.0
+    assert annen_inntekt.current == pytest.approx(150.0)
+    assert sum_inntekter.current == pytest.approx(150.0)
+
+
 def test_clean_value_rounds_negative_numbers_to_nearest_integer():
     """Sikrer symmetrisk avrunding for negative verdier."""
 
