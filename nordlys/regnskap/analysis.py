@@ -241,12 +241,12 @@ def compute_result_analysis(prepared: "pd.DataFrame") -> List[AnalysisRow]:
 
     rows: List[AnalysisRow] = []
 
-    sum_salg_total = -sum_ub("3")
-    sum_salg_total_py = -sum_py("3")
+    salg = -sum_ub("30", "31", "32", "33", "34", "35", "36", "37")
+    salg_py = -sum_py("30", "31", "32", "33", "34", "35", "36", "37")
     annen_inntekt = -(sum_ub("38") + sum_ub("39"))
     annen_inntekt_py = -(sum_py("38") + sum_py("39"))
-    salg = sum_salg_total - annen_inntekt
-    salg_py = sum_salg_total_py - annen_inntekt_py
+    sum_salg_total = salg + annen_inntekt
+    sum_salg_total_py = salg_py + annen_inntekt_py
     rows.append(_make_row("Salgsinntekter", salg, salg_py))
     rows.append(_make_row("Annen inntekt", annen_inntekt, annen_inntekt_py))
 
