@@ -113,7 +113,10 @@ Nordlys/
 │   │   ├── number_parsing.py   # Tolkning av tall fra SAF-T og CSV
 │   │   └── xml_helpers.py      # Små verktøy for trygg XML-lesing
 │   ├── integrations/
-│   │   └── brreg_service.py    # HTTP-klient med cache mot Brønnøysundregistrene
+│   │   ├── brreg_cache.py      # Disk- og minnecache for Brønnøysund-oppslag
+│   │   ├── brreg_client.py     # Grunnleggende HTTP-klient mot Brønnøysund
+│   │   ├── brreg_models.py     # Enkle datamodeller for bransjeinformasjon
+│   │   └── brreg_service.py    # Høyere nivå-klient med cache og feilhåndtering
 │   ├── regnskap/
 │   │   ├── analysis.py         # Beregner nøkkeltall og revisjonskort
 │   │   └── prep.py             # Gjør saldobalansen klar for analyse
@@ -121,7 +124,8 @@ Nordlys/
 │   │   ├── loader.py           # Leser SAF-T-filer og bygger datastrukturen
 │   │   ├── parsing.py          # Strømmer XML og validerer innhold
 │   │   ├── analytics.py        # Temaanalyser av hovedbok og bilag
-│   │   └── export.py           # Utskrift til CSV og Excel
+│   │   ├── export.py           # Utskrift til CSV og Excel
+│   │   └── validation.py       # XSD-validering og trygg håndtering av feil
 │   ├── saft_customers.py       # Samler kunde- og leverandørinformasjon
 │   ├── industry_groups.py      # Bransjekoder og grupperinger med cache
 │   ├── industry_groups_cli.py  # Lite CLI for å teste bransjeklassifisering
@@ -136,6 +140,8 @@ Nordlys/
 │       ├── models/             # Qt-modeller for tabeller, lister og analyser
 │       ├── navigation.py       # Felles navigasjonslogikk for sider og kort
 │       ├── navigation_builder.py # Definerer hvilke sider og kort som vises
+│       ├── page_manager.py     # Hjelpe-API for å registrere og hente sider
+│       ├── page_state_handler.py # Styrer tilstandsbytte og oppdateringer mellom sider
 │       ├── pages/              # Selve sidene (import, dashboard, analyser m.m.)
 │       ├── pyside_app.py       # Starter Qt-applikasjonen og hovedvinduet
 │       ├── widgets.py          # Egendefinerte Qt-widgets for tabeller og kort
