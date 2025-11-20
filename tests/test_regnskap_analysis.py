@@ -190,6 +190,26 @@ def test_compute_balance_analysis_matches_expected_totals():
     assert row_by_label(rows, "Avvik").current == pytest.approx(0)
 
 
+def test_compute_balance_analysis_uses_cleaned_values_in_totals():
+    df = pd.DataFrame(
+        [
+            {"Konto": "1900", "UB Debet": 0.4},
+            {"Konto": "2000", "UB Kredit": 0.4},
+        ]
+    )
+
+    prepared = prepare_regnskap_dataframe(df)
+    rows = compute_balance_analysis(prepared)
+
+    sum_eiendeler = row_by_label(rows, "Sum eiendeler")
+    sum_ek_gjeld = row_by_label(rows, "Sum egenkapital og gjeld")
+    avvik = row_by_label(rows, "Avvik")
+
+    assert sum_eiendeler.current == 0.0
+    assert sum_ek_gjeld.current == 0.0
+    assert avvik.current == 0.0
+
+
 def test_compute_result_analysis_calculates_income_statement_lines():
     prepared = prepare_regnskap_dataframe(build_sample_tb())
     rows = compute_result_analysis(prepared)
