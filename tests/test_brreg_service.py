@@ -111,3 +111,16 @@ def test_fetch_regnskapsregister_accepts_list_payload(monkeypatch):
 
     assert isinstance(result.data, list)
     assert result.error_code is None
+
+
+def test_invalid_orgnr_gives_clear_error() -> None:
+    result = brreg_service.fetch_enhetsregister("123")
+
+    assert result.data is None
+    assert result.error_code == "invalid_orgnr"
+    assert "9" in (result.error_message or "")
+
+    status = brreg_service.get_company_status("abc")
+
+    assert status.orgnr == ""
+    assert status.source is None
