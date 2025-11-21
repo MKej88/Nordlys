@@ -6,12 +6,12 @@ from datetime import datetime
 from typing import List, Optional, Sequence, Tuple, TYPE_CHECKING
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QTextOption
 from PySide6.QtWidgets import (
     QLabel,
-    QAbstractItemView,
     QFrame,
     QGridLayout,
-    QListWidget,
+    QPlainTextEdit,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -107,34 +107,22 @@ class ImportPage(QWidget):
             "Siste hendelser under import og validering.",
         )
         self.log_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        self.log_list = QListWidget()
-        self.log_list.setObjectName("logList")
-        self.log_list.setAlternatingRowColors(False)
-        self.log_list.setAutoFillBackground(False)
-        self.log_list.viewport().setAutoFillBackground(False)
-        self.log_list.setFrameShape(QFrame.NoFrame)
-        self.log_list.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
-        self.log_list.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.log_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.log_list.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.log_list.setFocusPolicy(Qt.NoFocus)
-        self.log_list.setSelectionMode(QAbstractItemView.NoSelection)
-        self.log_list.setMinimumHeight(260)
-        self.log_list.setMaximumHeight(260)
-        self.log_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        log_height = 230
+        self.log_view = QPlainTextEdit()
+        self.log_view.setObjectName("logText")
+        self.log_view.setReadOnly(True)
+        self.log_view.setLineWrapMode(QPlainTextEdit.WidgetWidth)
+        self.log_view.setWordWrapMode(QTextOption.WrapAtWordBoundaryOrAnywhere)
+        self.log_view.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.log_view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.log_view.setFrameShape(QFrame.NoFrame)
+        self.log_view.setMinimumHeight(log_height)
+        self.log_view.setMaximumHeight(log_height)
+        self.log_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.log_view.document().setDocumentMargin(10)
 
-        self.log_container = QFrame()
-        self.log_container.setObjectName("logListContainer")
-        self.log_container.setFrameShape(QFrame.NoFrame)
-        self.log_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.log_container.setAttribute(Qt.WA_StyledBackground, True)
-
-        log_container_layout = QVBoxLayout(self.log_container)
-        log_container_layout.setContentsMargins(0, 0, 0, 0)
-        log_container_layout.setSpacing(0)
-        log_container_layout.addWidget(self.log_list)
-
-        self.log_card.add_widget(self.log_container)
+        self.log_card.add_widget(self.log_view)
+        self.log_card.body_layout.setStretchFactor(self.log_view, 1)
         grid.addWidget(self.log_card, 1, 0)
 
         self.invoice_card = CardFrame(
@@ -160,6 +148,7 @@ class ImportPage(QWidget):
         self.misc_card.add_widget(self.misc_label)
         grid.addWidget(self.misc_card, 1, 2)
 
+        self._log_entries: List[str] = []
         self._error_entries: List[str] = []
 
         layout.addStretch(1)
@@ -299,10 +288,20 @@ class ImportPage(QWidget):
         self.misc_label.setText(f"<ul>{''.join(bullet_items)}</ul>")
 
     def reset_log(self) -> None:
-        self.log_list.clear()
+        self._log_entries.clear()
+        self.log_view.clear()
 
     def append_log(self, message: str) -> None:
         timestamp = datetime.now().strftime("%H:%M:%S")
         entry = f"[{timestamp}] {message}"
-        self.log_list.addItem(entry)
-        self.log_list.scrollToBottom()
+        self._log_entries.append(entry)
+        self._trim_and_update_log()
+
+    def _trim_and_update_log(self) -> None:
+        max_entries = 200
+        if len(self._log_entries) > max_entries:
+            self._log_entries = self._log_entries[-max_entries:]
+        self.log_view.setPlainText("\n".join(self._log_entries))
+        scrollbar = self.log_view.verticalScrollBar()
+        if scrollbar is not None:
+            scrollbar.setValue(scrollbar.maximum())

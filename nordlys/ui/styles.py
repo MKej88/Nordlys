@@ -74,6 +74,14 @@ QListWidget#logList::item:selected {
     background-color: rgba(37, 99, 235, 0.15);
     color: #0f172a;
 }
+QPlainTextEdit#logText {
+    background-color: #f8fafc;
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    border-radius: 14px;
+    padding: 8px 10px;
+    font-size: 13px;
+    color: #0f172a;
+}
 #analysisSectionTitle { font-size: 16px; font-weight: 700; color: #0f172a; letter-spacing: 0.2px; border-bottom: 2px solid rgba(37, 99, 235, 0.35); padding-bottom: 6px; }
 #analysisSectionTitle[tightSpacing="true"] { padding-bottom: 0px; margin-bottom: 0px; }
 #pageTitle { font-size: 30px; font-weight: 800; color: #0f172a; letter-spacing: 0.6px; }
