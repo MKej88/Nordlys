@@ -41,6 +41,13 @@ def _clear_enrichment_cache() -> None:
         _ENRICHMENT_CACHE.clear()
 
 
+def _normalize_orgnr(orgnr: str) -> str:
+    digits = "".join(ch for ch in orgnr if ch.isdigit())
+    if len(digits) != 9:
+        raise ValueError("Organisasjonsnummer må bestå av 9 sifre.")
+    return digits
+
+
 def enrich_from_header(header: Optional["SaftHeader"]) -> BrregEnrichment:
     """Hent data fra Brønnøysundregistrene og gjør bransjeklassifisering."""
 
@@ -55,20 +62,32 @@ def enrich_from_header(header: Optional["SaftHeader"]) -> BrregEnrichment:
             industry_error="SAF-T mangler organisasjonsnummer.",
         )
 
+    try:
+        orgnr = _normalize_orgnr(header.orgnr)
+    except ValueError as exc:
+        message = str(exc)
+        return BrregEnrichment(
+            brreg_json=None,
+            brreg_map=None,
+            brreg_error=message,
+            industry=None,
+            industry_error=message,
+        )
+
     with _CACHE_LOCK:
-        cached = _ENRICHMENT_CACHE.get(header.orgnr)
+        cached = _ENRICHMENT_CACHE.get(orgnr)
     if cached:
         return cached
 
     with ThreadPoolExecutor(max_workers=2) as executor:
-        brreg_future = executor.submit(fetch_brreg, header.orgnr)
+        brreg_future = executor.submit(fetch_brreg, orgnr)
         industry_future = executor.submit(
-            classify_from_orgnr, header.orgnr, header.company_name
+            classify_from_orgnr, orgnr, header.company_name
         )
 
         brreg_json, brreg_error = _resolve_brreg_future(brreg_future)
         industry, industry_error = _resolve_industry_future(
-            industry_future, header.orgnr, header.company_name
+            industry_future, orgnr, header.company_name
         )
 
     brreg_map = map_brreg_metrics(brreg_json) if brreg_json else None
@@ -81,7 +100,7 @@ def enrich_from_header(header: Optional["SaftHeader"]) -> BrregEnrichment:
     )
 
     with _CACHE_LOCK:
-        _ENRICHMENT_CACHE[header.orgnr] = result
+        _ENRICHMENT_CACHE[orgnr] = result
 
     return result
 
