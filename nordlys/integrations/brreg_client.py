@@ -70,6 +70,11 @@ def _fetch_json(
         if cached_result is not None:
             return cached_result
 
+    def finalize(result: BrregServiceResult) -> BrregServiceResult:
+        if not REQUESTS_CACHE_AVAILABLE:
+            fallback_cache_set(cache_key, result)
+        return result
+
     session = get_session()
     try:
         response = session.get(
@@ -78,129 +83,110 @@ def _fetch_json(
             timeout=DEFAULT_TIMEOUT,
         )
     except requests.Timeout:
-        result = BrregServiceResult(
-            None, "timeout", f"{source_label}: tidsavbrudd.", False
+        return finalize(
+            BrregServiceResult(None, "timeout", f"{source_label}: tidsavbrudd.", False)
         )
-        if not REQUESTS_CACHE_AVAILABLE:
-            fallback_cache_set(cache_key, result)
-        return result
     except requests.ConnectionError as exc:
-        result = BrregServiceResult(
-            None,
-            "connection_error",
-            f"{source_label}: tilkoblingsfeil ({exc}).",
-            False,
+        return finalize(
+            BrregServiceResult(
+                None,
+                "connection_error",
+                f"{source_label}: tilkoblingsfeil ({exc}).",
+                False,
+            )
         )
-        if not REQUESTS_CACHE_AVAILABLE:
-            fallback_cache_set(cache_key, result)
-        return result
     except requests.RequestException as exc:
-        result = BrregServiceResult(
-            None,
-            "request_error",
-            f"{source_label}: uventet feil ({exc}).",
-            False,
+        return finalize(
+            BrregServiceResult(
+                None,
+                "request_error",
+                f"{source_label}: uventet feil ({exc}).",
+                False,
+            )
         )
-        if not REQUESTS_CACHE_AVAILABLE:
-            fallback_cache_set(cache_key, result)
-        return result
 
     from_cache = bool(getattr(response, "from_cache", False))
 
     if response.status_code == 404:
-        result = BrregServiceResult(
-            None,
-            "not_found",
-            f"{source_label}: ingen treff for organisasjonsnummeret.",
-            from_cache,
+        return finalize(
+            BrregServiceResult(
+                None,
+                "not_found",
+                f"{source_label}: ingen treff for organisasjonsnummeret.",
+                from_cache,
+            )
         )
-        if not REQUESTS_CACHE_AVAILABLE:
-            fallback_cache_set(cache_key, result)
-        return result
     if response.status_code == 429:
-        result = BrregServiceResult(
-            None,
-            "rate_limited",
-            f"{source_label}: for mange forespørsler (429).",
-            from_cache,
+        return finalize(
+            BrregServiceResult(
+                None,
+                "rate_limited",
+                f"{source_label}: for mange forespørsler (429).",
+                from_cache,
+            )
         )
-        if not REQUESTS_CACHE_AVAILABLE:
-            fallback_cache_set(cache_key, result)
-        return result
     if response.status_code >= 500:
-        result = BrregServiceResult(
-            None,
-            "server_error",
-            f"{source_label}: tjenesten svarte med {response.status_code}.",
-            from_cache,
+        return finalize(
+            BrregServiceResult(
+                None,
+                "server_error",
+                f"{source_label}: tjenesten svarte med {response.status_code}.",
+                from_cache,
+            )
         )
-        if not REQUESTS_CACHE_AVAILABLE:
-            fallback_cache_set(cache_key, result)
-        return result
     try:
         response.raise_for_status()
     except requests.HTTPError:
-        result = BrregServiceResult(
-            None,
-            "http_error",
-            f"{source_label}: tjenesten svarte med {response.status_code}.",
-            from_cache,
+        return finalize(
+            BrregServiceResult(
+                None,
+                "http_error",
+                f"{source_label}: tjenesten svarte med {response.status_code}.",
+                from_cache,
+            )
         )
-        if not REQUESTS_CACHE_AVAILABLE:
-            fallback_cache_set(cache_key, result)
-        return result
 
     try:
         payload = response.json()
     except ValueError as exc:
-        result = BrregServiceResult(
-            None,
-            "invalid_json",
-            f"{source_label}: ugyldig JSON ({exc}).",
-            from_cache,
+        return finalize(
+            BrregServiceResult(
+                None,
+                "invalid_json",
+                f"{source_label}: ugyldig JSON ({exc}).",
+                from_cache,
+            )
         )
-        if not REQUESTS_CACHE_AVAILABLE:
-            fallback_cache_set(cache_key, result)
-        return result
 
     if isinstance(payload, list):
         if list_policy is _ListPolicy.FIRST_DICT:
             for element in payload:
                 if isinstance(element, dict):
-                    result = BrregServiceResult(element, None, None, from_cache)
-                    if not REQUESTS_CACHE_AVAILABLE:
-                        fallback_cache_set(cache_key, result)
-                    return result
-            result = BrregServiceResult(
-                None,
-                "invalid_json",
-                f"{source_label}: uventet svarformat (liste).",
-                from_cache,
+                    return finalize(
+                        BrregServiceResult(element, None, None, from_cache)
+                    )
+            return finalize(
+                BrregServiceResult(
+                    None,
+                    "invalid_json",
+                    f"{source_label}: uventet svarformat (liste).",
+                    from_cache,
+                )
             )
-            if not REQUESTS_CACHE_AVAILABLE:
-                fallback_cache_set(cache_key, result)
-            return result
         if list_policy is _ListPolicy.PASSTHROUGH:
-            result = BrregServiceResult(payload, None, None, from_cache)
-            if not REQUESTS_CACHE_AVAILABLE:
-                fallback_cache_set(cache_key, result)
-            return result
+            return finalize(BrregServiceResult(payload, None, None, from_cache))
 
     if not isinstance(payload, dict):
-        result = BrregServiceResult(
-            None,
-            "invalid_json",
-            f"{source_label}: uventet svarformat.",
-            from_cache,
+        return finalize(
+            BrregServiceResult(
+                None,
+                "invalid_json",
+                f"{source_label}: uventet svarformat.",
+                from_cache,
+            )
         )
-        if not REQUESTS_CACHE_AVAILABLE:
-            fallback_cache_set(cache_key, result)
-        return result
 
-    result = BrregServiceResult(payload, None, None, from_cache)
-    if not REQUESTS_CACHE_AVAILABLE:
-        fallback_cache_set(cache_key, result)
-    return result
+    return finalize(BrregServiceResult(payload, None, None, from_cache))
 
 
 def fetch_regnskapsregister(orgnr: str) -> BrregServiceResult:
