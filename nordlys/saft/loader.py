@@ -81,41 +81,63 @@ def load_saft_file(
 
     trial_balance: Optional[Dict[str, Decimal]] = None
     trial_balance_error: Optional[str] = None
-    if SAFT_STREAMING_ENABLED:
-        _report_progress(5, f"Leser hovedbok (streaming) for {file_name}")
-        trial_balance_result = compute_trial_balance(file_path)
-        trial_balance = trial_balance_result.balance
-        trial_balance_error = trial_balance_result.error
 
-    tree, ns = saft_customers.parse_saft(file_path)
-    root = tree.getroot()
-    if root is None:  # pragma: no cover - guard mot korrupt XML
-        raise ValueError("SAF-T-filen mangler et rot-element.")
-    header = saft.parse_saft_header(root)
-    dataframe = saft.parse_saldobalanse(root)
-    _report_progress(25, f"Tolker saldobalanse for {file_name}")
-    customers = saft.parse_customers(root)
-    suppliers = saft.parse_suppliers(root)
+    validation: Optional["saft.SaftValidationResult"] = None
+    enrichment: Optional[BrregEnrichment] = None
 
-    analysis: CustomerSupplierAnalysis = build_customer_supplier_analysis(
-        header, root, ns
-    )
-    analysis_year = analysis.analysis_year
-    customer_sales = analysis.customer_sales
-    supplier_purchases = analysis.supplier_purchases
-    cost_vouchers = analysis.cost_vouchers
+    background_workers = max(1, min(3, os.cpu_count() or 1))
 
-    _report_progress(50, f"Analyserer kunder og leverandører for {file_name}")
+    with ThreadPoolExecutor(max_workers=background_workers) as executor:
+        trial_balance_future = None
+        if SAFT_STREAMING_ENABLED:
+            _report_progress(5, f"Leser hovedbok (streaming) for {file_name}")
+            trial_balance_future = executor.submit(compute_trial_balance, file_path)
 
-    summary = saft.ns4102_summary_from_tb(dataframe)
-    validation = saft.validate_saft_against_xsd(
-        file_path,
-        header.file_version if header else None,
-    )
+        tree, ns = saft_customers.parse_saft(file_path)
+        root = tree.getroot()
+        if root is None:  # pragma: no cover - guard mot korrupt XML
+            raise ValueError("SAF-T-filen mangler et rot-element.")
+        header = saft.parse_saft_header(root)
+        dataframe = saft.parse_saldobalanse(root)
+        _report_progress(25, f"Tolker saldobalanse for {file_name}")
+        customers = saft.parse_customers(root)
+        suppliers = saft.parse_suppliers(root)
 
-    _report_progress(75, f"Validerer og beriker data for {file_name}")
+        analysis: CustomerSupplierAnalysis = build_customer_supplier_analysis(
+            header, root, ns
+        )
+        analysis_year = analysis.analysis_year
+        customer_sales = analysis.customer_sales
+        supplier_purchases = analysis.supplier_purchases
+        cost_vouchers = analysis.cost_vouchers
 
-    enrichment: BrregEnrichment = enrich_from_header(header)
+        _report_progress(50, f"Analyserer kunder og leverandører for {file_name}")
+
+        summary = saft.ns4102_summary_from_tb(dataframe)
+        validation_future = executor.submit(
+            saft.validate_saft_against_xsd,
+            file_path,
+            header.file_version if header else None,
+        )
+        enrichment_future = executor.submit(enrich_from_header, header)
+
+        _report_progress(75, f"Validerer og beriker data for {file_name}")
+
+        validation = validation_future.result()
+        enrichment = enrichment_future.result()
+        trial_balance_result = (
+            trial_balance_future.result() if trial_balance_future is not None else None
+        )
+
+        if trial_balance_result is not None:
+            trial_balance = trial_balance_result.balance
+            trial_balance_error = trial_balance_result.error
+
+    if validation is None:
+        raise RuntimeError("Validering av SAF-T kunne ikke fullføres.")
+
+    if enrichment is None:
+        raise RuntimeError("Beriking fra Brønnøysundregistrene manglet resultat.")
 
     _report_progress(100, f"Ferdig med {file_name}")
 
