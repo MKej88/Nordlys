@@ -136,4 +136,8 @@ def _resolve_industry_future(
                 return industry, None
             except Exception as cache_exc:  # pragma: no cover - sjelden
                 return None, str(cache_exc)
-        return None, str(exc)
+        try:
+            fallback = classify_from_brreg_json(orgnr, company_name, {})
+        except Exception:
+            return None, str(exc)
+        return fallback, str(exc)
