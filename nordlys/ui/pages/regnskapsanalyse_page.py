@@ -85,7 +85,7 @@ class RegnskapsanalysePage(QWidget):
             button.setAutoExclusive(True)
             button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             button.clicked.connect(
-                lambda checked, index=idx: self._set_active_section(index)
+                lambda _checked, index=idx: self._set_active_section(index)
             )
             button.setObjectName("analysisSectionButton")
             nav_layout.addWidget(button)
