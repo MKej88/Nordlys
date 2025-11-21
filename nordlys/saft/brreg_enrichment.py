@@ -81,7 +81,9 @@ def enrich_from_header(header: Optional["SaftHeader"]) -> BrregEnrichment:
 
     with ThreadPoolExecutor(max_workers=2) as executor:
         brreg_future = executor.submit(fetch_brreg, orgnr)
-        industry_future = executor.submit(classify_from_orgnr, orgnr, header.company_name)
+        industry_future = executor.submit(
+            classify_from_orgnr, orgnr, header.company_name
+        )
 
         brreg_json, brreg_error = _resolve_brreg_future(brreg_future)
         industry, industry_error = _resolve_industry_future(
