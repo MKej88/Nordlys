@@ -115,3 +115,29 @@ def test_enrich_from_header_bypasses_cache_without_orgnr() -> None:
 
     assert result.brreg_error == "SAF-T mangler organisasjonsnummer."
     assert result.industry_error == "SAF-T mangler organisasjonsnummer."
+
+
+def test_enrich_from_header_falls_back_to_name_on_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def failing_classify(orgnr: str, company_name: str | None):
+        raise RuntimeError("Brreg nede")
+
+    monkeypatch.setattr(brreg_enrichment, "fetch_brreg", lambda orgnr: ({}, None))
+    monkeypatch.setattr(brreg_enrichment, "classify_from_orgnr", failing_classify)
+    monkeypatch.setattr(brreg_enrichment, "load_cached_brreg", lambda orgnr: None)
+
+    header = SaftHeader(
+        company_name="Bygg og Anlegg AS",
+        orgnr="123456789",
+        fiscal_year=None,
+        period_start=None,
+        period_end=None,
+        file_version=None,
+    )
+
+    result = enrich_from_header(header)
+
+    assert result.industry is not None
+    assert result.industry.group == "Salg av varer og tjenester"
+    assert result.industry_error == "Brreg nede"
