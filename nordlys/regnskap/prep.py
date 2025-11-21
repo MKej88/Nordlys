@@ -73,13 +73,20 @@ class _CachedColumn:
 class _PrefixSumHelper:
     """Håndterer caching av summeringer for kontoprefikser."""
 
-    __slots__ = ("_konto_text", "_column_cache", "_index", "_zero_series")
+    __slots__ = (
+        "_konto_text",
+        "_column_cache",
+        "_index",
+        "_zero_series",
+        "_mask_cache",
+    )
 
     def __init__(self, konto_text: "pd.Series") -> None:
         self._konto_text = konto_text
         self._column_cache: dict[str, _CachedColumn] = {}
         self._index = konto_text.index
         self._zero_series: Optional["pd.Series"] = None
+        self._mask_cache: dict[tuple[str, ...], "pd.Series"] = {}
 
     def is_compatible(self, prepared: "pd.DataFrame") -> bool:
         return prepared.index.equals(self._index)
@@ -112,7 +119,10 @@ class _PrefixSumHelper:
             self._column_cache[column] = cached
 
         values = cached.numeric
-        mask = self._konto_text.str.startswith(prefix_tuple)
+        mask = self._mask_cache.get(prefix_tuple)
+        if mask is None or not mask.index.equals(self._index):
+            mask = self._konto_text.str.startswith(prefix_tuple)
+            self._mask_cache[prefix_tuple] = mask
         if not mask.any():
             return 0.0
         return float(values.loc[mask].sum())
