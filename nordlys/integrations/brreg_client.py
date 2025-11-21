@@ -162,9 +162,7 @@ def _fetch_json(
         if list_policy is _ListPolicy.FIRST_DICT:
             for element in payload:
                 if isinstance(element, dict):
-                    return finalize(
-                        BrregServiceResult(element, None, None, from_cache)
-                    )
+                    return finalize(BrregServiceResult(element, None, None, from_cache))
             return finalize(
                 BrregServiceResult(
                     None,
