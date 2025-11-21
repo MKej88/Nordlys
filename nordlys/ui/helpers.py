@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from types import TracebackType
 from typing import Generic, TypeVar
 
 from PySide6.QtCore import QObject
@@ -20,5 +21,10 @@ class SignalBlocker(Generic[T]):
     def __enter__(self) -> "SignalBlocker[T]":
         return self
 
-    def __exit__(self, exc_type, exc, tb) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
         self._obj.blockSignals(self._was_blocked)
