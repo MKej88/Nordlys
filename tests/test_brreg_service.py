@@ -86,6 +86,35 @@ def test_fetch_enhetsregister_uses_fallback_cache(monkeypatch):
     assert result_second.from_cache is True
 
 
+def test_fetch_enhetsregister_caches_not_found(monkeypatch):
+    monkeypatch.setattr(brreg_client, "REQUESTS_CACHE_AVAILABLE", False, raising=False)
+    brreg_cache.clear_fallback_cache()
+    brreg_cache.set_session(None)
+
+    call_count = {"value": 0}
+
+    class DummyResponse:
+        status_code = 404
+        from_cache = False
+
+        def raise_for_status(self) -> None:
+            return None
+
+    class DummySession:
+        def get(self, url: str, headers: dict[str, str], timeout: int) -> DummyResponse:
+            call_count["value"] += 1
+            return DummyResponse()
+
+    monkeypatch.setattr(brreg_client, "get_session", lambda: DummySession())
+
+    result_first = brreg_service.fetch_enhetsregister("987654321")
+    result_second = brreg_service.fetch_enhetsregister("987654321")
+
+    assert call_count["value"] == 1
+    assert result_first.error_code == "not_found"
+    assert result_second.from_cache is True
+
+
 def test_fetch_regnskapsregister_accepts_list_payload(monkeypatch):
     monkeypatch.setattr(brreg_client, "REQUESTS_CACHE_AVAILABLE", False, raising=False)
     brreg_cache.clear_fallback_cache()
