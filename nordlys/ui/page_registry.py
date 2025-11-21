@@ -18,7 +18,6 @@ if TYPE_CHECKING:  # pragma: no cover - kun for typekontroll
     )
     from .pages.dashboard_page import DashboardPage
     from .pages.dataframe_page import DataFramePage
-    from .pages.import_page import ImportPage
     from .pages.revision_pages import (
         ChecklistPage,
         CostVoucherReviewPage,
