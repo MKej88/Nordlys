@@ -311,6 +311,11 @@ class RegnskapsanalysePage(QWidget):
             previous = "I fjor"
         return current, previous
 
+    def _snapshot_column_label(self, snapshot: SummarySnapshot) -> str:
+        base_label = str(snapshot.year) if snapshot.year is not None else snapshot.label
+        label = base_label or "—"
+        return f"{label}*" if snapshot.is_current else label
+
     def _clear_balance_table(self) -> None:
         self.balance_table.hide()
         self.balance_table.setRowCount(0)
@@ -331,11 +336,19 @@ class RegnskapsanalysePage(QWidget):
         rows = regnskap.compute_balance_analysis(self._prepared_df)
         current_label, previous_label = self._year_headers()
         table_rows: List[Tuple[object, object, object, object]] = []
+        spacer_after_labels = {
+            "Sum eiendeler",
+            "Sum egenkapital og gjeld",
+            "Egenkapital",
+            "Sum langsiktig gjeld",
+        }
         for row in rows:
             if row.is_header:
                 table_rows.append((row.label, "", "", ""))
             else:
                 table_rows.append((row.label, row.current, row.previous, row.change))
+                if row.label in spacer_after_labels:
+                    table_rows.append(("", "", "", ""))
         populate_table(
             self.balance_table,
             ["Kategori", current_label, previous_label, "Endring"],
@@ -432,8 +445,7 @@ class RegnskapsanalysePage(QWidget):
             return
 
         columns = ["Kategori"] + [
-            f"{snapshot.label}*" if snapshot.is_current else snapshot.label
-            for snapshot in self._summary_history
+            self._snapshot_column_label(snapshot) for snapshot in self._summary_history
         ]
         table_rows = self._multi_year_value_rows()
 
@@ -859,6 +871,10 @@ class RegnskapsanalysePage(QWidget):
             "Avvik",
             "Sum eiendeler",
             "Sum egenkapital og gjeld",
+            "Sum kortsiktig gjeld",
+            "Langsiktig gjeld",
+            "Kortsiktig gjeld",
+            "Sum langsiktig gjeld",
         }
         bottom_border_labels = {
             "Eiendeler",
@@ -868,6 +884,9 @@ class RegnskapsanalysePage(QWidget):
             "Kortsiktig gjeld",
             "Sum eiendeler",
             "Sum egenkapital og gjeld",
+            "Sum kortsiktig gjeld",
+            "Langsiktig gjeld",
+            "Sum langsiktig gjeld",
         }
         top_border_labels = {"Eiendeler", "Sum eiendeler", "Sum egenkapital og gjeld"}
         table = self.balance_table

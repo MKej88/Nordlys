@@ -155,6 +155,8 @@ def compute_balance_analysis(prepared: "pd.DataFrame") -> List[AnalysisRow]:
     egenkapital_current = _value_or_zero(egenkapital_row.current)
     egenkapital_previous = _value_or_zero(egenkapital_row.previous)
 
+    ek_rows.append(_make_header("Langsiktig gjeld"))
+
     avsetninger = -sum_ub("21")
     avsetninger_py = -sum_py("21")
     avsetninger_row = _make_row(
@@ -164,7 +166,6 @@ def compute_balance_analysis(prepared: "pd.DataFrame") -> List[AnalysisRow]:
     avsetninger_current = _value_or_zero(avsetninger_row.current)
     avsetninger_previous = _value_or_zero(avsetninger_row.previous)
 
-    ek_rows.append(_make_header("Langsiktig gjeld"))
     annen_langsiktig = -sum_ub("22")
     annen_langsiktig_py = -sum_py("22")
     annen_langsiktig_row = _make_row(
@@ -174,8 +175,8 @@ def compute_balance_analysis(prepared: "pd.DataFrame") -> List[AnalysisRow]:
     annen_langsiktig_current = _value_or_zero(annen_langsiktig_row.current)
     annen_langsiktig_previous = _value_or_zero(annen_langsiktig_row.previous)
 
-    sum_langsiktig = annen_langsiktig_current
-    sum_langsiktig_py = annen_langsiktig_previous
+    sum_langsiktig = annen_langsiktig_current + avsetninger_current
+    sum_langsiktig_py = annen_langsiktig_previous + avsetninger_previous
     ek_rows.append(_make_row("Sum langsiktig gjeld", sum_langsiktig, sum_langsiktig_py))
 
     ek_rows.append(_make_header("Kortsiktig gjeld"))
@@ -203,15 +204,8 @@ def compute_balance_analysis(prepared: "pd.DataFrame") -> List[AnalysisRow]:
 
     ek_rows.append(_make_row("Sum kortsiktig gjeld", kortsiktig_sum, kortsiktig_sum_py))
 
-    sum_ek_gjeld = (
-        egenkapital_current + avsetninger_current + sum_langsiktig + kortsiktig_sum
-    )
-    sum_ek_gjeld_py = (
-        egenkapital_previous
-        + avsetninger_previous
-        + sum_langsiktig_py
-        + kortsiktig_sum_py
-    )
+    sum_ek_gjeld = egenkapital_current + sum_langsiktig + kortsiktig_sum
+    sum_ek_gjeld_py = egenkapital_previous + sum_langsiktig_py + kortsiktig_sum_py
 
     ek_rows.append(_make_row("Sum egenkapital og gjeld", sum_ek_gjeld, sum_ek_gjeld_py))
 
