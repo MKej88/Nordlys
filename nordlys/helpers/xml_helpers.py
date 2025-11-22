@@ -19,7 +19,11 @@ def findall_any_namespace(inv: ET.Element, localname: str) -> List[ET.Element]:
 
     matches: List[ET.Element] = []
     for elem in inv.iter():
-        if elem.tag.split("}")[-1].lower() == localname.lower():
+        tag_localname = elem.tag.split("}")[-1]
+        if "}" not in elem.tag and ":" in elem.tag:
+            tag_localname = elem.tag.split(":")[-1]
+
+        if tag_localname.lower() == localname.lower():
             matches.append(elem)
     return matches
 
