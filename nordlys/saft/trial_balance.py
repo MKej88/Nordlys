@@ -22,7 +22,12 @@ class TrialBalanceResult:
 
 
 def compute_trial_balance(file_path: str) -> TrialBalanceResult:
-    """Returner prøvebalansen hvis streaming er aktivert."""
+    """Returner et tomt resultat uten streaming, eller beregn prøvebalanse.
+
+    Når ``NORDLYS_SAFT_STREAMING`` er deaktivert returneres et tomt
+    ``TrialBalanceResult`` uten balanse eller feil. Dersom streaming er aktivert
+    beregnes prøvebalansen, og eventuelle feil formidles via ``error``-feltet.
+    """
 
     if not SAFT_STREAMING_ENABLED:
         return TrialBalanceResult(balance=None, error=None)
