@@ -9,6 +9,8 @@ Brønnøysundregistrene.
 
 - Import av én eller flere SAF-T-filer kjører i bakgrunnen via `TaskRunner`,
   med tydelig fremdrift og statusmeldinger i GUI-et.
+- Trådantallet under import begrenses automatisk til to når filene er store,
+  slik at minnebruken holder seg moderat.
 - Mulighet for strømming av hovedboken med miljøvariabelen
   `NORDLYS_SAFT_STREAMING=1`, slik at prøvebalansen sjekkes før hele filen er
   lest. Sett `NORDLYS_SAFT_STREAMING_VALIDATE=1` hvis du vil validere samtidig
