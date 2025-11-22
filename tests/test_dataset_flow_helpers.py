@@ -70,30 +70,29 @@ def _create_pyside6_stubs() -> dict[str, types.ModuleType]:
     }
 
 
-@pytest.fixture(autouse=True)
-def pyside6_stubs(monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, None]:
-    if "PySide6" in sys.modules:
-        yield
-        return
-
-    modules = _create_pyside6_stubs()
-    for name, module in modules.items():
-        monkeypatch.setitem(sys.modules, name, module)
-
-    yield
-
-    for name in modules:
-        sys.modules.pop(name, None)
-    importlib.invalidate_caches()
-
-
 @pytest.fixture()
 def trial_balance_formatter(
-    pyside6_stubs,
-) -> Callable[[Optional[dict[str, Decimal]], Optional[str]], Optional[tuple[str, str]]]:
+    monkeypatch: pytest.MonkeyPatch,
+) -> Generator[
+    Callable[[Optional[dict[str, Decimal]], Optional[str]], Optional[tuple[str, str]]],
+    None,
+    None,
+]:
+    modules: Optional[dict[str, types.ModuleType]] = None
+    if "PySide6" not in sys.modules:
+        modules = _create_pyside6_stubs()
+        for name, module in modules.items():
+            monkeypatch.setitem(sys.modules, name, module)
+        importlib.invalidate_caches()
+
     from nordlys.ui.data_controller.dataset_flow import format_trial_balance_misc_entry
 
-    return format_trial_balance_misc_entry
+    yield format_trial_balance_misc_entry
+
+    if modules:
+        for name in modules:
+            sys.modules.pop(name, None)
+        importlib.invalidate_caches()
 
 
 def test_format_trial_balance_misc_entry_balanced(
