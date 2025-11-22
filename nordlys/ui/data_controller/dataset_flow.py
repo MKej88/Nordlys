@@ -3,18 +3,66 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Optional, Sequence, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Tuple
 
 from PySide6.QtWidgets import QMessageBox
 
 from ...saft.periods import format_header_period
 from ...helpers.formatting import format_currency
+from ...settings import SAFT_STREAMING_ENABLED
 from .context import ControllerContext
 from .messaging import ImportMessenger
 
 if TYPE_CHECKING:
     from ...saft.loader import SaftLoadResult
+
+
+def format_trial_balance_misc_entry(
+    trial_balance: Optional[Dict[str, Decimal]],
+    error: Optional[str],
+) -> Optional[Tuple[str, str]]:
+    """Formaterer prøvebalanse-resultatet for bruk i "Annet"-kortet.
+
+    Når streaming er slått av returneres en enkel statusmelding slik at brukeren
+    forstår hvorfor kontrollen ikke er tilgjengelig.
+    """
+
+    if error:
+        return ("Prøvebalanse", error.strip())
+
+    if not trial_balance:
+        if not SAFT_STREAMING_ENABLED:
+            return ("Prøvebalanse", "Ikke beregnet (streaming er av).")
+        return None
+
+    def _fmt(value: Optional[Decimal]) -> Optional[str]:
+        if value is None:
+            return None
+        try:
+            return format_currency(float(value))
+        except (TypeError, ValueError):
+            return None
+
+    debet = _fmt(trial_balance.get("debet"))
+    kredit = _fmt(trial_balance.get("kredit"))
+    diff_value = trial_balance.get("diff")
+    diff = _fmt(diff_value)
+
+    parts: List[str] = []
+    if debet:
+        parts.append(f"Debet: {debet}")
+    if kredit:
+        parts.append(f"Kredit: {kredit}")
+    if diff:
+        suffix = " (OK)" if diff_value == Decimal("0") else ""
+        parts.append(f"Diff: {diff}{suffix}")
+
+    if not parts:
+        return None
+
+    return ("Prøvebalanse", " · ".join(parts))
 
 
 class DatasetFlowController:
@@ -136,6 +184,11 @@ class DatasetFlowController:
                 misc_entries.append(("Periode", period))
             if revenue_txt and revenue_txt != "—":
                 misc_entries.append(("Driftsinntekter", revenue_txt))
+            trial_balance_entry = format_trial_balance_misc_entry(
+                result.trial_balance, result.trial_balance_error
+            )
+            if trial_balance_entry:
+                misc_entries.append(trial_balance_entry)
             misc_entries.append(
                 ("Oppdatert", datetime.now().strftime("%d.%m.%Y %H:%M"))
             )
