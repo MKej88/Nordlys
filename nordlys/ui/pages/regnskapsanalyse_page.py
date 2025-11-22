@@ -341,6 +341,7 @@ class RegnskapsanalysePage(QWidget):
             ["Kategori", current_label, previous_label, "Endring"],
             table_rows,
             money_cols={1, 2, 3},
+            hide_zero_rows=True,
         )
         self.balance_info.hide()
         self.balance_table.show()
@@ -369,6 +370,7 @@ class RegnskapsanalysePage(QWidget):
             ["Kategori", current_label, previous_label, "Endring"],
             table_rows,
             money_cols={1, 2, 3},
+            hide_zero_rows=True,
         )
         self.result_info.hide()
         self.result_table.show()
