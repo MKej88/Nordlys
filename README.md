@@ -36,7 +36,7 @@ Brønnøysundregistrene.
 
 ## Forutsetninger
 
-- Python 3.11 anbefales (samme versjon som brukes for linting og formattering).
+- Python 3.11 anbefales (samme versjon som brukes for linting og formatering).
 - Operativsystem med støtte for PySide6 (Windows, macOS eller Linux med X11
   eller Wayland).
 - Tilgang til internett dersom Brønnøysund-data skal hentes.
