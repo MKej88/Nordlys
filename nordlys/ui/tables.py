@@ -81,9 +81,19 @@ def populate_table(
     rows: Iterable[Sequence[object]],
     *,
     money_cols: Optional[Iterable[int]] = None,
+    hide_zero_rows: bool = False,
+    zero_value_cols: Optional[Iterable[int]] = None,
 ) -> None:
     money_idx = set(money_cols or [])
+    zero_value_idx = set(zero_value_cols or money_idx)
     row_buffer = list(rows)
+
+    if hide_zero_rows and zero_value_idx:
+        row_buffer = [
+            row
+            for row in row_buffer
+            if not _all_numeric_columns_zero(row, zero_value_idx)
+        ]
 
     table.setRowCount(0)
     table.setColumnCount(len(columns))
@@ -180,3 +190,22 @@ def _format_value(value: object, money: bool) -> str:
             return format_integer_norwegian(numeric)
         return format_money_norwegian(numeric)
     return str(value)
+
+
+def _all_numeric_columns_zero(row: Sequence[object], numeric_cols: set[int]) -> bool:
+    numeric_values = [_numeric_value(row, index) for index in numeric_cols]
+    has_numeric = any(value is not None for value in numeric_values)
+    if not has_numeric:
+        return False
+    return all((value or 0.0) == 0 for value in numeric_values if value is not None)
+
+
+def _numeric_value(row: Sequence[object], index: int) -> Optional[float]:
+    if index >= len(row):
+        return None
+    value = row[index]
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
