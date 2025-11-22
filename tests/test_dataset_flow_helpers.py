@@ -78,14 +78,19 @@ def trial_balance_formatter(
     None,
     None,
 ]:
-    modules = _create_pyside6_stubs()
-    for name, module in modules.items():
-        monkeypatch.setitem(sys.modules, name, module)
+    with monkeypatch.context() as patcher:
+        modules = _create_pyside6_stubs()
+        for name, module in modules.items():
+            patcher.setitem(sys.modules, name, module)
+        importlib.invalidate_caches()
+
+        from nordlys.ui.data_controller.dataset_flow import (
+            format_trial_balance_misc_entry,
+        )
+
+        yield format_trial_balance_misc_entry
+
     importlib.invalidate_caches()
-
-    from nordlys.ui.data_controller.dataset_flow import format_trial_balance_misc_entry
-
-    yield format_trial_balance_misc_entry
 
 
 def test_format_trial_balance_misc_entry_balanced(
