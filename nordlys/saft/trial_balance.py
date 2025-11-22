@@ -39,6 +39,15 @@ def compute_trial_balance(file_path: str) -> TrialBalanceResult:
     except Exception as exc:  # pragma: no cover - robust mot eksterne feil
         return TrialBalanceResult(balance=None, error=str(exc))
 
+    if trial_balance is None:
+        return TrialBalanceResult(
+            balance=None,
+            error=(
+                "Kunne ikke beregne prøvebalanse: mottok ingen data for "
+                f"{Path(file_path).name}."
+            ),
+        )
+
     error: Optional[str] = None
     if trial_balance.get("diff") != Decimal("0"):
         error = "Prøvebalansen går ikke opp (diff {diff}) for {file}".format(
