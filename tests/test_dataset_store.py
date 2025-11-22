@@ -81,6 +81,19 @@ def test_customer_sales_balance_requires_both_sources() -> None:
     assert store.customer_sales_total is None
 
 
+def test_dataset_label_includes_company_name_first() -> None:
+    store = SaftDatasetStore()
+    result = _make_result(
+        "fil1.xml",
+        analysis_year=2024,
+        fiscal_year="2024",
+    )
+
+    store.apply_batch([result])
+
+    assert store.dataset_label(result) == "Test AS 2024"
+
+
 def test_current_year_text_prefers_analysis_year() -> None:
     store = SaftDatasetStore()
     result = _make_result(

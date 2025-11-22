@@ -153,14 +153,30 @@ class SaftDatasetStore:
         ]
 
     def dataset_label(self, result: SaftLoadResult) -> str:
+        header = result.header
+        company = None
+        if header and header.company_name:
+            company_name = str(header.company_name).strip()
+            company = company_name or None
+
         year = self._years.get(result.file_path)
         if year is None and result.analysis_year is not None:
             year = result.analysis_year
+
+        year_text = None
         if year is not None:
-            return str(year)
-        header = result.header
-        if header and header.fiscal_year and str(header.fiscal_year).strip():
-            return str(header.fiscal_year).strip()
+            year_text = str(year)
+        elif header and header.fiscal_year:
+            fiscal_year = str(header.fiscal_year).strip()
+            year_text = fiscal_year or None
+
+        if company and year_text:
+            return f"{company} {year_text}"
+        if company:
+            return company
+        if year_text:
+            return year_text
+
         position = self._positions.get(result.file_path)
         if position is not None:
             return str(position + 1)
