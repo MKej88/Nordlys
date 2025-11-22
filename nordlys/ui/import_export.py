@@ -13,6 +13,7 @@ from ..core.task_runner import TaskRunner
 from ..helpers.lazy_imports import lazy_import
 from .data_manager import SaftDatasetStore
 from .excel_export import export_dataset_to_excel
+from .pdf_export import export_dataset_to_pdf
 from .progress_display import ImportProgressDisplay
 
 if TYPE_CHECKING:
@@ -152,6 +153,32 @@ class ImportExportController(QObject):
         except Exception as exc:  # pragma: no cover - vises i GUI
             self._log_import_event(f"Feil ved eksport: {exc}")
             QMessageBox.critical(self._window, "Feil ved eksport", str(exc))
+
+    def handle_export_pdf(self) -> None:
+        if self._dataset_store.saft_df is None:
+            QMessageBox.warning(
+                self._window,
+                "Ingenting å eksportere",
+                "Last inn SAF-T først.",
+            )
+            return
+        file_name, _ = QFileDialog.getSaveFileName(
+            self._window,
+            "Eksporter rapport",
+            str(Path.home() / "SAFT_rapport.pdf"),
+            "PDF (*.pdf)",
+        )
+        if not file_name:
+            return
+        if not file_name.lower().endswith(".pdf"):
+            file_name = f"{file_name}.pdf"
+        try:
+            export_dataset_to_pdf(self._dataset_store, file_name)
+            self._status_callback(f"PDF eksportert: {file_name}")
+            self._log_import_event(f"PDF eksportert: {Path(file_name).name}")
+        except Exception as exc:  # pragma: no cover - vises i GUI
+            self._log_import_event(f"Feil ved PDF-eksport: {exc}")
+            QMessageBox.critical(self._window, "Feil ved PDF-eksport", str(exc))
 
     # endregion
 

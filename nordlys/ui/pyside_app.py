@@ -64,6 +64,7 @@ class NordlysWindow(QMainWindow):
         self._import_controller: Optional[ImportExportController] = None
         self.header_bar.open_requested.connect(self._handle_open_requested)
         self.header_bar.export_requested.connect(self._handle_export_requested)
+        self.header_bar.export_pdf_requested.connect(self._handle_export_pdf_requested)
 
     def _bind_components(self, components: WindowComponents) -> None:
         self.nav_panel = components.nav_panel
@@ -153,6 +154,10 @@ class NordlysWindow(QMainWindow):
     def _handle_export_requested(self) -> None:
         controller = self._ensure_import_controller()
         controller.handle_export()
+
+    def _handle_export_pdf_requested(self) -> None:
+        controller = self._ensure_import_controller()
+        controller.handle_export_pdf()
 
     # endregion
 

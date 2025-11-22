@@ -26,6 +26,7 @@ class HeaderBar(QWidget):
 
     open_requested = Signal()
     export_requested = Signal()
+    export_pdf_requested = Signal()
     dataset_changed = Signal(str)
 
     def __init__(self) -> None:
@@ -62,6 +63,11 @@ class HeaderBar(QWidget):
         self.btn_export.clicked.connect(self.export_requested)
         layout.addWidget(self.btn_export)
 
+        self.btn_export_pdf = QPushButton("Eksporter rapport (PDF)")
+        self.btn_export_pdf.setEnabled(False)
+        self.btn_export_pdf.clicked.connect(self.export_pdf_requested)
+        layout.addWidget(self.btn_export_pdf)
+
     # region API
     def set_title(self, title: str) -> None:
         self.title_label.setText(title)
@@ -71,6 +77,7 @@ class HeaderBar(QWidget):
 
     def set_export_enabled(self, enabled: bool) -> None:
         self.btn_export.setEnabled(enabled)
+        self.btn_export_pdf.setEnabled(enabled)
 
     def set_dataset_enabled(self, enabled: bool) -> None:
         self.dataset_combo.setEnabled(enabled)

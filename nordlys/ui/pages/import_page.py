@@ -58,6 +58,15 @@ class ImportPage(QWidget):
         )
         self.status_card.add_widget(self.status_label)
 
+        self.trial_balance_label = QLabel("Prøvebalanse er ikke beregnet ennå.")
+        self.trial_balance_label.setObjectName("statusLabel")
+        self.trial_balance_label.setWordWrap(True)
+        self.trial_balance_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        self.trial_balance_label.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.MinimumExpanding
+        )
+        self.status_card.add_widget(self.trial_balance_label)
+
         self.validation_label = QLabel("Ingen XSD-validering er gjennomført.")
         self.validation_label.setObjectName("statusLabel")
         self.validation_label.setWordWrap(True)
@@ -191,6 +200,11 @@ class ImportPage(QWidget):
             message = f"{message}\nDetaljer: {first_line}"
         self.validation_label.setText(message)
         self.validation_label.updateGeometry()
+        self.status_card.updateGeometry()
+
+    def update_trial_balance_status(self, message: str) -> None:
+        self.trial_balance_label.setText(message)
+        self.trial_balance_label.updateGeometry()
         self.status_card.updateGeometry()
 
     def update_brreg_status(self, message: str) -> None:
