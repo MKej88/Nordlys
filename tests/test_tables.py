@@ -29,9 +29,7 @@ def test_populate_table_filters_zero_rows(qapp: QApplication) -> None:
         ("Kontanter, bankinnskudd o.l.", 100, 0, 100),
     ]
 
-    populate_table(
-        table, columns, rows, money_cols={1, 2, 3}, hide_zero_rows=True
-    )
+    populate_table(table, columns, rows, money_cols={1, 2, 3}, hide_zero_rows=True)
 
     assert table.rowCount() == 2
     assert table.item(0, 0).text() == "Eiendeler"
