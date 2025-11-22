@@ -1,6 +1,11 @@
+import importlib
 import sys
 import types
+from collections.abc import Generator
 from decimal import Decimal
+from typing import Callable, Optional
+
+import pytest
 
 
 class _LazyModule(types.ModuleType):
@@ -29,13 +34,6 @@ class _DummyBase(metaclass=_DummyMeta):
         return None
 
 
-pyside_stub = types.ModuleType("PySide6")
-pyside_stub.__path__ = []  # type: ignore[attr-defined]
-qtwidgets = _LazyModule("PySide6.QtWidgets")
-qtgui = _LazyModule("PySide6.QtGui")
-qtcore = _LazyModule("PySide6.QtCore")
-
-
 class _Signal:
     def __init__(self, *args, **kwargs):
         pass
@@ -47,9 +45,6 @@ class _Signal:
         pass
 
 
-qtcore.Signal = _Signal
-
-
 class _Qt:
     UserRole = 256
     DisplayRole = 0
@@ -58,22 +53,57 @@ class _Qt:
         return 0
 
 
-qtcore.Qt = _Qt()
+def _create_pyside6_stubs() -> dict[str, types.ModuleType]:
+    pyside_stub = types.ModuleType("PySide6")
+    pyside_stub.__path__ = []  # type: ignore[attr-defined]
+    qtwidgets = _LazyModule("PySide6.QtWidgets")
+    qtgui = _LazyModule("PySide6.QtGui")
+    qtcore = _LazyModule("PySide6.QtCore")
+    qtcore.Signal = _Signal
+    qtcore.Qt = _Qt()
 
-sys.modules["PySide6"] = pyside_stub
-sys.modules["PySide6.QtWidgets"] = qtwidgets
-sys.modules["PySide6.QtGui"] = qtgui
-sys.modules["PySide6.QtCore"] = qtcore
+    return {
+        "PySide6": pyside_stub,
+        "PySide6.QtWidgets": qtwidgets,
+        "PySide6.QtGui": qtgui,
+        "PySide6.QtCore": qtcore,
+    }
 
-from nordlys.ui.data_controller.dataset_flow import format_trial_balance_misc_entry
+
+@pytest.fixture(autouse=True)
+def pyside6_stubs(monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, None]:
+    if "PySide6" in sys.modules:
+        yield
+        return
+
+    modules = _create_pyside6_stubs()
+    for name, module in modules.items():
+        monkeypatch.setitem(sys.modules, name, module)
+
+    yield
+
+    for name in modules:
+        sys.modules.pop(name, None)
+    importlib.invalidate_caches()
 
 
-def test_format_trial_balance_misc_entry_balanced(monkeypatch) -> None:
+@pytest.fixture()
+def trial_balance_formatter(
+    pyside6_stubs,
+) -> Callable[[Optional[dict[str, Decimal]], Optional[str]], Optional[tuple[str, str]]]:
+    from nordlys.ui.data_controller.dataset_flow import format_trial_balance_misc_entry
+
+    return format_trial_balance_misc_entry
+
+
+def test_format_trial_balance_misc_entry_balanced(
+    monkeypatch: pytest.MonkeyPatch, trial_balance_formatter
+) -> None:
     monkeypatch.setattr(
         "nordlys.ui.data_controller.dataset_flow.SAFT_STREAMING_ENABLED", True
     )
 
-    entry = format_trial_balance_misc_entry(
+    entry = trial_balance_formatter(
         {"debet": Decimal("1000"), "kredit": Decimal("1000"), "diff": Decimal("0")},
         error=None,
     )
@@ -86,12 +116,14 @@ def test_format_trial_balance_misc_entry_balanced(monkeypatch) -> None:
     assert "Diff: 0 (OK)" in content
 
 
-def test_format_trial_balance_misc_entry_error_precedence(monkeypatch) -> None:
+def test_format_trial_balance_misc_entry_error_precedence(
+    monkeypatch: pytest.MonkeyPatch, trial_balance_formatter
+) -> None:
     monkeypatch.setattr(
         "nordlys.ui.data_controller.dataset_flow.SAFT_STREAMING_ENABLED", True
     )
 
-    entry = format_trial_balance_misc_entry(
+    entry = trial_balance_formatter(
         {"debet": Decimal("50")},
         error="Kontroll feilet",
     )
@@ -99,11 +131,13 @@ def test_format_trial_balance_misc_entry_error_precedence(monkeypatch) -> None:
     assert entry == ("Prøvebalanse", "Kontroll feilet")
 
 
-def test_format_trial_balance_misc_entry_streaming_disabled(monkeypatch) -> None:
+def test_format_trial_balance_misc_entry_streaming_disabled(
+    monkeypatch: pytest.MonkeyPatch, trial_balance_formatter
+) -> None:
     monkeypatch.setattr(
         "nordlys.ui.data_controller.dataset_flow.SAFT_STREAMING_ENABLED", False
     )
 
-    entry = format_trial_balance_misc_entry(None, error=None)
+    entry = trial_balance_formatter(None, error=None)
 
     assert entry == ("Prøvebalanse", "Ikke beregnet (streaming er av).")
