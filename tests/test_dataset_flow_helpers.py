@@ -78,21 +78,14 @@ def trial_balance_formatter(
     None,
     None,
 ]:
-    modules: Optional[dict[str, types.ModuleType]] = None
-    if "PySide6" not in sys.modules:
-        modules = _create_pyside6_stubs()
-        for name, module in modules.items():
-            monkeypatch.setitem(sys.modules, name, module)
-        importlib.invalidate_caches()
+    modules = _create_pyside6_stubs()
+    for name, module in modules.items():
+        monkeypatch.setitem(sys.modules, name, module)
+    importlib.invalidate_caches()
 
     from nordlys.ui.data_controller.dataset_flow import format_trial_balance_misc_entry
 
     yield format_trial_balance_misc_entry
-
-    if modules:
-        for name in modules:
-            sys.modules.pop(name, None)
-        importlib.invalidate_caches()
 
 
 def test_format_trial_balance_misc_entry_balanced(
