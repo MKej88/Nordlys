@@ -31,6 +31,11 @@ def export_dataset_to_excel(dataset_store: "SaftDatasetStore", file_name: str) -
         customer_sales = dataset_store.customer_sales
         if customer_sales is not None:
             customer_sales.to_excel(writer, sheet_name="Sales_by_customer", index=False)
+        supplier_purchases = dataset_store.supplier_purchases
+        if supplier_purchases is not None:
+            supplier_purchases.to_excel(
+                writer, sheet_name="Purchases_by_supplier", index=False
+            )
         brreg_json = dataset_store.brreg_json
         if brreg_json:
             pd.json_normalize(brreg_json).to_excel(
@@ -40,3 +45,18 @@ def export_dataset_to_excel(dataset_store: "SaftDatasetStore", file_name: str) -
         if brreg_map:
             map_df = pd.DataFrame(list(brreg_map.items()), columns=["Felt", "Verdi"])
             map_df.to_excel(writer, sheet_name="Brreg_Mapping", index=False)
+        vouchers = dataset_store.cost_vouchers
+        if vouchers:
+            voucher_rows = [
+                {
+                    "Bilagsnr": voucher.document_number or voucher.transaction_id,
+                    "Dato": voucher.transaction_date,
+                    "Leverandør": voucher.supplier_name or voucher.supplier_id,
+                    "Beløp": voucher.amount,
+                    "Beskrivelse": voucher.description,
+                }
+                for voucher in vouchers
+            ]
+            pd.DataFrame(voucher_rows).to_excel(
+                writer, sheet_name="Cost_vouchers", index=False
+            )

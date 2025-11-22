@@ -178,6 +178,25 @@ class DatasetFlowController:
                 self._context.parent, "XSD-validering", validation.details
             )
 
+        trial_message = "Prøvebalanse er ikke beregnet (streaming er av)."
+        if store.trial_balance_checked:
+            if store.trial_balance_error:
+                trial_message = f"Prøvebalanse: {store.trial_balance_error}"
+                if pages.import_page:
+                    pages.import_page.record_error(trial_message)
+                messenger.log_import_event(trial_message)
+                QMessageBox.warning(
+                    self._context.parent,
+                    "Prøvebalanse har avvik",
+                    trial_message,
+                )
+            else:
+                trial_message = "Prøvebalanse: OK"
+                if log_event:
+                    messenger.log_import_event(trial_message)
+        if pages.import_page:
+            pages.import_page.update_trial_balance_status(trial_message)
+
         if pages.sales_ar_page:
             pages.sales_ar_page.set_controls_enabled(store.has_customer_data)
             pages.sales_ar_page.update_sales_reconciliation(

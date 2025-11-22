@@ -63,6 +63,9 @@ class SaftDatasetStore:
         self._customer_sales: Optional[pd.DataFrame] = None
         self._supplier_purchases: Optional[pd.DataFrame] = None
         self._cost_vouchers: List["saft_customers.CostVoucher"] = []
+        self._trial_balance: Optional[Dict[str, object]] = None
+        self._trial_balance_error: Optional[str] = None
+        self._trial_balance_checked: bool = False
 
         self._industry: Optional[IndustryClassification] = None
         self._industry_error: Optional[str] = None
@@ -133,6 +136,11 @@ class SaftDatasetStore:
             result.supplier_purchases
         )
         self._cost_vouchers = list(result.cost_vouchers)
+        self._trial_balance = result.trial_balance
+        self._trial_balance_error = result.trial_balance_error
+        self._trial_balance_checked = bool(
+            result.trial_balance is not None or result.trial_balance_error is not None
+        )
         return True
 
     def dataset_items(self) -> List[DatasetMetadata]:
@@ -145,14 +153,30 @@ class SaftDatasetStore:
         ]
 
     def dataset_label(self, result: SaftLoadResult) -> str:
+        header = result.header
+        company = None
+        if header and header.company_name:
+            company_name = str(header.company_name).strip()
+            company = company_name or None
+
         year = self._years.get(result.file_path)
         if year is None and result.analysis_year is not None:
             year = result.analysis_year
+
+        year_text = None
         if year is not None:
-            return str(year)
-        header = result.header
-        if header and header.fiscal_year and str(header.fiscal_year).strip():
-            return str(header.fiscal_year).strip()
+            year_text = str(year)
+        elif header and header.fiscal_year:
+            fiscal_year = str(header.fiscal_year).strip()
+            year_text = fiscal_year or None
+
+        if company and year_text:
+            return f"{company} {year_text}"
+        if company:
+            return company
+        if year_text:
+            return year_text
+
         position = self._positions.get(result.file_path)
         if position is not None:
             return str(position + 1)
@@ -207,6 +231,18 @@ class SaftDatasetStore:
     @property
     def cost_vouchers(self) -> List["saft_customers.CostVoucher"]:
         return self._cost_vouchers
+
+    @property
+    def trial_balance(self) -> Optional[Dict[str, object]]:
+        return self._trial_balance
+
+    @property
+    def trial_balance_error(self) -> Optional[str]:
+        return self._trial_balance_error
+
+    @property
+    def trial_balance_checked(self) -> bool:
+        return self._trial_balance_checked
 
     @property
     def current_file(self) -> Optional[str]:
@@ -398,6 +434,9 @@ class SaftDatasetStore:
         self._customer_sales = None
         self._supplier_purchases = None
         self._cost_vouchers = []
+        self._trial_balance = None
+        self._trial_balance_error = None
+        self._trial_balance_checked = False
         self._industry = None
         self._industry_error = None
         self._brreg_json = None

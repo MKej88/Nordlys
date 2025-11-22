@@ -15,6 +15,9 @@ Brønnøysundregistrene.
   `NORDLYS_SAFT_STREAMING=1`, slik at prøvebalansen sjekkes før hele filen er
   lest. Sett `NORDLYS_SAFT_STREAMING_VALIDATE=1` hvis du vil validere samtidig
   (krever `xmlschema`).
+- Eksport til PDF rett fra toppmenyen, med nøkkeltall, toppkunder/-leverandører
+  og et lite utvalg kostnadsbilag.
+- Excel-eksporten inkluderer nå også leverandørkjøp og kostnadsbilag i egne ark.
 - Brønnøysund-oppslag og bransjeklassifisering skjer parallelt og caches etter
   organisasjonsnummer, slik at samme selskap går raskere å slå opp neste gang.
 - Excel-eksport samler saldobalanse, NS4102-sammendrag, kundeomsetning og
