@@ -245,7 +245,7 @@ def get_company_status(orgnr: str) -> CompanyStatus:
     konkurs = _interpret_bool(data.get("konkurs"))
     under_avvikling = _interpret_bool(data.get("underAvvikling"))
     under_tvangsopplosning = _interpret_bool(
-        data.get("underTvangsavviklingEllerTvangsopplosning")
+        data.get("underTvangsavviklingEllerTvangsoppløsning")
     )
     avvik_candidates = [
         value

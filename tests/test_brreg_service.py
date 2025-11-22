@@ -34,7 +34,7 @@ def test_get_company_status_maps_flags(monkeypatch):
             data={
                 "konkurs": False,
                 "underAvvikling": "ja",
-                "underTvangsavviklingEllerTvangsopplosning": False,
+                "underTvangsavviklingEllerTvangsoppløsning": False,
                 "registrertIMvaregisteret": "J",
             },
             error_code=None,
