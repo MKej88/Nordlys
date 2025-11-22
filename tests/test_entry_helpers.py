@@ -18,7 +18,9 @@ from nordlys.saft.entry_helpers import _normalize_decimal_text, _parse_decimal_t
         ("1.234.567", "1234567"),
     ],
 )
-def test_normalize_decimal_text_stripper_tusenskilletegn(raw: str, expected: str) -> None:
+def test_normalize_decimal_text_stripper_tusenskilletegn(
+    raw: str, expected: str
+) -> None:
     """Vanlige tusenskilletegn skal fjernes før desimalberegning."""
 
     assert _normalize_decimal_text(raw) == expected
