@@ -201,7 +201,14 @@ class ImportExportController(QObject):
 
     def _handle_load_finished(self, result_obj: object) -> None:
         casted_results = self._cast_results(result_obj)
-        self._apply_results(casted_results)
+        try:
+            self._apply_results(casted_results)
+        except Exception as exc:  # pragma: no cover - logges og vises i GUI
+            message = self._format_task_error(str(exc))
+            self._finalize_loading(message)
+            self._load_error_handler(message)
+            return
+
         self._finalize_loading()
 
     # endregion
