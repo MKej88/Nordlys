@@ -1,119 +1,146 @@
+import importlib
 import sys
 import types
+from collections.abc import Iterator
+
+import pytest
 
 
-qtcore = types.ModuleType("PySide6.QtCore")
-qtgui = types.ModuleType("PySide6.QtGui")
-qtwidgets = types.ModuleType("PySide6.QtWidgets")
+def _create_dummy_pyside6() -> dict[str, types.ModuleType | None]:
+    original_modules: dict[str, types.ModuleType | None] = {
+        name: sys.modules.get(name)
+        for name in [
+            "PySide6",
+            "PySide6.QtCore",
+            "PySide6.QtGui",
+            "PySide6.QtWidgets",
+        ]
+    }
+
+    qtcore = types.ModuleType("PySide6.QtCore")
+    qtgui = types.ModuleType("PySide6.QtGui")
+    qtwidgets = types.ModuleType("PySide6.QtWidgets")
+
+    class _DummyQObject:
+        def __init__(self, *_: object, **__: object) -> None:
+            return
+
+    def _slot(*_: object, **__: object):
+        def wrapper(func):
+            return func
+
+        return wrapper
+
+    qtcore.QObject = _DummyQObject
+    qtcore.Slot = _slot
+    qtcore.QRunnable = type("QRunnable", (), {"setAutoDelete": lambda self, flag: None})
+
+    class _DummyQt:
+        def __getattr__(self, name: str) -> int:
+            return 0
+
+    qtcore.Qt = _DummyQt()
+
+    class _DummyThreadPool:
+        @staticmethod
+        def globalInstance():  # noqa: N802 - etterligner Qt
+            return _DummyThreadPool()
+
+        def start(self, *_: object, **__: object) -> None:
+            return None
+
+        def setMaxThreadCount(self, *_: object, **__: object) -> None:
+            return None
+
+    class _DummySignal:
+        def __init__(self, *_: object, **__: object) -> None:
+            return
+
+        def connect(self, *_: object, **__: object) -> None:
+            return None
+
+        def emit(self, *_: object, **__: object) -> None:
+            return None
+
+    qtcore.QThreadPool = _DummyThreadPool
+    qtcore.Signal = _DummySignal
+
+    class _DummyTimer:
+        def __init__(self, *_: object, **__: object) -> None:
+            self.timeout = _DummySignal()
+
+        def setInterval(self, *_: object, **__: object) -> None:
+            return None
+
+        def start(self, *_: object, **__: object) -> None:
+            return None
+
+        def stop(self, *_: object, **__: object) -> None:
+            return None
+
+    qtcore.QTimer = _DummyTimer
+
+    class _DummyColor:
+        def __init__(self, *_: object, **__: object) -> None:
+            return
+
+    qtgui.QColor = _DummyColor
+
+    class _DummyWidget:
+        def __init__(self, *_: object, **__: object) -> None:
+            return
+
+    for name in ["QFileDialog", "QLabel", "QMessageBox", "QProgressBar", "QWidget"]:
+        setattr(qtwidgets, name, type(name, (_DummyWidget,), {}))
+
+    for name in [
+        "QDialog",
+        "QFrame",
+        "QGraphicsDropShadowEffect",
+        "QGridLayout",
+        "QHBoxLayout",
+        "QLayout",
+        "QSizePolicy",
+        "QVBoxLayout",
+    ]:
+        setattr(qtwidgets, name, type(name, (_DummyWidget,), {}))
+
+    pyside6 = sys.modules.get("PySide6") or types.ModuleType("PySide6")
+    pyside6.QtCore = qtcore
+    pyside6.QtGui = qtgui
+    pyside6.QtWidgets = qtwidgets
+
+    sys.modules["PySide6"] = pyside6
+    sys.modules["PySide6.QtCore"] = qtcore
+    sys.modules["PySide6.QtGui"] = qtgui
+    sys.modules["PySide6.QtWidgets"] = qtwidgets
+
+    return original_modules
 
 
-class _DummyQObject:
-    def __init__(self, *_: object, **__: object) -> None:
-        return
+def _restore_modules(original_modules: dict[str, types.ModuleType | None]) -> None:
+    for name, module in original_modules.items():
+        if module is None and name in sys.modules:
+            del sys.modules[name]
+        elif module is not None:
+            sys.modules[name] = module
 
 
-def _slot(*_: object, **__: object):
-    def wrapper(func):
-        return func
-
-    return wrapper
-
-
-qtcore.QObject = _DummyQObject
-qtcore.Slot = _slot
-qtcore.QRunnable = type("QRunnable", (), {"setAutoDelete": lambda self, flag: None})
+@pytest.fixture
+def dummy_pyside6() -> Iterator[None]:
+    original_modules = _create_dummy_pyside6()
+    try:
+        yield
+    finally:
+        _restore_modules(original_modules)
 
 
-class _DummyQt:
-    def __getattr__(self, name: str) -> int:
-        return 0
+def test_handle_load_finished_reports_apply_errors(dummy_pyside6: None) -> None:
+    import nordlys.ui.import_export as import_export
 
-
-qtcore.Qt = _DummyQt()
-
-
-class _DummyThreadPool:
-    @staticmethod
-    def globalInstance():  # noqa: N802 - etterligner Qt
-        return _DummyThreadPool()
-
-    def start(self, *_: object, **__: object) -> None:
-        return None
-
-    def setMaxThreadCount(self, *_: object, **__: object) -> None:
-        return None
-
-
-class _DummySignal:
-    def __init__(self, *_: object, **__: object) -> None:
-        return
-
-    def connect(self, *_: object, **__: object) -> None:
-        return None
-
-    def emit(self, *_: object, **__: object) -> None:
-        return None
-
-
-qtcore.QThreadPool = _DummyThreadPool
-qtcore.Signal = _DummySignal
-
-
-class _DummyTimer:
-    def __init__(self, *_: object, **__: object) -> None:
-        self.timeout = _DummySignal()
-
-    def setInterval(self, *_: object, **__: object) -> None:
-        return None
-
-    def start(self, *_: object, **__: object) -> None:
-        return None
-
-    def stop(self, *_: object, **__: object) -> None:
-        return None
-
-
-qtcore.QTimer = _DummyTimer
-
-
-class _DummyColor:
-    def __init__(self, *_: object, **__: object) -> None:
-        return
-
-
-qtgui.QColor = _DummyColor
-
-
-class _DummyWidget:
-    def __init__(self, *_: object, **__: object) -> None:
-        return
-
-
-for name in ["QFileDialog", "QLabel", "QMessageBox", "QProgressBar", "QWidget"]:
-    setattr(qtwidgets, name, type(name, (_DummyWidget,), {}))
-
-for name in [
-    "QDialog",
-    "QFrame",
-    "QGraphicsDropShadowEffect",
-    "QGridLayout",
-    "QHBoxLayout",
-    "QLayout",
-    "QSizePolicy",
-    "QVBoxLayout",
-]:
-    setattr(qtwidgets, name, type(name, (_DummyWidget,), {}))
-
-sys.modules.setdefault("PySide6", types.ModuleType("PySide6"))
-sys.modules["PySide6.QtCore"] = qtcore
-sys.modules["PySide6.QtGui"] = qtgui
-sys.modules["PySide6.QtWidgets"] = qtwidgets
-
-from nordlys.ui.import_export import ImportExportController
-
-
-def test_handle_load_finished_reports_apply_errors() -> None:
-    controller = ImportExportController.__new__(ImportExportController)
+    importlib.reload(import_export)
+    controller_class = import_export.ImportExportController
+    controller = controller_class.__new__(controller_class)
 
     messages = {"finalize": None, "error": None}
 
@@ -129,8 +156,8 @@ def test_handle_load_finished_reports_apply_errors() -> None:
     controller._load_error_handler = lambda message: messages.__setitem__(
         "error", message
     )  # type: ignore[assignment]
-    controller._format_task_error = ImportExportController._format_task_error.__get__(
-        controller, ImportExportController
+    controller._format_task_error = controller_class._format_task_error.__get__(
+        controller, controller_class
     )
 
     controller._handle_load_finished(object())
