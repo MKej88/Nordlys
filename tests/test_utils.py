@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import xml.etree.ElementTree as ET
+
 import pytest
 
 from nordlys.helpers.formatting import format_currency, format_difference
 from nordlys.helpers.number_parsing import to_float
+from nordlys.helpers.xml_helpers import findall_any_namespace
 
 
 @pytest.mark.parametrize(
@@ -61,3 +64,17 @@ def test_format_difference_invalid() -> None:
 def test_format_difference_rounding() -> None:
     assert format_difference(5.5, 0) == "6"
     assert format_difference(-5.5, 0) == "-6"
+
+
+def test_findall_any_namespace_handles_multiple_formats() -> None:
+    root = ET.Element("Root")
+    namespaced = ET.SubElement(root, "{http://example.com/ns}Tag")
+    prefixed = ET.SubElement(root, "n1:Tag")
+
+    matches = findall_any_namespace(root, "Tag")
+
+    assert len(matches) == 2
+    assert {element.tag for element in matches} == {
+        namespaced.tag,
+        prefixed.tag,
+    }
