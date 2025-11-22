@@ -172,7 +172,9 @@ def load_saft_files(
     Laster en eller flere SAF-T-filer med fremdriftsrapportering.
 
     Funksjonen kan ta imot én eller flere filbaner og spinner opp en trådpool
-    med opptil én arbeider per CPU-kjerne.
+    med opptil én arbeider per CPU-kjerne. `_suggest_max_workers` senker
+    samtidig antallet til `HEAVY_SAFT_MAX_WORKERS` når filene er store for å
+    unngå minnepress.
     """
 
     if isinstance(file_paths, (str, os.PathLike)):
