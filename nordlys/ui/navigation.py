@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 )
 
 from .config import PRIMARY_UI_FONT_FAMILY, icon_for_navigation
+from ..settings import NAV_PANEL_WIDTH_OVERRIDE
 
 __all__ = ["NavigationItem", "NavigationPanel"]
 
@@ -35,7 +36,12 @@ class NavigationPanel(QFrame):
         super().__init__()
         self.setObjectName("navPanel")
         self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
-        self.setMinimumWidth(240)
+        default_width = (
+            NAV_PANEL_WIDTH_OVERRIDE if NAV_PANEL_WIDTH_OVERRIDE is not None else 240
+        )
+        self.setMinimumWidth(default_width)
+        if NAV_PANEL_WIDTH_OVERRIDE is not None:
+            self.setMaximumWidth(default_width)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 32, 24, 32)
         layout.setSpacing(24)
