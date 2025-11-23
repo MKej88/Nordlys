@@ -43,7 +43,7 @@ class NavigationPanel(QFrame):
         if NAV_PANEL_WIDTH_OVERRIDE is not None:
             self.setMaximumWidth(default_width)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 32, 24, 32)
+        layout.setContentsMargins(0, 24, 12, 24)
         layout.setSpacing(24)
 
         self.logo_label = QLabel("Nordlys")
@@ -57,7 +57,7 @@ class NavigationPanel(QFrame):
         self.tree.setObjectName("navTree")
         self.tree.setHeaderHidden(True)
         self.tree.setExpandsOnDoubleClick(False)
-        self.tree.setIndentation(12)
+        self.tree.setIndentation(0)
         self.tree.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.tree.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.tree.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
