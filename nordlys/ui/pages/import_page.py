@@ -3,7 +3,7 @@ from __future__ import annotations
 import html
 import textwrap
 from datetime import datetime
-from typing import List, Optional, Sequence, Tuple, TYPE_CHECKING
+from typing import List, Optional, Sequence, Tuple, TYPE_CHECKING, Literal
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QTextOption
@@ -22,6 +22,8 @@ from ..widgets import CardFrame
 
 if TYPE_CHECKING:  # pragma: no cover
     from ... import saft  # type: ignore
+
+StatusState = Literal["approved", "pending", "rejected"]
 
 __all__ = ["ImportPage"]
 
@@ -49,7 +51,7 @@ class ImportPage(QWidget):
             "Status", "Hurtigoversikt over siste import og anbefalinger."
         )
         self.status_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        self.status_label = QLabel("Ingen SAF-T fil er lastet inn ennå.")
+        self.status_label = QLabel()
         self.status_label.setObjectName("statusLabel")
         self.status_label.setWordWrap(True)
         self.status_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
@@ -58,7 +60,7 @@ class ImportPage(QWidget):
         )
         self.status_card.add_widget(self.status_label)
 
-        self.trial_balance_label = QLabel("Prøvebalanse er ikke beregnet ennå.")
+        self.trial_balance_label = QLabel()
         self.trial_balance_label.setObjectName("statusLabel")
         self.trial_balance_label.setWordWrap(True)
         self.trial_balance_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
@@ -67,7 +69,7 @@ class ImportPage(QWidget):
         )
         self.status_card.add_widget(self.trial_balance_label)
 
-        self.validation_label = QLabel("Ingen XSD-validering er gjennomført.")
+        self.validation_label = QLabel()
         self.validation_label.setObjectName("statusLabel")
         self.validation_label.setWordWrap(True)
         self.validation_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
@@ -76,7 +78,7 @@ class ImportPage(QWidget):
         )
         self.status_card.add_widget(self.validation_label)
 
-        self.brreg_label = QLabel("Regnskapsregister: ingen data importert ennå.")
+        self.brreg_label = QLabel()
         self.brreg_label.setObjectName("statusLabel")
         self.brreg_label.setWordWrap(True)
         self.brreg_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
@@ -138,7 +140,7 @@ class ImportPage(QWidget):
             "Antall inngående faktura",
             "Tilgjengelige kostnadsbilag klare for stikkprøver.",
         )
-        self.invoice_label = QLabel("Ingen SAF-T fil er lastet inn ennå.")
+        self.invoice_label = QLabel()
         self.invoice_label.setObjectName("statusLabel")
         self.invoice_label.setWordWrap(True)
         self.invoice_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
@@ -149,7 +151,7 @@ class ImportPage(QWidget):
             "Annet",
             "Tilleggsinformasjon knyttet til valgt datasett.",
         )
-        self.misc_label = QLabel("Ingen tilleggsinformasjon tilgjengelig ennå.")
+        self.misc_label = QLabel()
         self.misc_label.setObjectName("statusLabel")
         self.misc_label.setWordWrap(True)
         self.misc_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
@@ -160,19 +162,28 @@ class ImportPage(QWidget):
         self._log_entries: List[str] = []
         self._error_entries: List[str] = []
 
+        self.update_status("Ingen SAF-T fil er lastet inn ennå.")
+        self.update_trial_balance_status("Prøvebalanse er ikke beregnet ennå.")
+        self.update_validation_status(None)
+        self.update_brreg_status("Regnskapsregister: ingen data importert ennå.")
+        self.update_invoice_count(None)
+        self.update_misc_info(None)
+
         layout.addStretch(1)
 
-    def update_status(self, message: str) -> None:
-        self.status_label.setText(message)
-        self.status_label.updateGeometry()
+    def update_status(self, message: str, state: StatusState = "pending") -> None:
+        self._set_status_label(self.status_label, message, state=state)
         self.status_card.updateGeometry()
 
     def update_validation_status(
         self, result: Optional["saft.SaftValidationResult"]
     ) -> None:
         if result is None:
-            self.validation_label.setText("Ingen XSD-validering er gjennomført.")
-            self.validation_label.updateGeometry()
+            self._set_status_label(
+                self.validation_label,
+                "Ingen XSD-validering er gjennomført.",
+                state="pending",
+            )
             self.status_card.updateGeometry()
             return
 
@@ -189,27 +200,31 @@ class ImportPage(QWidget):
         status_parts = [f"SAF-T versjon: {version_txt}"]
         if result.is_valid is True:
             status_parts.append("XSD-validering: OK")
+            state: StatusState = "approved"
         elif result.is_valid is False:
             status_parts.append("XSD-validering: FEILET")
+            state = "rejected"
         else:
             status_parts.append("XSD-validering: Ikke tilgjengelig")
+            state = "pending"
 
         message = " · ".join(status_parts)
         if result.details:
             first_line = result.details.strip().splitlines()[0]
             message = f"{message}\nDetaljer: {first_line}"
-        self.validation_label.setText(message)
-        self.validation_label.updateGeometry()
+        self._set_status_label(self.validation_label, message, state=state)
         self.status_card.updateGeometry()
 
-    def update_trial_balance_status(self, message: str) -> None:
-        self.trial_balance_label.setText(message)
-        self.trial_balance_label.updateGeometry()
+    def update_trial_balance_status(
+        self, message: str, *, state: StatusState = "pending"
+    ) -> None:
+        self._set_status_label(self.trial_balance_label, message, state=state)
         self.status_card.updateGeometry()
 
-    def update_brreg_status(self, message: str) -> None:
-        self.brreg_label.setText(message)
-        self.brreg_label.updateGeometry()
+    def update_brreg_status(
+        self, message: str, *, state: StatusState = "pending"
+    ) -> None:
+        self._set_status_label(self.brreg_label, message, state=state)
         self.status_card.updateGeometry()
 
     def update_industry(
@@ -218,20 +233,24 @@ class ImportPage(QWidget):
         error: Optional[str] = None,
     ) -> None:
         if error:
-            self.industry_label.setText(
+            self._set_status_label(
+                self.industry_label,
                 textwrap.dedent(
                     f"""
                     <p><strong>Bransje ikke tilgjengelig:</strong> {error}</p>
                     <p>Prøv igjen når du har nettilgang, eller sjekk at SAF-T-filen inneholder
                     organisasjonsnummer.</p>
                     """
-                ).strip()
+                ).strip(),
+                state="rejected",
             )
             return
 
         if classification is None:
-            self.industry_label.setText(
-                "Importer en SAF-T-fil for å se hvilken bransje kunden havner i."
+            self._set_status_label(
+                self.industry_label,
+                "Importer en SAF-T-fil for å se hvilken bransje kunden havner i.",
+                state="pending",
             )
             return
 
@@ -251,26 +270,34 @@ class ImportPage(QWidget):
             </ul>
             """
         ).strip()
-        self.industry_label.setText(text)
+        self._set_status_label(self.industry_label, text, state="approved")
 
     def update_invoice_count(self, count: Optional[int]) -> None:
         if count is None:
-            self.invoice_label.setText("Ingen SAF-T fil er lastet inn ennå.")
+            self._set_status_label(
+                self.invoice_label,
+                "Ingen SAF-T fil er lastet inn ennå.",
+                state="pending",
+            )
             return
         if count == 0:
-            self.invoice_label.setText(
-                "Ingen inngående fakturaer tilgjengelig i valgt datasett."
+            self._set_status_label(
+                self.invoice_label,
+                "Ingen inngående fakturaer tilgjengelig i valgt datasett.",
+                state="pending",
             )
             return
         if count == 1:
             message = "1 inngående faktura klar for kontroll."
         else:
             message = f"{count} inngående fakturaer klare for kontroll."
-        self.invoice_label.setText(message)
+        self._set_status_label(self.invoice_label, message, state="approved")
 
     def reset_errors(self) -> None:
         self._error_entries.clear()
-        self.error_label.setText("Ingen feilmeldinger registrert.")
+        self._set_status_label(
+            self.error_label, "Ingen feilmeldinger registrert.", state="pending"
+        )
 
     def record_error(self, message: str) -> None:
         cleaned = (message or "").strip() or "Ukjent feil"
@@ -281,13 +308,19 @@ class ImportPage(QWidget):
         bullets = "".join(
             f"<li>{html.escape(item)}</li>" for item in self._error_entries
         )
-        self.error_label.setText(f"<ul>{bullets}</ul>")
+        self._set_status_label(
+            self.error_label, f"<ul>{bullets}</ul>", state="rejected"
+        )
 
     def update_misc_info(
         self, entries: Optional[Sequence[Tuple[str, str]]] = None
     ) -> None:
         if not entries:
-            self.misc_label.setText("Ingen tilleggsinformasjon tilgjengelig ennå.")
+            self._set_status_label(
+                self.misc_label,
+                "Ingen tilleggsinformasjon tilgjengelig ennå.",
+                state="pending",
+            )
             return
         bullet_items = []
         for title, value in entries:
@@ -297,9 +330,15 @@ class ImportPage(QWidget):
                 f"<li><strong>{html.escape(title)}:</strong> {html.escape(value)}</li>"
             )
         if not bullet_items:
-            self.misc_label.setText("Ingen tilleggsinformasjon tilgjengelig ennå.")
+            self._set_status_label(
+                self.misc_label,
+                "Ingen tilleggsinformasjon tilgjengelig ennå.",
+                state="pending",
+            )
             return
-        self.misc_label.setText(f"<ul>{''.join(bullet_items)}</ul>")
+        self._set_status_label(
+            self.misc_label, f"<ul>{''.join(bullet_items)}</ul>", state="approved"
+        )
 
     def reset_log(self) -> None:
         self._log_entries.clear()
@@ -319,3 +358,12 @@ class ImportPage(QWidget):
         scrollbar = self.log_view.verticalScrollBar()
         if scrollbar is not None:
             scrollbar.setValue(scrollbar.maximum())
+
+    def _set_status_label(
+        self, label: QLabel, message: str, *, state: StatusState = "pending"
+    ) -> None:
+        label.setText(message)
+        label.setProperty("statusState", state)
+        label.style().unpolish(label)
+        label.style().polish(label)
+        label.updateGeometry()
