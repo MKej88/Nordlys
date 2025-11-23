@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Optional, Sequence
 
 from PySide6.QtCore import Qt
@@ -18,6 +17,9 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from .file_list import format_file_list
+
 
 __all__ = [
     "TaskProgressDialog",
@@ -86,13 +88,13 @@ class TaskProgressDialog(QDialog):
         self._progress_bar.setValue(clamped)
 
     def set_files(self, file_paths: Sequence[str]) -> None:
-        if not file_paths:
+        detail_text = format_file_list(file_paths)
+        if detail_text is None:
             self._detail_label.clear()
             self._detail_label.setVisible(False)
             return
-        names = [Path(path).name for path in file_paths]
-        bullet_lines = "\n".join(f"• {name}" for name in names)
-        self._detail_label.setText(f"Filer som lastes:\n{bullet_lines}")
+
+        self._detail_label.setText(detail_text)
         self._detail_label.setVisible(True)
 
 
