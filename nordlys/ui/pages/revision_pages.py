@@ -144,7 +144,10 @@ class CostVoucherReviewPage(QWidget):
         input_layout.addWidget(self.control_card, 0, Qt.AlignTop)
         input_layout.addStretch(1)
 
-        self.tab_widget.addTab(input_container, "Innput")
+        self.tab_widget.addTab(input_container, "Inndata")
+        self.tab_widget.setTabToolTip(
+            0, "Velg hvor mange bilag du vil trekke og start kontrollen."
+        )
 
         selection_container = QWidget()
         selection_layout = QVBoxLayout(selection_container)
@@ -300,6 +303,9 @@ class CostVoucherReviewPage(QWidget):
         selection_layout.addLayout(selection_content_row)
 
         self.tab_widget.addTab(selection_container, "Utvalg")
+        self.tab_widget.setTabToolTip(
+            1, "Jobb deg gjennom bilagene og registrer vurderinger."
+        )
 
         summary_container = QWidget()
         summary_layout = QVBoxLayout(summary_container)
@@ -369,6 +375,9 @@ class CostVoucherReviewPage(QWidget):
         summary_layout.addWidget(self.summary_card, 1)
 
         self.tab_widget.addTab(summary_container, "Oppsummering")
+        self.tab_widget.setTabToolTip(
+            2, "Se status og eksporter arbeidspapir når du er ferdig."
+        )
 
         self.tab_widget.setTabEnabled(1, False)
         self.tab_widget.setTabEnabled(2, False)
