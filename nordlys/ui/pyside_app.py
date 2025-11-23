@@ -126,12 +126,12 @@ class NordlysWindow(QMainWindow):
     # region Hjelpere
     def _update_header_fields(self) -> None:
         header = self._dataset_store.header
-        if not header:
-            return
-        self.lbl_company.setText(f"Selskap: {header.company_name or '–'}")
-        self.lbl_orgnr.setText(f"Org.nr: {header.orgnr or '–'}")
-        period = format_header_period(header) or "–"
-        self.lbl_period.setText(f"Periode: {period}")
+        company = header.company_name if header else None
+        orgnr = header.orgnr if header else None
+        period = format_header_period(header) if header else None
+        self.lbl_company.setText(f"Selskap: {company or '–'}")
+        self.lbl_orgnr.setText(f"Org.nr: {orgnr or '–'}")
+        self.lbl_period.setText(f"Periode: {period or '–'}")
 
     def _ensure_import_controller(self) -> ImportExportController:
         if self._import_controller is None:
