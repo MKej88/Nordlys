@@ -43,7 +43,7 @@ class NavigationPanel(QFrame):
         if NAV_PANEL_WIDTH_OVERRIDE is not None:
             self.setMaximumWidth(default_width)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 32, 24, 32)
+        layout.setContentsMargins(12, 32, 16, 32)
         layout.setSpacing(24)
 
         self.logo_label = QLabel("Nordlys")
