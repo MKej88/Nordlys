@@ -33,3 +33,14 @@ def test_parse_decimal_text_håndterer_formatterte_tall() -> None:
         "9.876,54", field="Amount", line=10, xml_path=Path("fil.xml")
     )
     assert value == Decimal("9876.54")
+
+
+def test_parse_decimal_text_ignorerer_tynne_mellomrom() -> None:
+    """Tall med smale mellomrom som skilletegn skal fortsatt parses."""
+
+    raw = "1 234,50"  # inneholder narrow no-break space som tusenskille
+    value = _parse_decimal_text(
+        raw, field="Amount", line=None, xml_path=Path("fil.xml")
+    )
+
+    assert value == Decimal("1234.50")
