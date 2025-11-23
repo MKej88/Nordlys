@@ -49,8 +49,29 @@ def compute_trial_balance(file_path: str) -> TrialBalanceResult:
         )
 
     error: Optional[str] = None
-    if trial_balance.get("diff") != Decimal("0"):
+    diff_value = trial_balance.get("diff")
+    if diff_value is None:
+        return TrialBalanceResult(
+            balance=None,
+            error=(
+                "Kunne ikke beregne prøvebalanse: resultatet manglet diff-felt "
+                f"for {Path(file_path).name}."
+            ),
+        )
+
+    try:
+        diff_decimal = Decimal(diff_value)
+    except Exception as exc:  # pragma: no cover - robust mot uventede typer
+        return TrialBalanceResult(
+            balance=None,
+            error=(
+                "Kunne ikke tolke diff i prøvebalansen for "
+                f"{Path(file_path).name}: {exc}."
+            ),
+        )
+
+    if diff_decimal != Decimal("0"):
         error = "Prøvebalansen går ikke opp (diff {diff}) for {file}".format(
-            diff=trial_balance["diff"], file=Path(file_path).name
+            diff=diff_decimal, file=Path(file_path).name
         )
     return TrialBalanceResult(balance=trial_balance, error=error)
