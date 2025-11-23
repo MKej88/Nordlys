@@ -8,7 +8,7 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
-from typing import Optional, Tuple
+from typing import Callable, Optional, Protocol, Tuple
 
 from .header import parse_saft_header
 
@@ -25,10 +25,15 @@ SAFT_RESOURCE_DIR = Path(__file__).resolve().parent.parent / "resources" / "saf_
 _XMLSCHEMA_SPEC = importlib.util.find_spec("xmlschema")
 XMLSCHEMA_AVAILABLE: bool = _XMLSCHEMA_SPEC is not None
 
+class _XMLSchemaProtocol(Protocol):
+    def validate(self, source: object) -> None:
+        """Validerer en XML-kilde mot skjema."""
+
+
 XMLSchemaException = Exception
-XMLSchema = None  # type: ignore[assignment]
+XMLSchema: Callable[[str], _XMLSchemaProtocol] | None = None
 XMLResource = None  # type: ignore[assignment]
-_SCHEMA_CACHE: dict[Path, object] = {}
+_SCHEMA_CACHE: dict[Path, _XMLSchemaProtocol] = {}
 _SCHEMA_CACHE_LOCK = Lock()
 
 
@@ -68,7 +73,7 @@ def _build_xml_resource(xml_path: Path) -> str | Path | object:
         return XMLResource(str(xml_path))  # type: ignore[misc]
 
 
-def _get_cached_schema(schema_path: Path) -> object | None:
+def _get_cached_schema(schema_path: Path) -> _XMLSchemaProtocol | None:
     """Returnerer en XMLSchema-instans, og gjenbruker den mellom kall."""
 
     if not _ensure_xmlschema_loaded():
@@ -80,7 +85,7 @@ def _get_cached_schema(schema_path: Path) -> object | None:
             return cached
 
     assert XMLSchema is not None  # for typekontroll
-    schema = XMLSchema(str(schema_path))  # type: ignore[misc]
+    schema = XMLSchema(str(schema_path))
 
     with _SCHEMA_CACHE_LOCK:
         existing = _SCHEMA_CACHE.get(schema_path)
