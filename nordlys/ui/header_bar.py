@@ -31,6 +31,7 @@ class HeaderBar(QWidget):
 
     def __init__(self) -> None:
         super().__init__()
+        self.setObjectName("headerBar")
         layout = QHBoxLayout(self)
         layout.setSpacing(16)
         layout.setContentsMargins(0, 0, 0, 0)
