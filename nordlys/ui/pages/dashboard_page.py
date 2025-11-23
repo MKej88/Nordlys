@@ -3,11 +3,17 @@ from __future__ import annotations
 from typing import Dict, Optional
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QGridLayout, QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QGridLayout,
+    QLabel,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+)
 
 from ...helpers.formatting import format_currency
 from ..tables import create_table_widget, populate_table
-from ..widgets import CardFrame, StatBadge
+from ..widgets import CardFrame, EmptyStateWidget, StatBadge
 
 __all__ = ["DashboardPage"]
 
@@ -118,9 +124,19 @@ class DashboardPage(QWidget):
             "Fokus for revisjonen",
             "Oppsummerte nøkkeltall fra SAF-T som peker ut fokusområder.",
         )
+        self.summary_empty_state = EmptyStateWidget(
+            "Ingen nøkkeltall å vise ennå",
+            "Importer en SAF-T-fil for å se oppsummerte hovedtall her.",
+            icon="📊",
+        )
+        self.summary_empty_state.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Expanding
+        )
         self.summary_table = create_table_widget()
         self.summary_table.setColumnCount(2)
         self.summary_table.setHorizontalHeaderLabels(["Nøkkel", "Beløp"])
+        self.summary_table.hide()
+        self.summary_card.add_widget(self.summary_empty_state)
         self.summary_card.add_widget(self.summary_table)
         grid.addWidget(self.summary_card, 1, 2)
 
@@ -129,8 +145,12 @@ class DashboardPage(QWidget):
     def update_summary(self, summary: Optional[Dict[str, float]]) -> None:
         if not summary:
             self.summary_table.setRowCount(0)
+            self.summary_table.hide()
+            self.summary_empty_state.show()
             self._update_kpis(None)
             return
+        self.summary_empty_state.hide()
+        self.summary_table.show()
         rows = [
             ("Driftsinntekter (3xxx)", summary.get("driftsinntekter")),
             ("Varekostnad (4xxx)", summary.get("varekostnad")),
