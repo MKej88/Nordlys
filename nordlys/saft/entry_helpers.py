@@ -285,8 +285,18 @@ def _normalize_decimal_text(value: Optional[str]) -> Optional[str]:
     cleaned = value.replace("\xa0", "").replace(" ", "").strip()
     if not cleaned:
         return None
-    if cleaned.count(",") == 1 and cleaned.count(".") == 0:
+    comma_index = cleaned.rfind(",")
+    dot_index = cleaned.rfind(".")
+
+    if comma_index != -1 and dot_index != -1:
+        if comma_index > dot_index:
+            cleaned = cleaned.replace(".", "").replace(",", ".")
+        else:
+            cleaned = cleaned.replace(",", "")
+    elif comma_index != -1:
         cleaned = cleaned.replace(",", ".")
+    elif cleaned.count(".") > 1:
+        cleaned = cleaned.replace(".", "")
     return cleaned
 
 
