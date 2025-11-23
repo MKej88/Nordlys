@@ -142,6 +142,28 @@ def test_fetch_regnskapsregister_accepts_list_payload(monkeypatch):
     assert result.error_code is None
 
 
+def test_fallback_cache_prunes_old_entries(monkeypatch):
+    monkeypatch.setattr(brreg_client, "REQUESTS_CACHE_AVAILABLE", False, raising=False)
+    brreg_cache.clear_fallback_cache()
+    brreg_cache.set_session(None)
+    monkeypatch.setattr(brreg_cache, "_CACHE_TTL_SECONDS", 10, raising=False)
+
+    time_calls = iter([0.0, 0.0, 25.0])
+    monkeypatch.setattr(brreg_cache.time, "monotonic", lambda: next(time_calls))
+
+    result = BrregServiceResult(
+        data={"konkurs": False},
+        error_code=None,
+        error_message=None,
+        from_cache=False,
+    )
+
+    brreg_cache.fallback_cache_set("orgnr=123", result)
+    cached = brreg_cache.fallback_cache_get("orgnr=123")
+
+    assert cached is None
+
+
 def test_invalid_orgnr_gives_clear_error() -> None:
     result = brreg_service.fetch_enhetsregister("123")
 

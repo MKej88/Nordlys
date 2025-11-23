@@ -146,13 +146,11 @@ def make_cache_key(url: str, list_policy: str) -> str:
 
 
 def fallback_cache_get(cache_key: str) -> Optional[BrregServiceResult]:
+    _prune_fallback_cache()
     entry = _FALLBACK_CACHE.get(cache_key)
     if not entry:
         return None
-    timestamp, result = entry
-    if time.monotonic() - timestamp > _CACHE_TTL_SECONDS:
-        _FALLBACK_CACHE.pop(cache_key, None)
-        return None
+    _, result = entry
     stored = replace(result, from_cache=True)
     return stored
 
@@ -173,12 +171,26 @@ def _should_cache_result(result: BrregServiceResult) -> bool:
 
 
 def fallback_cache_set(cache_key: str, result: BrregServiceResult) -> None:
+    _prune_fallback_cache()
     if not _should_cache_result(result):
         return
     _FALLBACK_CACHE[cache_key] = (
         time.monotonic(),
         replace(result, from_cache=False),
     )
+
+
+def _prune_fallback_cache(now: Optional[float] = None) -> None:
+    """Fjerner gamle oppføringer fra fallback-cachen."""
+
+    current_time = time.monotonic() if now is None else now
+    expired = [
+        key
+        for key, (timestamp, _) in _FALLBACK_CACHE.items()
+        if current_time - timestamp > _CACHE_TTL_SECONDS
+    ]
+    for key in expired:
+        _FALLBACK_CACHE.pop(key, None)
 
 
 def clear_fallback_cache() -> None:
