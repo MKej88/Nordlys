@@ -59,9 +59,9 @@ def export_dataset_to_pdf(dataset_store: "SaftDatasetStore", file_name: str) -> 
 
     supplier_purchases = dataset_store.supplier_purchases
     if supplier_purchases is not None and not supplier_purchases.empty:
-        top_suppliers = _coerce_numeric(
-            supplier_purchases, "Innkjøp eks mva"
-        ).nlargest(10, "Innkjøp eks mva", keep="all")
+        top_suppliers = _coerce_numeric(supplier_purchases, "Innkjøp eks mva").nlargest(
+            10, "Innkjøp eks mva", keep="all"
+        )
         story.append(Paragraph("Topp leverandører", heading_style))
         story.append(
             _dataframe_table(
