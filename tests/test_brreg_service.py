@@ -115,6 +115,34 @@ def test_fetch_enhetsregister_caches_not_found(monkeypatch):
     assert result_second.from_cache is True
 
 
+def test_fetch_enhetsregister_interprets_empty_list_as_not_found(monkeypatch):
+    monkeypatch.setattr(brreg_client, "REQUESTS_CACHE_AVAILABLE", False, raising=False)
+    brreg_cache.clear_fallback_cache()
+    brreg_cache.set_session(None)
+
+    class DummyResponse:
+        status_code = 200
+        from_cache = False
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> list[object]:
+            return []
+
+    class DummySession:
+        def get(self, url: str, headers: dict[str, str], timeout: int) -> DummyResponse:
+            return DummyResponse()
+
+    monkeypatch.setattr(brreg_client, "get_session", lambda: DummySession())
+
+    result = brreg_service.fetch_enhetsregister("123456789")
+
+    assert result.error_code == "not_found"
+    assert "ingen treff" in (result.error_message or "").lower()
+    assert result.data is None
+
+
 def test_fetch_regnskapsregister_accepts_list_payload(monkeypatch):
     monkeypatch.setattr(brreg_client, "REQUESTS_CACHE_AVAILABLE", False, raising=False)
     brreg_cache.clear_fallback_cache()

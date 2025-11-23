@@ -163,6 +163,15 @@ def _fetch_json(
             for element in payload:
                 if isinstance(element, dict):
                     return finalize(BrregServiceResult(element, None, None, from_cache))
+            if not payload:
+                return finalize(
+                    BrregServiceResult(
+                        None,
+                        "not_found",
+                        f"{source_label}: ingen treff for organisasjonsnummeret.",
+                        from_cache,
+                    )
+                )
             return finalize(
                 BrregServiceResult(
                     None,
