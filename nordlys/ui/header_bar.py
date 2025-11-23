@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Sequence, Tuple
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
@@ -31,9 +31,11 @@ class HeaderBar(QWidget):
 
     def __init__(self) -> None:
         super().__init__()
+        self.setObjectName("headerBar")
+        self.setAttribute(Qt.WA_StyledBackground, True)
         layout = QHBoxLayout(self)
         layout.setSpacing(16)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(18, 12, 18, 12)
 
         self.title_label = QLabel("Import")
         self.title_label.setObjectName("pageTitle")
