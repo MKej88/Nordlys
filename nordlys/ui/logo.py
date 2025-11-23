@@ -49,11 +49,15 @@ class LogoWidget(QFrame):
         painter.setBrush(QColor(255, 255, 255, 24))
         painter.drawRoundedRect(glow_rect, 22, 22)
 
-        aurora_pen = QPen(QColor("#f8fafc"), 4.2, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
+        aurora_pen = QPen(
+            QColor("#f8fafc"), 4.2, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin
+        )
         painter.setPen(aurora_pen)
         painter.drawPath(self._aurora_path(badge_rect))
 
-        accent_pen = QPen(QColor("#a5f3fc"), 3.0, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
+        accent_pen = QPen(
+            QColor("#a5f3fc"), 3.0, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin
+        )
         painter.setPen(accent_pen)
         painter.drawPath(self._accent_path(badge_rect))
 
@@ -73,15 +77,25 @@ class LogoWidget(QFrame):
         return path
 
     def _accent_path(self, rect: QRectF) -> QPainterPath:
-        path = QPainterPath(QPointF(rect.left() + 18, rect.top() + rect.height() * 0.38))
+        path = QPainterPath(
+            QPointF(rect.left() + 18, rect.top() + rect.height() * 0.38)
+        )
         path.cubicTo(
-            QPointF(rect.left() + rect.width() * 0.32, rect.top() + rect.height() * 0.28),
-            QPointF(rect.left() + rect.width() * 0.52, rect.top() + rect.height() * 0.36),
+            QPointF(
+                rect.left() + rect.width() * 0.32, rect.top() + rect.height() * 0.28
+            ),
+            QPointF(
+                rect.left() + rect.width() * 0.52, rect.top() + rect.height() * 0.36
+            ),
             QPointF(rect.right() - 18, rect.top() + rect.height() * 0.32),
         )
         path.cubicTo(
             QPointF(rect.right() - 26, rect.top() + rect.height() * 0.46),
-            QPointF(rect.left() + rect.width() * 0.46, rect.top() + rect.height() * 0.52),
-            QPointF(rect.left() + rect.width() * 0.28, rect.top() + rect.height() * 0.48),
+            QPointF(
+                rect.left() + rect.width() * 0.46, rect.top() + rect.height() * 0.52
+            ),
+            QPointF(
+                rect.left() + rect.width() * 0.28, rect.top() + rect.height() * 0.48
+            ),
         )
         return path
