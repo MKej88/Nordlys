@@ -98,6 +98,14 @@ def load_saft_file(
         if root is None:  # pragma: no cover - guard mot korrupt XML
             raise ValueError("SAF-T-filen mangler et rot-element.")
         header = saft.parse_saft_header(root)
+
+        validation_future = executor.submit(
+            saft.validate_saft_against_xsd,
+            file_path,
+            header.file_version if header else None,
+        )
+        enrichment_future = executor.submit(enrich_from_header, header)
+
         dataframe = saft.parse_saldobalanse(root)
         _report_progress(25, f"Tolker saldobalanse for {file_name}")
         customers = saft.parse_customers(root)
@@ -114,12 +122,6 @@ def load_saft_file(
         _report_progress(50, f"Analyserer kunder og leverandører for {file_name}")
 
         summary = saft.ns4102_summary_from_tb(dataframe)
-        validation_future = executor.submit(
-            saft.validate_saft_against_xsd,
-            file_path,
-            header.file_version if header else None,
-        )
-        enrichment_future = executor.submit(enrich_from_header, header)
 
         _report_progress(75, f"Validerer og beriker data for {file_name}")
 
