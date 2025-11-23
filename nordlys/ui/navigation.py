@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QBrush, QColor, QFont
+from PySide6.QtGui import QBrush, QColor, QFont, QIcon, QPixmap
 from PySide6.QtWidgets import (
+    QHBoxLayout,
     QFrame,
     QLabel,
     QSizePolicy,
@@ -45,7 +47,29 @@ class NavigationPanel(QFrame):
         logo_font = self.logo_label.font()
         logo_font.setFamily(PRIMARY_UI_FONT_FAMILY)
         self.logo_label.setFont(logo_font)
-        layout.addWidget(self.logo_label)
+
+        logo_row = QFrame()
+        logo_row.setObjectName("logoRow")
+        logo_layout = QHBoxLayout(logo_row)
+        logo_layout.setContentsMargins(12, 10, 12, 10)
+        logo_layout.setSpacing(10)
+
+        self.logo_icon = QLabel()
+        self.logo_icon.setObjectName("logoIcon")
+        pixmap = self._load_logo_pixmap()
+        if pixmap is not None:
+            self.logo_icon.setPixmap(pixmap)
+            self.logo_icon.setFixedSize(pixmap.size())
+        else:
+            self.logo_icon.setText("✦")
+            self.logo_icon.setAlignment(Qt.AlignCenter)
+            self.logo_icon.setFixedSize(36, 36)
+
+        logo_layout.addWidget(self.logo_icon)
+        logo_layout.addWidget(self.logo_label)
+        logo_layout.addStretch(1)
+
+        layout.addWidget(logo_row)
 
         self.tree = QTreeWidget()
         self.tree.setObjectName("navTree")
@@ -107,3 +131,22 @@ class NavigationPanel(QFrame):
         parent.item.addChild(item)
         parent.item.setExpanded(True)
         return NavigationItem(key, item)
+
+    def _load_logo_pixmap(self) -> QPixmap | None:
+        """Last inn applikasjonens logo dersom filen finnes."""
+
+        logo_path = (
+            Path(__file__).resolve().parent.parent
+            / "resources"
+            / "icons"
+            / "nordlys-logo.svg"
+        )
+        if not logo_path.exists():
+            return None
+
+        icon = QIcon(str(logo_path))
+        if icon.isNull():
+            return None
+
+        pixmap = icon.pixmap(36, 36)
+        return pixmap if not pixmap.isNull() else None
