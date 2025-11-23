@@ -282,7 +282,7 @@ def _sourceline(element: Optional[ET.Element]) -> Optional[int]:
 def _normalize_decimal_text(value: Optional[str]) -> Optional[str]:
     if value is None:
         return None
-    cleaned = value.replace("\xa0", "").replace(" ", "").strip()
+    cleaned = "".join(ch for ch in value if not ch.isspace())
     if not cleaned:
         return None
     comma_index = cleaned.rfind(",")
