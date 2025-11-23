@@ -6,13 +6,15 @@ from datetime import datetime
 from typing import List, Optional, Sequence, Tuple, TYPE_CHECKING
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QTextOption
+from PySide6.QtGui import QGuiApplication, QTextOption
 from PySide6.QtWidgets import (
     QLabel,
     QFrame,
     QGridLayout,
     QPlainTextEdit,
+    QPushButton,
     QSizePolicy,
+    QHBoxLayout,
     QVBoxLayout,
     QWidget,
 )
@@ -129,7 +131,24 @@ class ImportPage(QWidget):
         self.log_view.setMaximumHeight(log_height)
         self.log_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.log_view.document().setDocumentMargin(10)
+        self.log_view.setPlaceholderText("Ingen hendelser registrert ennå.")
 
+        action_row = QHBoxLayout()
+        action_row.setContentsMargins(0, 0, 0, 0)
+        action_row.setSpacing(8)
+        action_row.addStretch(1)
+
+        self.copy_log_button = QPushButton("Kopier logg")
+        self.copy_log_button.setEnabled(False)
+        self.copy_log_button.clicked.connect(self.copy_log_to_clipboard)
+        action_row.addWidget(self.copy_log_button)
+
+        self.clear_log_button = QPushButton("Tøm logg")
+        self.clear_log_button.setEnabled(False)
+        self.clear_log_button.clicked.connect(self.reset_log)
+        action_row.addWidget(self.clear_log_button)
+
+        self.log_card.add_layout(action_row)
         self.log_card.add_widget(self.log_view)
         self.log_card.body_layout.setStretchFactor(self.log_view, 1)
         grid.addWidget(self.log_card, 1, 0)
@@ -304,6 +323,8 @@ class ImportPage(QWidget):
     def reset_log(self) -> None:
         self._log_entries.clear()
         self.log_view.clear()
+        self.copy_log_button.setEnabled(False)
+        self.clear_log_button.setEnabled(False)
 
     def append_log(self, message: str) -> None:
         timestamp = datetime.now().strftime("%H:%M:%S")
@@ -311,11 +332,24 @@ class ImportPage(QWidget):
         self._log_entries.append(entry)
         self._trim_and_update_log()
 
+    def copy_log_to_clipboard(self) -> None:
+        text = self.log_view.toPlainText().strip()
+        if not text:
+            return
+        clipboard = QGuiApplication.clipboard()
+        if clipboard is None:
+            return
+        clipboard.setText(text)
+
     def _trim_and_update_log(self) -> None:
         max_entries = 200
         if len(self._log_entries) > max_entries:
             self._log_entries = self._log_entries[-max_entries:]
-        self.log_view.setPlainText("\n".join(self._log_entries))
+        joined = "\n".join(self._log_entries)
+        self.log_view.setPlainText(joined)
         scrollbar = self.log_view.verticalScrollBar()
         if scrollbar is not None:
             scrollbar.setValue(scrollbar.maximum())
+        has_entries = bool(joined.strip())
+        self.copy_log_button.setEnabled(has_entries)
+        self.clear_log_button.setEnabled(has_entries)
