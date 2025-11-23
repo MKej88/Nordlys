@@ -25,6 +25,7 @@ SAFT_RESOURCE_DIR = Path(__file__).resolve().parent.parent / "resources" / "saf_
 _XMLSCHEMA_SPEC = importlib.util.find_spec("xmlschema")
 XMLSCHEMA_AVAILABLE: bool = _XMLSCHEMA_SPEC is not None
 
+
 class _XMLSchemaProtocol(Protocol):
     def validate(self, source: object) -> None:
         """Validerer en XML-kilde mot skjema."""
