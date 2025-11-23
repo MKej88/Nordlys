@@ -26,16 +26,10 @@ class DatasetFlowController:
 
     def apply_saft_batch(self, results: Sequence[SaftLoadResult]) -> None:
         store = self._context.dataset_store
-        pages = self._context.pages
         if not results:
             store.reset()
             self._update_dataset_selector()
-            if pages.import_page:
-                pages.import_page.update_invoice_count(None)
-                pages.import_page.update_misc_info(None)
-            if pages.regnskap_page:
-                pages.regnskap_page.set_dataframe(None, None)
-                pages.regnskap_page.set_summary_history([])
+            self._reset_ui_state()
             return
 
         store.apply_batch(results)
@@ -230,6 +224,51 @@ class DatasetFlowController:
         if brreg_status:
             status_parts.append(brreg_status)
         self._context.status_bar.showMessage(" ".join(status_parts))
+
+    def _reset_ui_state(self) -> None:
+        pages = self._context.pages
+        header_bar = self._context.header_bar
+
+        header_bar.set_export_enabled(False)
+        header_bar.set_dataset_enabled(False)
+        self._context.update_header_fields()
+        self._context.status_bar.showMessage("Ingen datasett aktivt.")
+
+        if pages.import_page:
+            pages.import_page.update_status("Ingen SAF-T fil er lastet inn ennå.")
+            pages.import_page.update_trial_balance_status(
+                "Prøvebalanse er ikke beregnet ennå."
+            )
+            pages.import_page.update_validation_status(None)
+            pages.import_page.update_brreg_status(
+                "Regnskapsregister: ingen data importert ennå."
+            )
+            pages.import_page.update_invoice_count(None)
+            pages.import_page.update_misc_info(None)
+            pages.import_page.reset_errors()
+
+        pages.clear_comparison_tables()
+
+        if pages.dashboard_page:
+            pages.dashboard_page.update_summary(None)
+        if pages.saldobalanse_page:
+            pages.saldobalanse_page.set_dataframe(None)
+        if pages.regnskap_page:
+            pages.regnskap_page.set_dataframe(None, None)
+            pages.regnskap_page.set_summary_history([])
+        if pages.vesentlig_page:
+            pages.vesentlig_page.update_summary(None)
+        if pages.sammenstilling_page:
+            pages.sammenstilling_page.set_dataframe(None, None)
+        if pages.sales_ar_page:
+            pages.sales_ar_page.set_controls_enabled(False)
+            pages.sales_ar_page.update_sales_reconciliation(None, None)
+            pages.sales_ar_page.clear_top_customers()
+        if pages.purchases_ap_page:
+            pages.purchases_ap_page.set_controls_enabled(False)
+            pages.purchases_ap_page.clear_top_suppliers()
+        if pages.cost_review_page:
+            pages.cost_review_page.set_vouchers([])
 
     def _update_dataset_selector(self) -> None:
         store = self._context.dataset_store
