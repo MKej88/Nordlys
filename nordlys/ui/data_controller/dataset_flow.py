@@ -134,7 +134,7 @@ class DatasetFlowController:
                 ("Oppdatert", datetime.now().strftime("%d.%m.%Y %H:%M"))
             )
             pages.import_page.update_misc_info(misc_entries)
-            pages.import_page.update_status(status_message)
+            pages.import_page.update_status(status_message, state="approved")
         if log_event:
             messenger.log_import_event(
                 f"{dataset_label or Path(result.file_path).name}: SAF-T lesing fullført. "
@@ -173,9 +173,11 @@ class DatasetFlowController:
             )
 
         trial_message = "Prøvebalanse er ikke beregnet (streaming er av)."
+        trial_state = "pending"
         if store.trial_balance_checked:
             if store.trial_balance_error:
                 trial_message = f"Prøvebalanse: {store.trial_balance_error}"
+                trial_state = "rejected"
                 if pages.import_page:
                     pages.import_page.record_error(trial_message)
                 messenger.log_import_event(trial_message)
@@ -186,10 +188,13 @@ class DatasetFlowController:
                 )
             else:
                 trial_message = "Prøvebalanse: OK"
+                trial_state = "approved"
                 if log_event:
                     messenger.log_import_event(trial_message)
         if pages.import_page:
-            pages.import_page.update_trial_balance_status(trial_message)
+            pages.import_page.update_trial_balance_status(
+                trial_message, state=trial_state
+            )
 
         if pages.sales_ar_page:
             pages.sales_ar_page.set_controls_enabled(store.has_customer_data)
@@ -235,13 +240,16 @@ class DatasetFlowController:
         self._context.status_bar.showMessage("Ingen datasett aktivt.")
 
         if pages.import_page:
-            pages.import_page.update_status("Ingen SAF-T fil er lastet inn ennå.")
+            pages.import_page.update_status(
+                "Ingen SAF-T fil er lastet inn ennå.", state="pending"
+            )
             pages.import_page.update_trial_balance_status(
-                "Prøvebalanse er ikke beregnet ennå."
+                "Prøvebalanse er ikke beregnet ennå.", state="pending"
             )
             pages.import_page.update_validation_status(None)
             pages.import_page.update_brreg_status(
-                "Regnskapsregister: ingen data importert ennå."
+                "Regnskapsregister: ingen data importert ennå.",
+                state="pending",
             )
             pages.import_page.update_invoice_count(None)
             pages.import_page.update_misc_info(None)
@@ -305,7 +313,8 @@ class DatasetFlowController:
             else:
                 message = "Regnskapsregister: ikke tilgjengelig (mangler org.nr.)."
             if pages.import_page:
-                pages.import_page.update_brreg_status(message)
+                state = "rejected" if result.brreg_error else "pending"
+                pages.import_page.update_brreg_status(message, state=state)
                 pages.import_page.record_error(message)
             messenger.log_import_event(message)
             return message
@@ -318,7 +327,7 @@ class DatasetFlowController:
                 "sammenligne."
             )
             if pages.import_page:
-                pages.import_page.update_brreg_status(message)
+                pages.import_page.update_brreg_status(message, state="pending")
             messenger.log_import_event(message)
             return message
 
@@ -326,6 +335,6 @@ class DatasetFlowController:
         self.update_comparison_tables(comparison_rows)
         message = "Regnskapsregister: import vellykket."
         if pages.import_page:
-            pages.import_page.update_brreg_status(message)
+            pages.import_page.update_brreg_status(message, state="approved")
         messenger.log_import_event(message)
         return message
