@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 )
 
 from .config import PRIMARY_UI_FONT_FAMILY, icon_for_navigation
+from .logo import LogoWidget
 
 __all__ = ["NavigationItem", "NavigationPanel"]
 
@@ -38,14 +39,35 @@ class NavigationPanel(QFrame):
         self.setMinimumWidth(240)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 32, 24, 32)
-        layout.setSpacing(24)
+        layout.setSpacing(20)
+
+        logo_container = QFrame()
+        logo_container.setObjectName("logoContainer")
+        logo_layout = QVBoxLayout(logo_container)
+        logo_layout.setContentsMargins(0, 0, 0, 0)
+        logo_layout.setSpacing(8)
+
+        self.logo_badge = LogoWidget()
+        logo_layout.addWidget(self.logo_badge, alignment=Qt.AlignHCenter)
 
         self.logo_label = QLabel("Nordlys")
         self.logo_label.setObjectName("logoLabel")
         logo_font = self.logo_label.font()
         logo_font.setFamily(PRIMARY_UI_FONT_FAMILY)
         self.logo_label.setFont(logo_font)
-        layout.addWidget(self.logo_label)
+        self.logo_label.setAlignment(Qt.AlignHCenter)
+        logo_layout.addWidget(self.logo_label, alignment=Qt.AlignHCenter)
+
+        self.logo_subtitle = QLabel("Analyse og innsikt")
+        self.logo_subtitle.setObjectName("logoSubtitle")
+        subtitle_font = self.logo_subtitle.font()
+        subtitle_font.setFamily(PRIMARY_UI_FONT_FAMILY)
+        subtitle_font.setPointSize(max(subtitle_font.pointSize() - 1, 10))
+        self.logo_subtitle.setFont(subtitle_font)
+        self.logo_subtitle.setAlignment(Qt.AlignHCenter)
+        logo_layout.addWidget(self.logo_subtitle, alignment=Qt.AlignHCenter)
+
+        layout.addWidget(logo_container)
 
         self.tree = QTreeWidget()
         self.tree.setObjectName("navTree")
