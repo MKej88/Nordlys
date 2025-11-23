@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import date
 from typing import TYPE_CHECKING, Iterable, List, Sequence
 
+import pandas as pd
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
@@ -44,7 +45,9 @@ def export_dataset_to_pdf(dataset_store: "SaftDatasetStore", file_name: str) -> 
 
     customer_sales = dataset_store.customer_sales
     if customer_sales is not None and not customer_sales.empty:
-        top_customers = customer_sales.nlargest(10, "Omsetning eks mva", keep="all")
+        top_customers = _coerce_numeric(customer_sales, "Omsetning eks mva").nlargest(
+            10, "Omsetning eks mva", keep="all"
+        )
         story.append(Paragraph("Toppkunder", heading_style))
         story.append(
             _dataframe_table(
@@ -56,7 +59,9 @@ def export_dataset_to_pdf(dataset_store: "SaftDatasetStore", file_name: str) -> 
 
     supplier_purchases = dataset_store.supplier_purchases
     if supplier_purchases is not None and not supplier_purchases.empty:
-        top_suppliers = supplier_purchases.nlargest(10, "Innkjøp eks mva", keep="all")
+        top_suppliers = _coerce_numeric(
+            supplier_purchases, "Innkjøp eks mva"
+        ).nlargest(10, "Innkjøp eks mva", keep="all")
         story.append(Paragraph("Topp leverandører", heading_style))
         story.append(
             _dataframe_table(
@@ -163,3 +168,11 @@ def _format_date(value: date | None) -> str:
     if value is None:
         return "–"
     return value.strftime("%d.%m.%Y")
+
+
+def _coerce_numeric(df: pd.DataFrame, column: str) -> pd.DataFrame:
+    """Returnerer kopi der kolonnen er numerisk for sortering."""
+
+    work = df.copy()
+    work[column] = pd.to_numeric(work[column], errors="coerce").fillna(0.0)
+    return work
