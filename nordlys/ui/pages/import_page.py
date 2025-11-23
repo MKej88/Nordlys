@@ -216,7 +216,9 @@ class ImportPage(QWidget):
             state = "pending"
         self._apply_status_state(self.validation_label, state)
 
-    def update_trial_balance_status(self, message: str, *, state: str = "pending") -> None:
+    def update_trial_balance_status(
+        self, message: str, *, state: str = "pending"
+    ) -> None:
         self.trial_balance_label.setText(message)
         self.trial_balance_label.updateGeometry()
         self.status_card.updateGeometry()
