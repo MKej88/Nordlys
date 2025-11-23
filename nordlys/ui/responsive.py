@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ..settings import NAV_PANEL_WIDTH_OVERRIDE
 from .navigation import NavigationPanel
 from .widgets import CardFrame
 
@@ -88,6 +89,9 @@ class ResponsiveLayoutController:
             card_spacing = 16
             nav_spacing = 24
             header_min = 120
+
+        if NAV_PANEL_WIDTH_OVERRIDE is not None:
+            nav_width = max(160, NAV_PANEL_WIDTH_OVERRIDE)
 
         layout_signature = (
             mode,

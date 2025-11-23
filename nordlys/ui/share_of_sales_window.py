@@ -7,11 +7,12 @@ from typing import Sequence
 from PySide6.QtWidgets import (
     QApplication,
     QLabel,
-    QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
+
+from .tables import create_table_widget
 
 __all__ = ["ShareOfSalesWindow", "create_share_of_sales_window"]
 
@@ -28,16 +29,18 @@ class ShareOfSalesWindow(QWidget):
         self.setWindowTitle("% andel av salgsinntekter")
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(12)
 
         self.title_label = QLabel("% andel av salgsinntekter")
+        self.title_label.setObjectName("pageTitle")
+        self.title_label.setWordWrap(True)
         layout.addWidget(self.title_label)
 
-        self.table = QTableWidget(len(rows), len(headers), self)
+        self.table = create_table_widget()
+        self.table.setRowCount(len(rows))
+        self.table.setColumnCount(len(headers))
         self.table.setHorizontalHeaderLabels(list(headers))
-        self.table.verticalHeader().setVisible(False)
-        self.table.horizontalHeader().setStretchLastSection(True)
         layout.addWidget(self.table)
 
         for row_index, row in enumerate(rows):
