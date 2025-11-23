@@ -36,7 +36,9 @@ class NavigationPanel(QFrame):
         super().__init__()
         self.setObjectName("navPanel")
         self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
-        default_width = NAV_PANEL_WIDTH_OVERRIDE if NAV_PANEL_WIDTH_OVERRIDE is not None else 240
+        default_width = (
+            NAV_PANEL_WIDTH_OVERRIDE if NAV_PANEL_WIDTH_OVERRIDE is not None else 240
+        )
         self.setMinimumWidth(default_width)
         if NAV_PANEL_WIDTH_OVERRIDE is not None:
             self.setMaximumWidth(default_width)
