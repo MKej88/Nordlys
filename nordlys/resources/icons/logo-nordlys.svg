@@ -1,0 +1,28 @@
+<svg width="160" height="160" viewBox="0 0 160 160" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="auroraBase" x1="26" y1="132" x2="134" y2="28" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0EA5E9" />
+      <stop offset="1" stop-color="#6366F1" />
+    </linearGradient>
+    <linearGradient id="auroraHighlight" x1="40" y1="126" x2="126" y2="42" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#67E8F9" stop-opacity="0.9" />
+      <stop offset="1" stop-color="#A5B4FC" stop-opacity="0.9" />
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(80 58) rotate(90) scale(86)">
+      <stop stop-color="#E0F2FE" stop-opacity="0.95" />
+      <stop offset="1" stop-color="#0B1120" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+  <rect width="160" height="160" rx="36" fill="#0B1224" />
+  <rect x="6" y="6" width="148" height="148" rx="30" fill="#0F172A" />
+  <rect x="12" y="12" width="136" height="136" rx="26" fill="#0B1224" />
+  <circle cx="80" cy="64" r="70" fill="url(#glow)" opacity="0.9" />
+  <path d="M32 108C52 98 61 72 72 60C83 48 98 42 118 46C126 48 132 52 136 56" stroke="url(#auroraBase)" stroke-width="10" stroke-linecap="round" />
+  <path d="M30 94C48 96 60 88 70 78C80 68 92 58 108 58C120 58 128 62 134 68" stroke="url(#auroraHighlight)" stroke-width="12" stroke-linecap="round" />
+  <path d="M46 120C60 114 70 102 82 94C94 86 110 82 128 86" stroke="#22D3EE" stroke-width="6" stroke-linecap="round" stroke-opacity="0.85" />
+  <circle cx="46" cy="52" r="4" fill="#E0F2FE" />
+  <circle cx="68" cy="38" r="3.5" fill="#C7D2FE" />
+  <circle cx="112" cy="42" r="4.5" fill="#F8FAFC" />
+  <circle cx="126" cy="58" r="3" fill="#C7D2FE" />
+  <circle cx="98" cy="34" r="3" fill="#C7D2FE" />
+</svg>

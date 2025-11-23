@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QBrush, QColor, QFont
+from PySide6.QtGui import QBrush, QColor, QFont, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QFrame,
     QLabel,
+    QHBoxLayout,
     QSizePolicy,
     QTreeWidget,
     QTreeWidgetItem,
@@ -40,12 +42,39 @@ class NavigationPanel(QFrame):
         layout.setContentsMargins(24, 32, 24, 32)
         layout.setSpacing(24)
 
+        logo_container = QFrame()
+        logo_container.setObjectName("logoContainer")
+        logo_layout = QHBoxLayout(logo_container)
+        logo_layout.setContentsMargins(14, 12, 14, 12)
+        logo_layout.setSpacing(12)
+
+        logo_icon_path = (
+            Path(__file__).resolve().parent.parent
+            / "resources"
+            / "icons"
+            / "logo-nordlys.svg"
+        )
+        logo_icon = QIcon(str(logo_icon_path))
+
+        self.logo_mark = QLabel()
+        self.logo_mark.setObjectName("logoMark")
+        logo_pixmap = logo_icon.pixmap(54, 54)
+        if logo_pixmap.isNull():
+            logo_pixmap = QPixmap(54, 54)
+            logo_pixmap.fill(Qt.transparent)
+        self.logo_mark.setPixmap(logo_pixmap)
+        self.logo_mark.setFixedSize(60, 60)
+        self.logo_mark.setAlignment(Qt.AlignCenter)
+        logo_layout.addWidget(self.logo_mark)
+
         self.logo_label = QLabel("Nordlys")
         self.logo_label.setObjectName("logoLabel")
         logo_font = self.logo_label.font()
         logo_font.setFamily(PRIMARY_UI_FONT_FAMILY)
         self.logo_label.setFont(logo_font)
-        layout.addWidget(self.logo_label)
+        logo_layout.addWidget(self.logo_label, 1)
+
+        layout.addWidget(logo_container)
 
         self.tree = QTreeWidget()
         self.tree.setObjectName("navTree")
