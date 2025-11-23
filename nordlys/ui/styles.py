@@ -19,6 +19,8 @@ _APPLICATION_STYLESHEET_TEMPLATE = Template(
 QWidget { font-family: 'Roboto', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; font-size: 14px; color: #0f172a; }
 QMainWindow { background-color: #e9effb; }
 #navPanel { background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:0, stop:0 #0b1120, stop:1 #0f172a); color: #e2e8f0; border-right: 1px solid rgba(148, 163, 184, 0.08); border-top-right-radius: 22px; border-bottom-right-radius: 22px; }
+#logoContainer { background-color: rgba(255, 255, 255, 0.04); border: 1px solid rgba(148, 163, 184, 0.12); border-radius: 14px; padding: 10px 12px; }
+#logoMark { background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 #22d3ee, stop:1 #6366f1); border-radius: 12px; }
 #logoLabel { font-size: 26px; font-weight: 700; letter-spacing: 0.6px; color: #f8fafc; }
 #navTree { background: transparent; border: none; color: #dbeafe; font-size: 14px; }
 #navTree:focus { outline: none; border: none; }
