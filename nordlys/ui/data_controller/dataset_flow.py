@@ -26,7 +26,6 @@ class DatasetFlowController:
 
     def apply_saft_batch(self, results: Sequence[SaftLoadResult]) -> None:
         store = self._context.dataset_store
-        pages = self._context.pages
         if not results:
             store.reset()
             self._update_dataset_selector()
