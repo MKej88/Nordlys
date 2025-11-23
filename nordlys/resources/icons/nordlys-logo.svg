@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-labelledby="title desc">
+  <title id="title">Nordlys logo</title>
+  <desc id="desc">Stilisert nordlys over en mørk himmel.</desc>
+  <defs>
+    <linearGradient id="sky" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0ea5e9"/>
+      <stop offset="50%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#10b981"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#a5b4fc" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#c7d2fe" stop-opacity="0.15"/>
+    </linearGradient>
+  </defs>
+  <rect x="6" y="6" width="108" height="108" rx="24" fill="#0b1120"/>
+  <rect x="14" y="18" width="92" height="84" rx="20" fill="#0f172a"/>
+  <path d="M20 78c10-6 18-10 28-10s20 5 32 5 20-6 28-8v22c-8 6-16 9-26 9-12 0-21-4-32-4-12 0-20 4-30 6v-20z" fill="url(#sky)" opacity="0.95"/>
+  <path d="M22 68c6-10 14-20 24-20 10 0 14 8 24 8 11 0 17-13 28-14v46c-9 3-17 7-28 7-13 0-20-7-32-7-8 0-13 2-16 3z" fill="url(#glow)"/>
+  <circle cx="38" cy="46" r="5" fill="#f8fafc" opacity="0.9"/>
+  <circle cx="88" cy="36" r="4" fill="#e2e8f0" opacity="0.8"/>
+  <circle cx="70" cy="52" r="3" fill="#cbd5e1" opacity="0.75"/>
+</svg>

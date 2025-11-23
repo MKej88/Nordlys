@@ -3,17 +3,20 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QBrush, QColor, QFont
 from PySide6.QtWidgets import (
     QFrame,
     QLabel,
+    QHBoxLayout,
     QSizePolicy,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
 )
+from PySide6.QtSvgWidgets import QSvgWidget
 
 from .config import PRIMARY_UI_FONT_FAMILY, icon_for_navigation
 
@@ -40,12 +43,24 @@ class NavigationPanel(QFrame):
         layout.setContentsMargins(24, 32, 24, 32)
         layout.setSpacing(24)
 
+        logo_wrapper = QFrame()
+        logo_layout = QHBoxLayout(logo_wrapper)
+        logo_layout.setContentsMargins(0, 0, 0, 0)
+        logo_layout.setSpacing(12)
+
+        logo_icon = QSvgWidget(str(_logo_path()))
+        logo_icon.setObjectName("logoIcon")
+        logo_icon.setFixedSize(42, 42)
+        logo_layout.addWidget(logo_icon, alignment=Qt.AlignLeft | Qt.AlignVCenter)
+
         self.logo_label = QLabel("Nordlys")
         self.logo_label.setObjectName("logoLabel")
         logo_font = self.logo_label.font()
         logo_font.setFamily(PRIMARY_UI_FONT_FAMILY)
         self.logo_label.setFont(logo_font)
-        layout.addWidget(self.logo_label)
+        logo_layout.addWidget(self.logo_label, alignment=Qt.AlignLeft | Qt.AlignVCenter)
+
+        layout.addWidget(logo_wrapper)
 
         self.tree = QTreeWidget()
         self.tree.setObjectName("navTree")
@@ -107,3 +122,14 @@ class NavigationPanel(QFrame):
         parent.item.addChild(item)
         parent.item.setExpanded(True)
         return NavigationItem(key, item)
+
+
+def _logo_path() -> Path:
+    """Returner filstien til Nordlys-logoen."""
+
+    return (
+        Path(__file__).resolve().parent.parent
+        / "resources"
+        / "icons"
+        / "nordlys-logo.svg"
+    )
