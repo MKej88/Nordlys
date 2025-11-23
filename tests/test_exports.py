@@ -64,3 +64,17 @@ def test_pdf_export_creates_file(tmp_path: Path) -> None:
 
     assert out_file.exists()
     assert out_file.stat().st_size > 0
+
+
+def test_pdf_export_handles_non_numeric_amounts(tmp_path: Path) -> None:
+    store = _build_store()
+    store._customer_sales["Omsetning eks mva"] = store._customer_sales["Omsetning eks mva"].astype(object)  # type: ignore[index]
+    store._supplier_purchases["Innkjøp eks mva"] = store._supplier_purchases["Innkjøp eks mva"].astype(object)  # type: ignore[index]
+    store._customer_sales.loc[0, "Omsetning eks mva"] = "ukjent"  # type: ignore[index]
+    store._supplier_purchases.loc[0, "Innkjøp eks mva"] = "?"  # type: ignore[index]
+
+    out_file = tmp_path / "rapport_snill.pdf"
+    export_dataset_to_pdf(store, str(out_file))
+
+    assert out_file.exists()
+    assert out_file.stat().st_size > 0
