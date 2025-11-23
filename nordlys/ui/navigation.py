@@ -22,10 +22,7 @@ from .config import PRIMARY_UI_FONT_FAMILY, icon_for_navigation
 __all__ = ["NavigationItem", "NavigationPanel"]
 
 LOGO_ICON_PATH = (
-    Path(__file__).resolve().parent.parent
-    / "resources"
-    / "icons"
-    / "nordlys-logo.svg"
+    Path(__file__).resolve().parent.parent / "resources" / "icons" / "nordlys-logo.svg"
 )
 
 
