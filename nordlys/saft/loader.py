@@ -304,7 +304,10 @@ def _suggest_max_workers(
         if size >= HEAVY_SAFT_FILE_BYTES:
             heavy_files += 1
 
-    if heavy_files >= 3 or total_bytes >= HEAVY_SAFT_TOTAL_BYTES:
+    heavy_by_count = heavy_files >= 2
+    heavy_by_total = total_bytes >= HEAVY_SAFT_TOTAL_BYTES
+
+    if heavy_by_count or heavy_by_total:
         return min(desired, HEAVY_SAFT_MAX_WORKERS)
 
     return desired
