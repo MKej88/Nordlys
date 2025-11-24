@@ -504,6 +504,15 @@ class RegnskapsanalysePage(QWidget):
 
             return verdict
 
+        def working_capital_verdict(value: Optional[float]) -> str:
+            if value is None:
+                return "Mangler grunnlag"
+            if value < 0:
+                return "SVAK"
+            if value == 0:
+                return "OBS"
+            return "SKJØNN"
+
         def ratio(
             numerator_key: str, denominator_key: str
         ) -> Callable[
@@ -532,6 +541,27 @@ class RegnskapsanalysePage(QWidget):
                 if numerator is None or denominator is None or abs(denominator) < 1e-6:
                     return None
                 return numerator / denominator
+
+            return calculator
+
+        def liquidity_ratio(
+            *, include_inventory: bool = True, cash_only: bool = False
+        ) -> Callable[
+            [Mapping[str, float], Optional[Mapping[str, float]]], Optional[float]
+        ]:
+            def calculator(
+                summary: Mapping[str, float], _previous: Optional[Mapping[str, float]]
+            ) -> Optional[float]:
+                assets_key = "kontanter_og_bank_UB" if cash_only else "omlopsmidler_UB"
+                assets = self._get_numeric(summary, assets_key)
+                if assets is None:
+                    return None
+                if not cash_only and not include_inventory:
+                    assets -= self._get_numeric(summary, "varelager_UB") or 0.0
+                liabilities = self._get_numeric(summary, "kortsiktig_gjeld_UB")
+                if liabilities is None or abs(liabilities) < 1e-6:
+                    return None
+                return assets / liabilities
 
             return calculator
 
@@ -753,31 +783,21 @@ class RegnskapsanalysePage(QWidget):
             KeyMetricDefinition(
                 category="Likviditetsanalyse",
                 title="Likviditetsgrad I",
-                calculator=quotient("omlopsmidler_UB", "kortsiktig_gjeld_UB"),
+                calculator=liquidity_ratio(),
                 unit="multiple",
                 evaluator=good_if_at_least(1.5),
             ),
             KeyMetricDefinition(
                 category="Likviditetsanalyse",
                 title="Likviditetsgrad II",
-                calculator=(
-                    lambda summary, _prev: (
-                        lambda result: result / 100 if result is not None else None
-                    )(
-                        self._ratio(
-                            self._get_numeric(summary, "omlopsmidler_UB")
-                            - (self._get_numeric(summary, "varelager_UB") or 0.0),
-                            self._get_numeric(summary, "kortsiktig_gjeld_UB"),
-                        )
-                    )
-                ),
+                calculator=liquidity_ratio(include_inventory=False),
                 unit="multiple",
                 evaluator=good_if_at_least(1.0),
             ),
             KeyMetricDefinition(
                 category="Likviditetsanalyse",
                 title="Likviditetsgrad III",
-                calculator=quotient("kontanter_og_bank_UB", "kortsiktig_gjeld_UB"),
+                calculator=liquidity_ratio(cash_only=True),
                 unit="multiple",
                 evaluator=(
                     lambda value: (
@@ -799,7 +819,7 @@ class RegnskapsanalysePage(QWidget):
                 title="Arbeidskapital",
                 calculator=working_capital,
                 unit="currency",
-                evaluator=observation_only("SKJØNN"),
+                evaluator=working_capital_verdict,
             ),
             KeyMetricDefinition(
                 category="Soliditetsanalyse",
