@@ -276,8 +276,9 @@ def load_saft_files(
 
     successful_results = [result for result in results if result is not None]
 
-    if first_exception is not None and not successful_results:
-        raise first_exception
+    if first_exception is not None:
+        if progress_callback is None or not successful_results:
+            raise first_exception
 
     return successful_results
 

@@ -1902,6 +1902,37 @@ def test_load_saft_files_keeps_successes_when_one_fails(monkeypatch):
     assert progress_events[-1] == (100, "Import fullført med feil i: bad.xml.")
 
 
+def test_load_saft_files_raises_on_partial_failure_without_progress(monkeypatch):
+    validation = SaftValidationResult(
+        audit_file_version=None,
+        version_family=None,
+        schema_version=None,
+        is_valid=None,
+    )
+
+    def fake_load(path: str, progress_callback=None):
+        if "bad" in path:
+            raise RuntimeError("Kunne ikke lese fil")
+        return SaftLoadResult(
+            file_path=path,
+            header=None,
+            dataframe=pd.DataFrame(),
+            customers={},
+            customer_sales=None,
+            suppliers={},
+            supplier_purchases=None,
+            cost_vouchers=[],
+            analysis_year=None,
+            summary={},
+            validation=validation,
+        )
+
+    monkeypatch.setattr("nordlys.saft.loader.load_saft_file", fake_load)
+
+    with pytest.raises(RuntimeError):
+        load_saft_files(["good.xml", "bad.xml"])
+
+
 def test_suggest_max_workers_limits_large_imports(monkeypatch, tmp_path):
     from nordlys.saft import loader
 
