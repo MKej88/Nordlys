@@ -62,8 +62,13 @@ def _ensure_xmlschema_loaded() -> bool:
     return True
 
 
-def _build_xml_resource(xml_path: Path) -> str | Path | object:
-    """Returnerer en XMLResource med lazy-parsing når det er støttet."""
+def _build_xml_resource(xml_source: Path | str | ET.Element | ET.ElementTree) -> object:
+    """Forbereder kilden for validering uten unødvendig parsing."""
+
+    if isinstance(xml_source, (ET.Element, ET.ElementTree)):
+        return xml_source
+
+    xml_path = Path(xml_source)
 
     if XMLResource is None:
         return str(xml_path)
@@ -134,24 +139,33 @@ def _schema_info_for_family(family: Optional[str]) -> Optional[Tuple[Path, str]]
     return None
 
 
-def _extract_version_from_file(xml_path: Path) -> Optional[str]:
+def _extract_version(xml_source: Path | str | ET.Element | ET.ElementTree) -> Optional[str]:
     try:
-        root = ET.parse(xml_path).getroot()
+        if isinstance(xml_source, ET.Element):
+            root = xml_source
+        elif isinstance(xml_source, ET.ElementTree):
+            root = xml_source.getroot()
+        else:
+            root = ET.parse(Path(xml_source)).getroot()
     except (ET.ParseError, OSError):
         return None
+
+    if root is None:
+        return None
+
     header = parse_saft_header(root)
     return header.file_version if header else None
 
 
 def validate_saft_against_xsd(
-    xml_source: Path | str, version: Optional[str] = None
+    xml_source: Path | str | ET.Element | ET.ElementTree,
+    version: Optional[str] = None,
 ) -> SaftValidationResult:
     """Validerer SAF-T XML mot korrekt XSD basert på AuditFileVersion."""
 
-    xml_path = Path(xml_source)
     audit_version = (
         version.strip() if version and version.strip() else None
-    ) or _extract_version_from_file(xml_path)
+    ) or _extract_version(xml_source)
     family = _detect_version_family(audit_version)
     schema_info = _schema_info_for_family(family)
     if schema_info is None:
@@ -188,7 +202,7 @@ def validate_saft_against_xsd(
     try:
         schema = _get_cached_schema(schema_path)
         assert schema is not None  # for typekontroll
-        resource = _build_xml_resource(xml_path)
+        resource = _build_xml_resource(xml_source)
         schema.validate(resource)
     except XMLSchemaException as exc:  # pragma: no cover - variasjon i tekst
         return SaftValidationResult(
