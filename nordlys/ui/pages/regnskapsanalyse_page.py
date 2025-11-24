@@ -45,6 +45,7 @@ from ..widgets import CardFrame
 class KeyMetricDefinition:
     """Beskriver én nøkkeltallsberegning."""
 
+    category: str
     title: str
     calculator: Callable[
         [Mapping[str, float], Optional[Mapping[str, float]]], Optional[float]
@@ -261,6 +262,7 @@ class RegnskapsanalysePage(QWidget):
         ] = None
         self._prepared_df: Optional[pd.DataFrame] = None
         self._fiscal_year: Optional[str] = None
+        self._key_metric_header_rows: List[int] = []
         self.set_summary_history([])
 
     def _set_active_section(self, index: int) -> None:
@@ -549,50 +551,82 @@ class RegnskapsanalysePage(QWidget):
 
             return calculator
 
+        def gross_margin(
+            summary: Mapping[str, float], _previous: Optional[Mapping[str, float]]
+        ) -> Optional[float]:
+            revenue = self._get_numeric(summary, "driftsinntekter")
+            cost_of_goods = self._get_numeric(summary, "varekostnad")
+            if revenue is None or abs(revenue) < 1e-6 or cost_of_goods is None:
+                return None
+            margin_value = revenue - cost_of_goods
+            return (margin_value / revenue) * 100
+
         return [
             KeyMetricDefinition(
+                category="Lønnsomhet",
+                title="Bruttofortjeneste i %",
+                calculator=gross_margin,
+                unit="percent",
+                evaluator=good_if_at_least(30.0),
+            ),
+            KeyMetricDefinition(
+                category="Lønnsomhet",
+                title="EBITDA-margin",
+                calculator=ratio("ebitda", "driftsinntekter"),
+                unit="percent",
+                evaluator=good_if_at_least(5.0),
+            ),
+            KeyMetricDefinition(
+                category="Lønnsomhet",
                 title="Resultat av driften i %",
                 calculator=ratio("ebit", "driftsinntekter"),
                 unit="percent",
                 evaluator=good_if_at_least(2.0),
             ),
             KeyMetricDefinition(
+                category="Lønnsomhet",
                 title="Resultatmargin",
                 calculator=ratio("arsresultat", "driftsinntekter"),
                 unit="percent",
                 evaluator=good_if_above_zero_or_threshold(2.0),
             ),
             KeyMetricDefinition(
+                category="Lønnsomhet",
                 title="Kapitalens omløpshastighet",
                 calculator=turnover_calculator("driftsinntekter", self._total_capital),
                 unit="multiple",
                 evaluator=good_if_at_least(2.0),
             ),
             KeyMetricDefinition(
+                category="Lønnsomhet",
                 title="EK-rentabilitet før skatt i %",
                 calculator=average_ratio("resultat_for_skatt", self._get_equity),
                 unit="percent",
                 evaluator=good_if_at_least(16.0),
             ),
             KeyMetricDefinition(
+                category="Soliditet",
                 title="EK-andel i %",
                 calculator=ratio("egenkapital_UB", "eiendeler_UB"),
                 unit="percent",
                 evaluator=good_if_at_least(10.0),
             ),
             KeyMetricDefinition(
+                category="Soliditet",
                 title="Gjeldsgrad",
                 calculator=turnover_calculator("gjeld_UB", self._get_equity),
                 unit="multiple",
                 evaluator=healthy_if_at_most(5.0),
             ),
             KeyMetricDefinition(
+                category="Soliditet",
                 title="Rentedekningsgrad",
                 calculator=self._interest_coverage,
                 unit="multiple",
                 evaluator=good_if_at_least(2.0),
             ),
             KeyMetricDefinition(
+                category="Soliditet",
                 title="Tapsbuffer",
                 calculator=ratio("egenkapital_UB", "driftsinntekter"),
                 unit="percent",
@@ -619,7 +653,13 @@ class RegnskapsanalysePage(QWidget):
         previous_summary: Optional[Mapping[str, float]],
     ) -> List[Tuple[object, object, object, object]]:
         rows: List[Tuple[object, object, object, object]] = []
+        self._key_metric_header_rows = []
+        current_category: Optional[str] = None
         for definition in self._key_metric_definitions():
+            if definition.category != current_category:
+                current_category = definition.category
+                self._key_metric_header_rows.append(len(rows))
+                rows.append((current_category, "", "", ""))
             current_value = definition.calculator(summary, previous_summary)
             previous_value = (
                 definition.calculator(previous_summary, None)
@@ -828,6 +868,7 @@ class RegnskapsanalysePage(QWidget):
             "Tallene under er beregnet fra SAF-T og vurdert opp mot faste terskler."
         )
         self.key_metrics_table.show()
+        self._style_key_metrics_table()
         self._schedule_table_height_adjustment(self.key_metrics_table, extra_padding=0)
 
     def _ratio(
@@ -1128,6 +1169,32 @@ class RegnskapsanalysePage(QWidget):
                         font.setBold(is_bold)
                         item.setFont(font)
                     item.setData(BOTTOM_BORDER_ROLE, has_bottom_border)
+                    item.setData(TOP_BORDER_ROLE, False)
+        table.viewport().update()
+
+    def _style_key_metrics_table(self) -> None:
+        if not self._key_metric_header_rows:
+            return
+        table = self.key_metrics_table
+        base_height = compact_row_base_height(table)
+        header_height = max(base_height + 4, int(base_height * 1.25))
+        header_brush = QBrush(QColor(226, 232, 240))
+        default_brush = QBrush()
+        with suspend_table_updates(table):
+            for row_idx in range(table.rowCount()):
+                is_header = row_idx in self._key_metric_header_rows
+                target_height = header_height if is_header else base_height
+                if table.rowHeight(row_idx) < target_height:
+                    table.setRowHeight(row_idx, target_height)
+                for col_idx in range(table.columnCount()):
+                    item = table.item(row_idx, col_idx)
+                    if item is None:
+                        continue
+                    font = item.font()
+                    font.setBold(is_header and col_idx == 0)
+                    item.setFont(font)
+                    item.setBackground(header_brush if is_header else default_brush)
+                    item.setData(BOTTOM_BORDER_ROLE, False)
                     item.setData(TOP_BORDER_ROLE, False)
         table.viewport().update()
 
