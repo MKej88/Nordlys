@@ -142,6 +142,8 @@ def _schema_info_for_family(family: Optional[str]) -> Optional[Tuple[Path, str]]
 def _extract_version(
     xml_source: Path | str | ET.Element | ET.ElementTree,
 ) -> Optional[str]:
+    root: ET.Element | None
+
     try:
         if isinstance(xml_source, ET.Element):
             root = xml_source
