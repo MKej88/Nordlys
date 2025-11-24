@@ -28,7 +28,7 @@ class _ProgressAnimator(QObject):
         self._last_report_time = time.monotonic()
         self._idle_seconds = 1.6
         self._finish_seconds = 4.0
-        self._max_idle_lead = 8
+        self._max_idle_lead = 25
 
     def report_progress(self, percent: int) -> None:
         clamped = max(0, min(100, int(percent)))
