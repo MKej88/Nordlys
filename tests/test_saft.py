@@ -6,6 +6,7 @@ import xml.etree.ElementTree as ET
 import zipfile
 from datetime import date
 from decimal import Decimal
+from threading import Lock
 from typing import List, Sequence, Tuple
 
 import pandas as pd
@@ -1735,6 +1736,47 @@ def test_validate_saft_against_xsd_uses_lazy_xmlresource(monkeypatch, tmp_path):
     assert result.is_valid is True
     assert call_info["source"] == str(xml_path)
     assert call_info["lazy"] is True
+
+
+def test_validate_saft_against_xsd_caches_schema(monkeypatch, tmp_path):
+    validation_module = sys.modules["nordlys.saft.validation"]
+    xml_path = tmp_path / "saft_cached.xml"
+    xml_path.write_text(
+        '<AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">'
+        "  <Header>"
+        "    <AuditFileVersion>1.30</AuditFileVersion>"
+        "  </Header>"
+        "</AuditFile>",
+        encoding="utf-8",
+    )
+    schema_path = tmp_path / "schema.xsd"
+    schema_path.write_text("<schema />", encoding="utf-8")
+
+    call_count = {"init": 0}
+
+    class FakeSchema:
+        def __init__(self, path: str) -> None:
+            call_count["init"] += 1
+            assert path == str(schema_path)
+
+        def validate(self, resource: object) -> None:
+            return None
+
+    monkeypatch.setattr(validation_module, "XMLSCHEMA_AVAILABLE", True, raising=False)
+    monkeypatch.setattr(validation_module, "XMLSchema", FakeSchema, raising=False)
+    monkeypatch.setattr(validation_module, "_SCHEMA_CACHE", {}, raising=False)
+    monkeypatch.setattr(validation_module, "_SCHEMA_CACHE_LOCK", Lock(), raising=False)
+    monkeypatch.setattr(validation_module, "_ensure_xmlschema_loaded", lambda: True)
+    monkeypatch.setattr(
+        validation_module, "_schema_info_for_family", lambda _: (schema_path, "1.30")
+    )
+
+    first = validation_module.validate_saft_against_xsd(xml_path, version="1.30")
+    second = validation_module.validate_saft_against_xsd(xml_path, version="1.30")
+
+    assert first.is_valid is True
+    assert second.is_valid is True
+    assert call_count["init"] == 1
 
 
 def test_load_saft_files_parallel_progress(monkeypatch):
