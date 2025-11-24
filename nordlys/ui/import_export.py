@@ -251,13 +251,15 @@ class ImportExportController(QObject):
             self._load_error_handler(message)
             return
 
+        self._progress_display.finish("Import fullført")
         self._finalize_loading()
 
     # endregion
 
     # region Statusvisning
     def _finalize_loading(self, status_message: Optional[str] = None) -> None:
-        self._progress_display.hide()
+        if status_message is not None:
+            self._progress_display.hide()
         self._set_loading_state(False)
         self._status_callback(status_message or "Klar.")
         self._task_state.clear()

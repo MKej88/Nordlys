@@ -85,6 +85,17 @@ class ImportProgressDisplay:
             self._bar.setVisible(True)
         self._animator.report_progress(value)
 
+    def finish(self, message: Optional[str] = None) -> None:
+        """Skru fremdriften til 100 % og lukk når animasjonen er ferdig."""
+
+        self._last_message = (message or self._last_message).strip() or "Ferdig."
+        if self._label is not None:
+            self._label.setText(self._last_message)
+            self._label.setVisible(True)
+        if self._bar is not None:
+            self._bar.setVisible(True)
+        self._animator.report_progress(100)
+
     def hide(self) -> None:
         self._animator.stop()
         if self._label is not None:
