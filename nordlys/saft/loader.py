@@ -101,7 +101,7 @@ def load_saft_file(
 
         validation_future = executor.submit(
             saft.validate_saft_against_xsd,
-            file_path,
+            tree,
             header.file_version if header else None,
         )
         enrichment_future = executor.submit(enrich_from_header, header)

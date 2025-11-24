@@ -1779,6 +1779,46 @@ def test_validate_saft_against_xsd_caches_schema(monkeypatch, tmp_path):
     assert call_count["init"] == 1
 
 
+def test_validate_saft_against_xsd_accepts_element_tree(monkeypatch, tmp_path):
+    validation_module = sys.modules["nordlys.saft.validation"]
+
+    xml_root = ET.fromstring(
+        """
+        <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+          <Header>
+            <AuditFileVersion>1.30</AuditFileVersion>
+          </Header>
+        </AuditFile>
+        """
+    )
+    xml_tree = ET.ElementTree(xml_root)
+    schema_path = tmp_path / "schema.xsd"
+    schema_path.write_text("<schema />", encoding="utf-8")
+
+    call_info: dict[str, object] = {}
+
+    class FakeSchema:
+        def __init__(self, path: str) -> None:
+            call_info["schema_path"] = path
+
+        def validate(self, resource: object) -> None:
+            call_info["resource"] = resource
+
+    monkeypatch.setattr(validation_module, "XMLSCHEMA_AVAILABLE", True, raising=False)
+    monkeypatch.setattr(validation_module, "XMLSchema", FakeSchema, raising=False)
+    monkeypatch.setattr(validation_module, "_SCHEMA_CACHE", {}, raising=False)
+    monkeypatch.setattr(validation_module, "_SCHEMA_CACHE_LOCK", Lock(), raising=False)
+    monkeypatch.setattr(validation_module, "_ensure_xmlschema_loaded", lambda: True)
+    monkeypatch.setattr(
+        validation_module, "_schema_info_for_family", lambda _: (schema_path, "1.30")
+    )
+
+    result = validation_module.validate_saft_against_xsd(xml_tree)
+
+    assert result.is_valid is True
+    assert call_info["resource"] is xml_tree
+
+
 def test_load_saft_files_parallel_progress(monkeypatch):
     validation = SaftValidationResult(
         audit_file_version=None,
