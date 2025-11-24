@@ -450,6 +450,14 @@ class RegnskapsanalysePage(QWidget):
             return f"{value:.1f} %"
         if unit == "multiple":
             return f"{value:.2f}"
+        if unit == "days":
+            return f"{value:.0f}"
+        if unit == "weeks":
+            return f"{value:.1f}"
+        if unit == "years":
+            return f"{value:.2f}"
+        if unit == "currency":
+            return format_currency(value)
         return f"{value:.1f}"
 
     def _total_capital(self, summary: Mapping[str, float]) -> Optional[float]:
@@ -490,6 +498,12 @@ class RegnskapsanalysePage(QWidget):
 
             return verdict
 
+        def observation_only(label: str = "SKJØNN") -> Callable[[Optional[float]], str]:
+            def verdict(_value: Optional[float]) -> str:
+                return label
+
+            return verdict
+
         def ratio(
             numerator_key: str, denominator_key: str
         ) -> Callable[
@@ -502,6 +516,22 @@ class RegnskapsanalysePage(QWidget):
                     self._get_numeric(summary, numerator_key),
                     self._get_numeric(summary, denominator_key),
                 )
+
+            return calculator
+
+        def quotient(
+            numerator_key: str, denominator_key: str
+        ) -> Callable[
+            [Mapping[str, float], Optional[Mapping[str, float]]], Optional[float]
+        ]:
+            def calculator(
+                summary: Mapping[str, float], _previous: Optional[Mapping[str, float]]
+            ) -> Optional[float]:
+                numerator = self._get_numeric(summary, numerator_key)
+                denominator = self._get_numeric(summary, denominator_key)
+                if numerator is None or denominator is None or abs(denominator) < 1e-6:
+                    return None
+                return numerator / denominator
 
             return calculator
 
@@ -561,76 +591,274 @@ class RegnskapsanalysePage(QWidget):
             margin_value = revenue - cost_of_goods
             return (margin_value / revenue) * 100
 
+        def gross_profit(
+            summary: Mapping[str, float], _previous: Optional[Mapping[str, float]]
+        ) -> Optional[float]:
+            revenue = self._get_numeric(summary, "driftsinntekter")
+            cost_of_goods = self._get_numeric(summary, "varekostnad")
+            if revenue is None or cost_of_goods is None:
+                return None
+            return revenue - cost_of_goods
+
+        def inventory_days(
+            summary: Mapping[str, float],
+            previous_summary: Optional[Mapping[str, float]],
+        ) -> Optional[float]:
+            inventories = [self._get_numeric(summary, "varelager_UB")]
+            if previous_summary is not None:
+                inventories.append(self._get_numeric(previous_summary, "varelager_UB"))
+            average_inventory = self._average(inventories)
+            cost_of_goods = self._get_numeric(summary, "varekostnad")
+            if (
+                average_inventory is None
+                or cost_of_goods is None
+                or abs(cost_of_goods) < 1e-6
+            ):
+                return None
+            return (average_inventory / cost_of_goods) * 365
+
+        def inventory_turnover(
+            summary: Mapping[str, float],
+            previous_summary: Optional[Mapping[str, float]],
+        ) -> Optional[float]:
+            inventories = [self._get_numeric(summary, "varelager_UB")]
+            if previous_summary is not None:
+                inventories.append(self._get_numeric(previous_summary, "varelager_UB"))
+            average_inventory = self._average(inventories)
+            cost_of_goods = self._get_numeric(summary, "varekostnad")
+            if (
+                average_inventory is None
+                or cost_of_goods is None
+                or abs(average_inventory) < 1e-6
+            ):
+                return None
+            return cost_of_goods / average_inventory
+
+        def payable_days(
+            summary: Mapping[str, float],
+            previous_summary: Optional[Mapping[str, float]],
+        ) -> Optional[float]:
+            balances = [self._get_numeric(summary, "leverandorgjeld_UB")]
+            if previous_summary is not None:
+                balances.append(
+                    self._get_numeric(previous_summary, "leverandorgjeld_UB")
+                )
+            average_payable = self._average(balances)
+            cost_of_goods = self._get_numeric(summary, "varekostnad")
+            if (
+                average_payable is None
+                or cost_of_goods is None
+                or abs(cost_of_goods) < 1e-6
+            ):
+                return None
+            return (average_payable / cost_of_goods) * 365
+
+        def receivable_days(
+            summary: Mapping[str, float],
+            previous_summary: Optional[Mapping[str, float]],
+        ) -> Optional[float]:
+            balances = [self._get_numeric(summary, "kundefordringer_UB")]
+            if previous_summary is not None:
+                balances.append(
+                    self._get_numeric(previous_summary, "kundefordringer_UB")
+                )
+            average_receivables = self._average(balances)
+            revenue = self._get_numeric(summary, "driftsinntekter")
+            if average_receivables is None or revenue is None or abs(revenue) < 1e-6:
+                return None
+            return (average_receivables / revenue) * 365
+
+        def working_capital(
+            summary: Mapping[str, float], _previous: Optional[Mapping[str, float]]
+        ) -> Optional[float]:
+            current_assets = self._get_numeric(summary, "omlopsmidler_UB")
+            current_liabilities = self._get_numeric(summary, "kortsiktig_gjeld_UB")
+            if current_assets is None or current_liabilities is None:
+                return None
+            return current_assets - current_liabilities
+
         return [
             KeyMetricDefinition(
-                category="Lønnsomhet",
-                title="Bruttofortjeneste i %",
-                calculator=gross_margin,
-                unit="percent",
-                evaluator=good_if_at_least(30.0),
-            ),
-            KeyMetricDefinition(
-                category="Lønnsomhet",
-                title="EBITDA-margin",
-                calculator=ratio("ebitda", "driftsinntekter"),
-                unit="percent",
-                evaluator=good_if_at_least(5.0),
-            ),
-            KeyMetricDefinition(
-                category="Lønnsomhet",
+                category="Lønnsomhetsanalyse",
                 title="Resultat av driften i %",
                 calculator=ratio("ebit", "driftsinntekter"),
                 unit="percent",
                 evaluator=good_if_at_least(2.0),
             ),
             KeyMetricDefinition(
-                category="Lønnsomhet",
-                title="Resultatmargin",
-                calculator=ratio("arsresultat", "driftsinntekter"),
-                unit="percent",
-                evaluator=good_if_above_zero_or_threshold(2.0),
-            ),
-            KeyMetricDefinition(
-                category="Lønnsomhet",
+                category="Lønnsomhetsanalyse",
                 title="Kapitalens omløpshastighet",
                 calculator=turnover_calculator("driftsinntekter", self._total_capital),
                 unit="multiple",
                 evaluator=good_if_at_least(2.0),
             ),
             KeyMetricDefinition(
-                category="Lønnsomhet",
-                title="EK-rentabilitet før skatt i %",
+                category="Lønnsomhetsanalyse",
+                title="EK rentabilitet før skatt i %",
                 calculator=average_ratio("resultat_for_skatt", self._get_equity),
                 unit="percent",
                 evaluator=good_if_at_least(16.0),
             ),
             KeyMetricDefinition(
-                category="Soliditet",
+                category="Likviditetsanalyse",
+                title="Likviditetsgrad I",
+                calculator=quotient("omlopsmidler_UB", "kortsiktig_gjeld_UB"),
+                unit="multiple",
+                evaluator=good_if_at_least(1.5),
+            ),
+            KeyMetricDefinition(
+                category="Likviditetsanalyse",
+                title="Likviditetsgrad II",
+                calculator=(
+                    lambda summary, _prev: (
+                        lambda result: result / 100 if result is not None else None
+                    )(
+                        self._ratio(
+                            self._get_numeric(summary, "omlopsmidler_UB")
+                            - (self._get_numeric(summary, "varelager_UB") or 0.0),
+                            self._get_numeric(summary, "kortsiktig_gjeld_UB"),
+                        )
+                    )
+                ),
+                unit="multiple",
+                evaluator=good_if_at_least(1.0),
+            ),
+            KeyMetricDefinition(
+                category="Likviditetsanalyse",
+                title="Likviditetsgrad III",
+                calculator=quotient("kontanter_og_bank_UB", "kortsiktig_gjeld_UB"),
+                unit="multiple",
+                evaluator=(
+                    lambda value: (
+                        "Mangler grunnlag"
+                        if value is None
+                        else ("GOD" if value >= 0.5 else "OBS")
+                    )
+                ),
+            ),
+            KeyMetricDefinition(
+                category="Likviditetsanalyse",
+                title="Lageret i dager",
+                calculator=inventory_days,
+                unit="days",
+                evaluator=observation_only("OBS"),
+            ),
+            KeyMetricDefinition(
+                category="Likviditetsanalyse",
+                title="Arbeidskapital",
+                calculator=working_capital,
+                unit="currency",
+                evaluator=observation_only("SKJØNN"),
+            ),
+            KeyMetricDefinition(
+                category="Soliditetsanalyse",
                 title="EK-andel i %",
                 calculator=ratio("egenkapital_UB", "eiendeler_UB"),
                 unit="percent",
                 evaluator=good_if_at_least(10.0),
             ),
             KeyMetricDefinition(
-                category="Soliditet",
+                category="Soliditetsanalyse",
+                title="Låneandel av omsetning i %",
+                calculator=ratio("gjeld_UB", "driftsinntekter"),
+                unit="percent",
+                evaluator=healthy_if_at_most(300.0, bad_label="OBS", ok_label="GOD"),
+            ),
+            KeyMetricDefinition(
+                category="Soliditetsanalyse",
                 title="Gjeldsgrad",
                 calculator=turnover_calculator("gjeld_UB", self._get_equity),
                 unit="multiple",
                 evaluator=healthy_if_at_most(5.0),
             ),
             KeyMetricDefinition(
-                category="Soliditet",
+                category="Soliditetsanalyse",
                 title="Rentedekningsgrad",
                 calculator=self._interest_coverage,
                 unit="multiple",
                 evaluator=good_if_at_least(2.0),
             ),
             KeyMetricDefinition(
-                category="Soliditet",
+                category="Soliditetsanalyse",
                 title="Tapsbuffer",
                 calculator=ratio("egenkapital_UB", "driftsinntekter"),
                 unit="percent",
                 evaluator=good_if_at_least(10.0),
+            ),
+            KeyMetricDefinition(
+                category="Soliditetsanalyse",
+                title="Kredittid leverandør",
+                calculator=payable_days,
+                unit="days",
+                evaluator=observation_only("OBS"),
+            ),
+            KeyMetricDefinition(
+                category="Soliditetsanalyse",
+                title="Debitorgrader",
+                calculator=receivable_days,
+                unit="days",
+                evaluator=observation_only("OBS"),
+            ),
+            KeyMetricDefinition(
+                category="Bransjespesifikk",
+                title="Varer: DB i %",
+                calculator=gross_margin,
+                unit="percent",
+                evaluator=observation_only(),
+            ),
+            KeyMetricDefinition(
+                category="Bransjespesifikk",
+                title="Varer: DB i tkr",
+                calculator=gross_profit,
+                unit="currency",
+                evaluator=observation_only(),
+            ),
+            KeyMetricDefinition(
+                category="Bransjespesifikk",
+                title="Varer: kontantstrøm i dager",
+                calculator=inventory_days,
+                unit="days",
+                evaluator=observation_only(),
+            ),
+            KeyMetricDefinition(
+                category="Bransjespesifikk",
+                title="Varer: i uker",
+                calculator=(
+                    lambda summary, prev: (
+                        (inventory_days(summary, prev) or 0.0) / 7
+                        if inventory_days(summary, prev) is not None
+                        else None
+                    )
+                ),
+                unit="weeks",
+                evaluator=observation_only(),
+            ),
+            KeyMetricDefinition(
+                category="Bransjespesifikk",
+                title="Varer: i dager",
+                calculator=inventory_days,
+                unit="days",
+                evaluator=observation_only(),
+            ),
+            KeyMetricDefinition(
+                category="Bransjespesifikk",
+                title="Lageret i år",
+                calculator=(
+                    lambda summary, prev: (
+                        (inventory_days(summary, prev) or 0.0) / 365
+                        if inventory_days(summary, prev) is not None
+                        else None
+                    )
+                ),
+                unit="years",
+                evaluator=observation_only(),
+            ),
+            KeyMetricDefinition(
+                category="Bransjespesifikk",
+                title="Varelagerets omløpshastighet",
+                calculator=inventory_turnover,
+                unit="multiple",
+                evaluator=observation_only(),
             ),
         ]
 
@@ -1180,6 +1408,16 @@ class RegnskapsanalysePage(QWidget):
         header_height = max(base_height + 4, int(base_height * 1.25))
         header_brush = QBrush(QColor(226, 232, 240))
         default_brush = QBrush()
+        verdict_colors = {
+            "GOD": QBrush(QColor(34, 197, 94, 160)),
+            "SVAK": QBrush(QColor(250, 204, 21, 160)),
+            "SUNN": QBrush(QColor(74, 222, 128, 160)),
+            "IKKE SUNN": QBrush(QColor(248, 113, 113, 160)),
+            "UNDERSKUDD": QBrush(QColor(239, 68, 68, 160)),
+            "OBS": QBrush(QColor(251, 146, 60, 160)),
+            "SKJØNN": QBrush(QColor(168, 85, 247, 160)),
+            "Mangler grunnlag": QBrush(QColor(203, 213, 225, 160)),
+        }
         with suspend_table_updates(table):
             for row_idx in range(table.rowCount()):
                 is_header = row_idx in self._key_metric_header_rows
@@ -1194,6 +1432,9 @@ class RegnskapsanalysePage(QWidget):
                     font.setBold(is_header and col_idx == 0)
                     item.setFont(font)
                     item.setBackground(header_brush if is_header else default_brush)
+                    if not is_header and col_idx == 3:
+                        brush = verdict_colors.get(item.text().strip(), default_brush)
+                        item.setBackground(brush)
                     item.setData(BOTTOM_BORDER_ROLE, False)
                     item.setData(TOP_BORDER_ROLE, False)
         table.viewport().update()

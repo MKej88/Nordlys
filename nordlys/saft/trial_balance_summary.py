@@ -208,6 +208,9 @@ def ns4102_summary_from_tb(df: "pd.DataFrame") -> Dict[str, float]:
     arsresultat = ebt - skatt
     anlegg_UB = sum_ub(1000, 1399)
     omlop_UB = sum_ub(1400, 1999)
+    varelager_UB = sum_ub(1400, 1499)
+    kundefordringer_UB = sum_ub(1500, 1599)
+    kontanter_bank_UB = sum_ub(1900, 1999)
     eiendeler_netto = anlegg_UB + omlop_UB
     egenkap_UB = -sum_ub(2000, 2099)
     liab_mask = (konto_values >= 2100) & (konto_values <= 2999)
@@ -215,6 +218,8 @@ def ns4102_summary_from_tb(df: "pd.DataFrame") -> Dict[str, float]:
     liab_kreditt = float(-liab_values[liab_values < 0].sum())
     liab_debet = float(liab_values[liab_values > 0].sum())
     gjeld_netto = liab_kreditt - liab_debet
+    kortsiktig_gjeld_UB = -sum_ub(2400, 2999)
+    leverandorgjeld_UB = -sum_ub(2400, 2499)
     balanse_diff_netto = eiendeler_netto - (egenkap_UB + gjeld_netto)
     eiendeler_brreg = eiendeler_netto + liab_debet
     gjeld_brreg = liab_kreditt
@@ -240,8 +245,15 @@ def ns4102_summary_from_tb(df: "pd.DataFrame") -> Dict[str, float]:
         "resultat_for_skatt": resultat_for_skatt,
         "arsresultat": arsresultat,
         "eiendeler_UB": eiendeler_netto,
+        "anleggsmidler_UB": anlegg_UB,
+        "omlopsmidler_UB": omlop_UB,
+        "varelager_UB": varelager_UB,
+        "kundefordringer_UB": kundefordringer_UB,
+        "kontanter_og_bank_UB": kontanter_bank_UB,
         "egenkapital_UB": egenkap_UB,
         "gjeld_UB": gjeld_netto,
+        "kortsiktig_gjeld_UB": kortsiktig_gjeld_UB,
+        "leverandorgjeld_UB": leverandorgjeld_UB,
         "balanse_diff": balanse_diff_netto,
         "eiendeler_UB_brreg": eiendeler_brreg,
         "gjeld_UB_brreg": gjeld_brreg,
