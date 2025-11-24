@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import sys
-from typing import Optional, Tuple
+from typing import Optional, Tuple, TYPE_CHECKING
 
 import os
 
-from PySide6.QtCore import Qt, QtMsgType, qInstallMessageHandler
+from PySide6.QtCore import QTimer, Qt, QtMsgType, qInstallMessageHandler
 from PySide6.QtWidgets import QApplication, QMainWindow, QTreeWidgetItem
 
 from ..saft.periods import format_header_period
@@ -25,6 +25,13 @@ from .window_initializers import (
     setup_components,
 )
 
+if TYPE_CHECKING:  # pragma: no cover - kun for typekontroll
+    from ..core.task_runner import TaskRunner
+    from .data_controller import SaftDataController
+    from .data_manager import SaftAnalytics, SaftDatasetStore
+    from .page_manager import PageManager
+    from .page_registry import PageRegistry
+
 
 class NordlysWindow(QMainWindow):
     """Hovedvindu for PySide6-applikasjonen."""
@@ -32,11 +39,13 @@ class NordlysWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         configure_window_geometry(self)
-        (
-            self._dataset_store,
-            self._analytics,
-            self._task_runner,
-        ) = create_dataset_services(self)
+        self._dataset_store: Optional[SaftDatasetStore] = None
+        self._analytics: Optional[SaftAnalytics] = None
+        self._task_runner: Optional[TaskRunner] = None
+        self._data_controller: Optional[SaftDataController] = None
+        self._page_manager: Optional[PageManager] = None
+        self._page_registry: Optional[PageRegistry] = None
+        self._startup_done = False
         components = setup_components(self)
         self._bind_components(components)
         self._apply_styles()
@@ -46,25 +55,11 @@ class NordlysWindow(QMainWindow):
             self._content_layout,
             self.nav_panel,
         )
-        self._data_controller = create_data_controller(
-            dataset_store=self._dataset_store,
-            analytics=self._analytics,
-            header_bar=self.header_bar,
-            status_bar=self.statusBar(),
-            parent=self,
-            schedule_responsive_update=self._responsive.schedule_update,
-            update_header_fields=self._update_header_fields,
-        )
-        self._page_manager, self._page_registry = initialize_pages(
-            self,
-            self.stack,
-            self._data_controller,
-        )
-        populate_navigation(self.nav_panel, self._on_navigation_changed)
         self._import_controller: Optional[ImportExportController] = None
         self.header_bar.open_requested.connect(self._handle_open_requested)
         self.header_bar.export_requested.connect(self._handle_export_requested)
         self.header_bar.export_pdf_requested.connect(self._handle_export_pdf_requested)
+        QTimer.singleShot(0, self._finish_startup)
 
     def _bind_components(self, components: WindowComponents) -> None:
         self.nav_panel = components.nav_panel
@@ -97,6 +92,8 @@ class NordlysWindow(QMainWindow):
     def _on_dataset_changed(self, key: str) -> None:
         if not isinstance(key, str):
             return
+        if self._data_controller is None or self._dataset_store is None:
+            return
         if key == self._dataset_store.current_key:
             return
         self._data_controller.activate_dataset(key)
@@ -107,6 +104,8 @@ class NordlysWindow(QMainWindow):
     def _on_navigation_changed(
         self, current: Optional[QTreeWidgetItem], _previous: Optional[QTreeWidgetItem]
     ) -> None:
+        if self._page_manager is None:
+            return
         if current is None:
             return
         key = current.data(0, Qt.UserRole)
@@ -125,7 +124,10 @@ class NordlysWindow(QMainWindow):
 
     # region Hjelpere
     def _update_header_fields(self) -> None:
-        header = self._dataset_store.header
+        if self._dataset_store is None:
+            header = None
+        else:
+            header = self._dataset_store.header
         company = header.company_name if header else None
         orgnr = header.orgnr if header else None
         period = format_header_period(header) if header else None
@@ -134,7 +136,14 @@ class NordlysWindow(QMainWindow):
         self.lbl_period.setText(f"Periode: {period or '–'}")
 
     def _ensure_import_controller(self) -> ImportExportController:
+        self._ensure_startup_completed()
         if self._import_controller is None:
+            if (
+                self._dataset_store is None
+                or self._task_runner is None
+                or self._data_controller is None
+            ):
+                raise RuntimeError("Importkontrolleren kan ikke opprettes ennå.")
             controller = create_import_controller(
                 self,
                 self._dataset_store,
@@ -158,6 +167,38 @@ class NordlysWindow(QMainWindow):
     def _handle_export_pdf_requested(self) -> None:
         controller = self._ensure_import_controller()
         controller.handle_export_pdf()
+    # endregion
+
+    # region Oppstart
+    def _ensure_startup_completed(self) -> None:
+        if not self._startup_done:
+            self._finish_startup()
+
+    def _finish_startup(self) -> None:
+        if self._startup_done:
+            return
+        (
+            self._dataset_store,
+            self._analytics,
+            self._task_runner,
+        ) = create_dataset_services(self)
+        self._data_controller = create_data_controller(
+            dataset_store=self._dataset_store,
+            analytics=self._analytics,
+            header_bar=self.header_bar,
+            status_bar=self.statusBar(),
+            parent=self,
+            schedule_responsive_update=self._responsive.schedule_update,
+            update_header_fields=self._update_header_fields,
+        )
+        self._page_manager, self._page_registry = initialize_pages(
+            self,
+            self.stack,
+            self._data_controller,
+        )
+        populate_navigation(self.nav_panel, self._on_navigation_changed)
+        self._startup_done = True
+    # endregion
 
     # endregion
 
