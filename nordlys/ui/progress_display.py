@@ -29,6 +29,7 @@ class _ProgressAnimator(QObject):
         self._idle_seconds = 1.6
         self._finish_seconds = 4.0
         self._max_idle_lead = 25
+        self._idle_loop_drop = 3
 
     def report_progress(self, percent: int) -> None:
         clamped = max(0, min(100, int(percent)))
@@ -66,9 +67,14 @@ class _ProgressAnimator(QObject):
             self._floating_target = min(max_idle_target, self._floating_target + 1)
         elif (
             idle_time > self._finish_seconds
-            and (self._reported_target >= 99 or self._floating_target >= 99)
+            and self._reported_target < 100
+            and self._display_value >= max_idle_target
         ):
-            self._floating_target = 100
+            restart_value = max(0, max_idle_target - self._idle_loop_drop)
+            self._display_value = restart_value
+            self._on_value_changed(self._display_value)
+            self._floating_target = max_idle_target
+            self._last_report_time = time.monotonic()
 
         self._apply_idle_cap()
 
