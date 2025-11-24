@@ -581,25 +581,6 @@ class RegnskapsanalysePage(QWidget):
 
             return calculator
 
-        def gross_margin(
-            summary: Mapping[str, float], _previous: Optional[Mapping[str, float]]
-        ) -> Optional[float]:
-            revenue = self._get_numeric(summary, "driftsinntekter")
-            cost_of_goods = self._get_numeric(summary, "varekostnad")
-            if revenue is None or abs(revenue) < 1e-6 or cost_of_goods is None:
-                return None
-            margin_value = revenue - cost_of_goods
-            return (margin_value / revenue) * 100
-
-        def gross_profit(
-            summary: Mapping[str, float], _previous: Optional[Mapping[str, float]]
-        ) -> Optional[float]:
-            revenue = self._get_numeric(summary, "driftsinntekter")
-            cost_of_goods = self._get_numeric(summary, "varekostnad")
-            if revenue is None or cost_of_goods is None:
-                return None
-            return revenue - cost_of_goods
-
         def inventory_days(
             summary: Mapping[str, float],
             previous_summary: Optional[Mapping[str, float]],
@@ -676,6 +657,34 @@ class RegnskapsanalysePage(QWidget):
             if current_assets is None or current_liabilities is None:
                 return None
             return current_assets - current_liabilities
+
+        def margin_minus(
+            cost_keys: Iterable[str],
+        ) -> Callable[
+            [Mapping[str, float], Optional[Mapping[str, float]]], Optional[float]
+        ]:
+            def calculator(
+                summary: Mapping[str, float],
+                _previous: Optional[Mapping[str, float]],
+            ) -> Optional[float]:
+                revenue = self._get_numeric(summary, "driftsinntekter")
+                if revenue is None or abs(revenue) < 1e-6:
+                    return None
+
+                total_cost = 0.0
+                for cost_key in cost_keys:
+                    cost_value = self._get_numeric(summary, cost_key)
+                    if cost_value is None:
+                        return None
+                    total_cost += cost_value
+
+                return ((revenue - total_cost) / revenue) * 100
+
+            return calculator
+
+        revenue_per_wage = turnover_calculator(
+            "driftsinntekter", lambda data: self._get_numeric(data, "lonn")
+        )
 
         return [
             KeyMetricDefinition(
@@ -802,56 +811,44 @@ class RegnskapsanalysePage(QWidget):
             KeyMetricDefinition(
                 category="Bransjespesifikk",
                 title="Varer: DB i %",
-                calculator=gross_margin,
+                calculator=margin_minus(["varekostnad"]),
                 unit="percent",
-                evaluator=observation_only(),
+                evaluator=good_if_at_least(0.0),
             ),
             KeyMetricDefinition(
                 category="Bransjespesifikk",
-                title="Varer: DB i tkr",
-                calculator=gross_profit,
-                unit="currency",
-                evaluator=observation_only(),
+                title="Tjenester: DB i %",
+                calculator=margin_minus(["lonn"]),
+                unit="percent",
+                evaluator=observation_only("SKJØNN"),
             ),
             KeyMetricDefinition(
                 category="Bransjespesifikk",
-                title="Varer: kontantstrøm i dager",
+                title="Varer og tjenester: DB i %",
+                calculator=margin_minus(["varekostnad", "lonn"]),
+                unit="percent",
+                evaluator=observation_only("SKJØNN"),
+            ),
+            KeyMetricDefinition(
+                category="Bransjespesifikk",
+                title="Transport: DB i %",
+                calculator=margin_minus(["varekostnad", "lonn", "andre_drift"]),
+                unit="percent",
+                evaluator=observation_only("SKJØNN"),
+            ),
+            KeyMetricDefinition(
+                category="Bransjespesifikk",
+                title="Omsetning/lønnskrone",
+                calculator=revenue_per_wage,
+                unit="multiple",
+                evaluator=observation_only("VANLIG"),
+            ),
+            KeyMetricDefinition(
+                category="Bransjespesifikk",
+                title="Lagertid i ant. Dager",
                 calculator=inventory_days,
                 unit="days",
-                evaluator=observation_only(),
-            ),
-            KeyMetricDefinition(
-                category="Bransjespesifikk",
-                title="Varer: i uker",
-                calculator=(
-                    lambda summary, prev: (
-                        (inventory_days(summary, prev) or 0.0) / 7
-                        if inventory_days(summary, prev) is not None
-                        else None
-                    )
-                ),
-                unit="weeks",
-                evaluator=observation_only(),
-            ),
-            KeyMetricDefinition(
-                category="Bransjespesifikk",
-                title="Varer: i dager",
-                calculator=inventory_days,
-                unit="days",
-                evaluator=observation_only(),
-            ),
-            KeyMetricDefinition(
-                category="Bransjespesifikk",
-                title="Lageret i år",
-                calculator=(
-                    lambda summary, prev: (
-                        (inventory_days(summary, prev) or 0.0) / 365
-                        if inventory_days(summary, prev) is not None
-                        else None
-                    )
-                ),
-                unit="years",
-                evaluator=observation_only(),
+                evaluator=observation_only("OBS"),
             ),
             KeyMetricDefinition(
                 category="Bransjespesifikk",
