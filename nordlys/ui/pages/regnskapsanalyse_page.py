@@ -511,7 +511,7 @@ class RegnskapsanalysePage(QWidget):
                 return "SVAK"
             if value == 0:
                 return "OBS"
-            return "SKJØNN"
+            return "GOD"
 
         def ratio(
             numerator_key: str, denominator_key: str
@@ -806,13 +806,6 @@ class RegnskapsanalysePage(QWidget):
                         else ("GOD" if value >= 0.5 else "OBS")
                     )
                 ),
-            ),
-            KeyMetricDefinition(
-                category="Likviditetsanalyse",
-                title="Lageret i dager",
-                calculator=inventory_days,
-                unit="days",
-                evaluator=observation_only("OBS"),
             ),
             KeyMetricDefinition(
                 category="Likviditetsanalyse",
