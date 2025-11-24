@@ -64,7 +64,10 @@ class _ProgressAnimator(QObject):
             and idle_time > self._idle_seconds
         ):
             self._floating_target = min(max_idle_target, self._floating_target + 1)
-        elif self._reported_target >= 100 and idle_time > self._finish_seconds:
+        elif (
+            idle_time > self._finish_seconds
+            and (self._reported_target >= 99 or self._floating_target >= 99)
+        ):
             self._floating_target = 100
 
         self._apply_idle_cap()
@@ -86,7 +89,7 @@ class _ProgressAnimator(QObject):
             self._timer.stop()
 
     def _apply_idle_cap(self) -> None:
-        if self._reported_target >= 100:
+        if self._reported_target >= 100 or self._floating_target >= 100:
             self._floating_target = 100
             return
         cap = min(99, self._reported_target + self._max_idle_lead)
