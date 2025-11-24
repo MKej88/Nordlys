@@ -634,6 +634,15 @@ class RegnskapsanalysePage(QWidget):
                 return None
             return (average_payable / cost_of_goods) * 365
 
+        def payable_months(
+            summary: Mapping[str, float],
+            previous_summary: Optional[Mapping[str, float]],
+        ) -> Optional[float]:
+            days = payable_days(summary, previous_summary)
+            if days is None:
+                return None
+            return days / 30.0
+
         def receivable_days(
             summary: Mapping[str, float],
             previous_summary: Optional[Mapping[str, float]],
@@ -648,6 +657,39 @@ class RegnskapsanalysePage(QWidget):
             if average_receivables is None or revenue is None or abs(revenue) < 1e-6:
                 return None
             return (average_receivables / revenue) * 365
+
+        def receivable_months(
+            summary: Mapping[str, float],
+            previous_summary: Optional[Mapping[str, float]],
+        ) -> Optional[float]:
+            days = receivable_days(summary, previous_summary)
+            if days is None:
+                return None
+            return days / 30.0
+
+        def long_term_capital(data: Mapping[str, float]) -> Optional[float]:
+            equity = self._get_numeric(data, "egenkapital_UB")
+            total_debt = self._get_numeric(data, "gjeld_UB")
+            short_term_debt = self._get_numeric(data, "kortsiktig_gjeld_UB")
+            if equity is None and total_debt is None and short_term_debt is None:
+                return None
+            long_term_debt = (total_debt or 0.0) - (short_term_debt or 0.0)
+            return (equity or 0.0) + long_term_debt
+
+        def financing_ratio(
+            summary: Mapping[str, float],
+            previous_summary: Optional[Mapping[str, float]],
+        ) -> Optional[float]:
+            fixed_assets = self._get_numeric(summary, "anleggsmidler_UB")
+            if fixed_assets is None:
+                return None
+            capital_values = [long_term_capital(summary)]
+            if previous_summary is not None:
+                capital_values.append(long_term_capital(previous_summary))
+            capital = self._average(capital_values)
+            if capital is None or abs(capital) < 1e-6:
+                return None
+            return fixed_assets / capital
 
         def working_capital(
             summary: Mapping[str, float], _previous: Optional[Mapping[str, float]]
@@ -768,17 +810,10 @@ class RegnskapsanalysePage(QWidget):
             ),
             KeyMetricDefinition(
                 category="Soliditetsanalyse",
-                title="Låneandel av omsetning i %",
-                calculator=ratio("gjeld_UB", "driftsinntekter"),
+                title="EK-andel av omsetning i %",
+                calculator=ratio("egenkapital_UB", "driftsinntekter"),
                 unit="percent",
-                evaluator=healthy_if_at_most(300.0, bad_label="OBS", ok_label="GOD"),
-            ),
-            KeyMetricDefinition(
-                category="Soliditetsanalyse",
-                title="Gjeldsgrad",
-                calculator=turnover_calculator("gjeld_UB", self._get_equity),
-                unit="multiple",
-                evaluator=healthy_if_at_most(5.0),
+                evaluator=good_if_at_least(10.0),
             ),
             KeyMetricDefinition(
                 category="Soliditetsanalyse",
@@ -789,6 +824,20 @@ class RegnskapsanalysePage(QWidget):
             ),
             KeyMetricDefinition(
                 category="Soliditetsanalyse",
+                title="Finansieringsgrad I",
+                calculator=financing_ratio,
+                unit="multiple",
+                evaluator=healthy_if_at_most(1.0, bad_label="OBS", ok_label="SUNN"),
+            ),
+            KeyMetricDefinition(
+                category="Soliditetsanalyse",
+                title="Gjeldsgrad",
+                calculator=turnover_calculator("gjeld_UB", self._get_equity),
+                unit="multiple",
+                evaluator=healthy_if_at_most(5.0),
+            ),
+            KeyMetricDefinition(
+                category="Soliditetsanalyse",
                 title="Tapsbuffer",
                 calculator=ratio("egenkapital_UB", "driftsinntekter"),
                 unit="percent",
@@ -796,17 +845,17 @@ class RegnskapsanalysePage(QWidget):
             ),
             KeyMetricDefinition(
                 category="Soliditetsanalyse",
-                title="Kredittid leverandør",
-                calculator=payable_days,
-                unit="days",
-                evaluator=observation_only("OBS"),
+                title="Kreditorgrad",
+                calculator=payable_months,
+                unit="multiple",
+                evaluator=healthy_if_at_most(1.0, bad_label="OBS", ok_label="GOD"),
             ),
             KeyMetricDefinition(
                 category="Soliditetsanalyse",
-                title="Debitorgrader",
-                calculator=receivable_days,
-                unit="days",
-                evaluator=observation_only("OBS"),
+                title="Debitorgrad",
+                calculator=receivable_months,
+                unit="multiple",
+                evaluator=healthy_if_at_most(1.0, bad_label="OBS", ok_label="GOD"),
             ),
             KeyMetricDefinition(
                 category="Bransjespesifikk",
