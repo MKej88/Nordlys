@@ -12,8 +12,6 @@ from PySide6.QtWidgets import QFileDialog, QLabel, QMessageBox, QProgressBar, QW
 from ..core.task_runner import TaskRunner
 from ..helpers.lazy_imports import lazy_import
 from .data_manager import SaftDatasetStore
-from .excel_export import export_dataset_to_excel
-from .pdf_export import export_dataset_to_pdf
 from .progress_display import ImportProgressDisplay
 
 if TYPE_CHECKING:
@@ -76,6 +74,9 @@ class ImportExportController(QObject):
         self._status_callback = status_callback
         self._log_import_event = log_import_event
         self._load_error_handler = load_error_handler
+
+        self._excel_exporter: Optional[Callable[[SaftDatasetStore, str], None]] = None
+        self._pdf_exporter: Optional[Callable[[SaftDatasetStore, str], None]] = None
 
         self._progress_display = ImportProgressDisplay(parent)
         self._task_state = ImportTaskState()
@@ -147,7 +148,7 @@ class ImportExportController(QObject):
         if not file_name:
             return
         try:
-            export_dataset_to_excel(self._dataset_store, file_name)
+            self._load_excel_exporter()(self._dataset_store, file_name)
             self._status_callback(f"Eksportert: {file_name}")
             self._log_import_event(f"Rapport eksportert: {Path(file_name).name}")
         except Exception as exc:  # pragma: no cover - vises i GUI
@@ -173,12 +174,26 @@ class ImportExportController(QObject):
         if not file_name.lower().endswith(".pdf"):
             file_name = f"{file_name}.pdf"
         try:
-            export_dataset_to_pdf(self._dataset_store, file_name)
+            self._load_pdf_exporter()(self._dataset_store, file_name)
             self._status_callback(f"PDF eksportert: {file_name}")
             self._log_import_event(f"PDF eksportert: {Path(file_name).name}")
         except Exception as exc:  # pragma: no cover - vises i GUI
             self._log_import_event(f"Feil ved PDF-eksport: {exc}")
             QMessageBox.critical(self._window, "Feil ved PDF-eksport", str(exc))
+
+    def _load_excel_exporter(self) -> Callable[[SaftDatasetStore, str], None]:
+        if self._excel_exporter is None:
+            from .excel_export import export_dataset_to_excel
+
+            self._excel_exporter = export_dataset_to_excel
+        return self._excel_exporter
+
+    def _load_pdf_exporter(self) -> Callable[[SaftDatasetStore, str], None]:
+        if self._pdf_exporter is None:
+            from .pdf_export import export_dataset_to_pdf
+
+            self._pdf_exporter = export_dataset_to_pdf
+        return self._pdf_exporter
 
     # endregion
 
