@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import math
-from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
+from typing import Callable, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
-    QGridLayout,
     QHeaderView,
     QHBoxLayout,
     QLabel,
@@ -38,7 +38,20 @@ from ..tables import (
     populate_table,
     suspend_table_updates,
 )
-from ..widgets import CardFrame, StatBadge
+from ..widgets import CardFrame
+
+
+@dataclass(frozen=True)
+class KeyMetricDefinition:
+    """Beskriver én nøkkeltallsberegning."""
+
+    title: str
+    calculator: Callable[
+        [Mapping[str, float], Optional[Mapping[str, float]]], Optional[float]
+    ]
+    unit: str
+    evaluator: Callable[[Optional[float]], str]
+
 
 pd = lazy_pandas()
 
@@ -201,38 +214,19 @@ class RegnskapsanalysePage(QWidget):
         key_layout = QVBoxLayout(self.key_metrics_widget)
         key_layout.setContentsMargins(0, 0, 0, 0)
         key_layout.setSpacing(12)
-        self.key_metrics_info = QLabel(
-            "Importer en SAF-T-fil for å beregne nøkkeltall."
+        self.key_metrics_intro = QLabel(
+            "Nøkkeltallene nedenfor beregnes automatisk fra SAF-T-dataene. "
+            "Tall og vurdering oppdateres når du bytter datasett."
         )
-        self.key_metrics_info.setWordWrap(True)
-        self.key_metrics_info.setObjectName("statusLabel")
-        key_layout.addWidget(self.key_metrics_info)
+        self.key_metrics_intro.setWordWrap(True)
+        self.key_metrics_intro.setObjectName("statusLabel")
+        key_layout.addWidget(self.key_metrics_intro)
 
-        self.kpi_grid = QGridLayout()
-        self.kpi_grid.setContentsMargins(0, 0, 0, 0)
-        self.kpi_grid.setHorizontalSpacing(16)
-        self.kpi_grid.setVerticalSpacing(16)
-        key_layout.addLayout(self.kpi_grid)
-
-        self.kpi_badges: Dict[str, StatBadge] = {}
-        for idx, (key, title, desc) in enumerate(
-            [
-                ("revenue", "Driftsinntekter", "Sum av kontogruppe 3xxx."),
-                ("ebitda_margin", "EBITDA-margin", "EBITDA i prosent av salg."),
-                ("ebit_margin", "EBIT-margin", "Driftsresultat i prosent av salg."),
-                ("result_margin", "Resultatmargin", "Årsresultat i prosent av salg."),
-                (
-                    "equity_ratio",
-                    "Egenkapitalandel",
-                    "Egenkapital i prosent av eiendeler.",
-                ),
-            ]
-        ):
-            badge = StatBadge(title, desc)
-            row = idx // 2
-            col = idx % 2
-            self.kpi_grid.addWidget(badge, row, col)
-            self.kpi_badges[key] = badge
+        self.key_metrics_table = create_table_widget()
+        self.key_metrics_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self._configure_analysis_table(self.key_metrics_table, font_point_size=9)
+        key_layout.addWidget(self.key_metrics_table)
+        self.key_metrics_table.hide()
         key_layout.addStretch(1)
         self.section_stack.addWidget(self.key_metrics_widget)
 
@@ -409,6 +403,20 @@ class RegnskapsanalysePage(QWidget):
                 return snapshot
         return self._summary_history[-1]
 
+    def _previous_snapshot(self) -> Optional[SummarySnapshot]:
+        if len(self._summary_history) < 2:
+            return None
+        active = self._active_snapshot()
+        if active is None:
+            return self._summary_history[-1]
+        try:
+            index = self._summary_history.index(active)
+        except ValueError:
+            return None
+        if index <= 0:
+            return None
+        return self._summary_history[index - 1]
+
     def _get_numeric(self, summary: Mapping[str, float], key: str) -> Optional[float]:
         value = summary.get(key)
         if value is None:
@@ -432,6 +440,201 @@ class RegnskapsanalysePage(QWidget):
         if value is None:
             return "—"
         return f"{value:.1f} %"
+
+    def _format_metric_value(self, value: Optional[float], unit: str) -> str:
+        if value is None:
+            return "—"
+        if unit == "percent":
+            return f"{value:.1f} %"
+        if unit == "multiple":
+            return f"{value:.2f}"
+        return f"{value:.1f}"
+
+    def _total_capital(self, summary: Mapping[str, float]) -> Optional[float]:
+        equity = self._get_numeric(summary, "egenkapital_UB")
+        debt = self._get_numeric(summary, "gjeld_UB")
+        if equity is None and debt is None:
+            return None
+        return (equity or 0.0) + (debt or 0.0)
+
+    def _key_metric_definitions(self) -> List[KeyMetricDefinition]:
+        def good_if_at_least(threshold: float) -> Callable[[Optional[float]], str]:
+            def verdict(value: Optional[float]) -> str:
+                if value is None:
+                    return "Mangler grunnlag"
+                return "GOD" if value >= threshold else "SVAK"
+
+            return verdict
+
+        def good_if_above_zero_or_threshold(
+            threshold: float,
+        ) -> Callable[[Optional[float]], str]:
+            def verdict(value: Optional[float]) -> str:
+                if value is None:
+                    return "Mangler grunnlag"
+                if value < 0:
+                    return "UNDERSKUDD"
+                return "GOD" if value >= threshold else "SVAK"
+
+            return verdict
+
+        def healthy_if_at_most(
+            threshold: float, *, bad_label: str = "IKKE SUNN", ok_label: str = "SUNN"
+        ) -> Callable[[Optional[float]], str]:
+            def verdict(value: Optional[float]) -> str:
+                if value is None:
+                    return "Mangler grunnlag"
+                return ok_label if value <= threshold else bad_label
+
+            return verdict
+
+        def ratio(
+            numerator_key: str, denominator_key: str
+        ) -> Callable[
+            [Mapping[str, float], Optional[Mapping[str, float]]], Optional[float]
+        ]:
+            def calculator(
+                summary: Mapping[str, float], _previous: Optional[Mapping[str, float]]
+            ) -> Optional[float]:
+                return self._ratio(
+                    self._get_numeric(summary, numerator_key),
+                    self._get_numeric(summary, denominator_key),
+                )
+
+            return calculator
+
+        def average_ratio(
+            numerator_key: str,
+            denominator_fn: Callable[[Mapping[str, float]], Optional[float]],
+        ) -> Callable[
+            [Mapping[str, float], Optional[Mapping[str, float]]], Optional[float]
+        ]:
+            def calculator(
+                summary: Mapping[str, float],
+                previous_summary: Optional[Mapping[str, float]],
+            ) -> Optional[float]:
+                denominator_values = [denominator_fn(summary)]
+                if previous_summary is not None:
+                    denominator_values.append(denominator_fn(previous_summary))
+                denominator = self._average(denominator_values)
+                if denominator is None or abs(denominator) < 1e-6:
+                    return None
+                numerator = self._get_numeric(summary, numerator_key)
+                if numerator is None:
+                    return None
+                return (numerator / denominator) * 100
+
+            return calculator
+
+        def turnover_calculator(
+            numerator_key: str,
+            total_fn: Callable[[Mapping[str, float]], Optional[float]],
+        ) -> Callable[
+            [Mapping[str, float], Optional[Mapping[str, float]]], Optional[float]
+        ]:
+            def calculator(
+                summary: Mapping[str, float],
+                previous_summary: Optional[Mapping[str, float]],
+            ) -> Optional[float]:
+                denominator_values = [total_fn(summary)]
+                if previous_summary is not None:
+                    denominator_values.append(total_fn(previous_summary))
+                denominator = self._average(denominator_values)
+                if denominator is None or abs(denominator) < 1e-6:
+                    return None
+                numerator = self._get_numeric(summary, numerator_key)
+                if numerator is None:
+                    return None
+                return numerator / denominator
+
+            return calculator
+
+        return [
+            KeyMetricDefinition(
+                title="Resultat av driften i %",
+                calculator=ratio("ebit", "driftsinntekter"),
+                unit="percent",
+                evaluator=good_if_at_least(2.0),
+            ),
+            KeyMetricDefinition(
+                title="Resultatmargin",
+                calculator=ratio("arsresultat", "driftsinntekter"),
+                unit="percent",
+                evaluator=good_if_above_zero_or_threshold(2.0),
+            ),
+            KeyMetricDefinition(
+                title="Kapitalens omløpshastighet",
+                calculator=turnover_calculator("driftsinntekter", self._total_capital),
+                unit="multiple",
+                evaluator=good_if_at_least(2.0),
+            ),
+            KeyMetricDefinition(
+                title="EK-rentabilitet før skatt i %",
+                calculator=average_ratio("resultat_for_skatt", self._get_equity),
+                unit="percent",
+                evaluator=good_if_at_least(16.0),
+            ),
+            KeyMetricDefinition(
+                title="EK-andel i %",
+                calculator=ratio("egenkapital_UB", "eiendeler_UB"),
+                unit="percent",
+                evaluator=good_if_at_least(10.0),
+            ),
+            KeyMetricDefinition(
+                title="Gjeldsgrad",
+                calculator=turnover_calculator("gjeld_UB", self._get_equity),
+                unit="multiple",
+                evaluator=healthy_if_at_most(5.0),
+            ),
+            KeyMetricDefinition(
+                title="Rentedekningsgrad",
+                calculator=self._interest_coverage,
+                unit="multiple",
+                evaluator=good_if_at_least(2.0),
+            ),
+            KeyMetricDefinition(
+                title="Tapsbuffer",
+                calculator=ratio("egenkapital_UB", "driftsinntekter"),
+                unit="percent",
+                evaluator=good_if_at_least(10.0),
+            ),
+        ]
+
+    def _get_equity(self, summary: Mapping[str, float]) -> Optional[float]:
+        return self._get_numeric(summary, "egenkapital_UB")
+
+    def _interest_coverage(
+        self, summary: Mapping[str, float], _previous: Optional[Mapping[str, float]]
+    ) -> Optional[float]:
+        ebit = self._get_numeric(summary, "ebit")
+        finanskost = self._get_numeric(summary, "finanskostnader")
+        if finanskost is None or abs(finanskost) < 1e-6:
+            return None
+        base = ebit if ebit is not None else 0.0
+        return (base + finanskost) / finanskost
+
+    def _key_metric_rows(
+        self,
+        summary: Mapping[str, float],
+        previous_summary: Optional[Mapping[str, float]],
+    ) -> List[Tuple[object, object, object, object]]:
+        rows: List[Tuple[object, object, object, object]] = []
+        for definition in self._key_metric_definitions():
+            current_value = definition.calculator(summary, previous_summary)
+            previous_value = (
+                definition.calculator(previous_summary, None)
+                if previous_summary is not None
+                else None
+            )
+            rows.append(
+                (
+                    definition.title,
+                    self._format_metric_value(current_value, definition.unit),
+                    self._format_metric_value(previous_value, definition.unit),
+                    definition.evaluator(current_value),
+                )
+            )
+        return rows
 
     def _update_multi_year_section(self) -> None:
         if not self._summary_history:
@@ -608,38 +811,24 @@ class RegnskapsanalysePage(QWidget):
 
     def _update_key_metrics_section(self) -> None:
         active = self._active_snapshot()
+        previous = self._previous_snapshot()
         if not active:
-            self.key_metrics_info.setText(
-                "Importer en SAF-T-fil for å beregne nøkkeltall."
+            self.key_metrics_intro.setText(
+                "Importer et datasett for å se beregnede nøkkeltall med vurdering."
             )
-            self.key_metrics_info.show()
-            for badge in self.kpi_badges.values():
-                badge.set_value("—")
+            self.key_metrics_table.hide()
             return
 
-        self.key_metrics_info.hide()
-        summary = active.summary
-        revenue = self._get_numeric(summary, "driftsinntekter")
-        ebitda = self._get_numeric(summary, "ebitda")
-        ebit = self._get_numeric(summary, "ebit")
-        equity = self._get_numeric(summary, "egenkapital_UB")
-        assets = self._get_numeric(summary, "eiendeler_UB")
-
-        self._set_badge_value("revenue", format_currency(revenue))
-        self._set_badge_value(
-            "ebitda_margin", self._format_percent(self._ratio(ebitda, revenue))
+        current_label, previous_label = self._year_headers()
+        columns = ["Nøkkeltall", current_label, previous_label, "Vurdering"]
+        previous_summary = previous.summary if previous is not None else None
+        rows = self._key_metric_rows(active.summary, previous_summary)
+        populate_table(self.key_metrics_table, columns, rows)
+        self.key_metrics_intro.setText(
+            "Tallene under er beregnet fra SAF-T og vurdert opp mot faste terskler."
         )
-        self._set_badge_value(
-            "ebit_margin", self._format_percent(self._ratio(ebit, revenue))
-        )
-        self._set_badge_value(
-            "result_margin",
-            self._format_percent(self._result_margin(summary)),
-        )
-        self._set_badge_value(
-            "equity_ratio",
-            self._format_percent(self._ratio(equity, assets)),
-        )
+        self.key_metrics_table.show()
+        self._schedule_table_height_adjustment(self.key_metrics_table, extra_padding=0)
 
     def _ratio(
         self, numerator: Optional[float], denominator: Optional[float]
@@ -660,11 +849,6 @@ class RegnskapsanalysePage(QWidget):
         if len(values) <= 1:
             return None
         return self._average(values[:-1])
-
-    def _set_badge_value(self, key: str, value: str) -> None:
-        badge = self.kpi_badges.get(key)
-        if badge:
-            badge.set_value(value or "—")
 
     def _update_summary_section(self) -> None:
         active = self._active_snapshot()
