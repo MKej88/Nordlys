@@ -117,6 +117,111 @@ def test_find_asset_accessions_skips_reversals_with_same_amount():
     assert additions == []
 
 
+def test_find_asset_accessions_skips_reversals_across_vouchers():
+    vouchers = [
+        CostVoucher(
+            transaction_id="1",
+            document_number="A1",
+            transaction_date=None,
+            supplier_id="S1",
+            supplier_name="Leverandør",
+            description="Maskinkjøp",
+            amount=50_000,
+            lines=[
+                VoucherLine(
+                    account="1100",
+                    account_name="Maskin",
+                    description="Ny maskin",
+                    vat_code=None,
+                    debit=50_000,
+                    credit=0,
+                ),
+            ],
+        ),
+        CostVoucher(
+            transaction_id="2",
+            document_number="A2",
+            transaction_date=None,
+            supplier_id="S1",
+            supplier_name="Leverandør",
+            description="Reversering",
+            amount=50_000,
+            lines=[
+                VoucherLine(
+                    account="1100",
+                    account_name="Maskin",
+                    description="Reversering",
+                    vat_code=None,
+                    debit=0,
+                    credit=50_000,
+                ),
+            ],
+        ),
+    ]
+
+    additions = find_asset_accessions(vouchers)
+
+    assert additions == []
+
+
+def test_find_asset_accessions_reduces_partial_reversals():
+    vouchers = [
+        CostVoucher(
+            transaction_id="1",
+            document_number="A1",
+            transaction_date=None,
+            supplier_id="S1",
+            supplier_name="Leverandør",
+            description="Maskinkjøp",
+            amount=50_000,
+            lines=[
+                VoucherLine(
+                    account="1100",
+                    account_name="Maskin",
+                    description="Ny maskin",
+                    vat_code=None,
+                    debit=50_000,
+                    credit=0,
+                ),
+            ],
+        ),
+        CostVoucher(
+            transaction_id="2",
+            document_number="A2",
+            transaction_date=None,
+            supplier_id="S1",
+            supplier_name="Leverandør",
+            description="Reversering",
+            amount=30_000,
+            lines=[
+                VoucherLine(
+                    account="1100",
+                    account_name="Maskin",
+                    description="Delvis reversering",
+                    vat_code=None,
+                    debit=0,
+                    credit=30_000,
+                ),
+            ],
+        ),
+    ]
+
+    additions = find_asset_accessions(vouchers)
+
+    assert additions == [
+        AssetAccession(
+            date=None,
+            supplier="Leverandør",
+            document="A1",
+            account="1100",
+            account_name="Maskin",
+            amount=20_000.0,
+            description="Ny maskin",
+            comment=None,
+        )
+    ]
+
+
 def test_find_asset_accessions_sorts_by_account_and_date():
     vouchers = [
         CostVoucher(

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from datetime import datetime
 from typing import List, Optional, Sequence, Tuple
@@ -58,9 +59,9 @@ class CapitalizationCandidate:
 
 
 def find_asset_accessions(vouchers: Sequence[CostVoucher]) -> List[AssetAccession]:
-    """Hent alle nettopositiver debetføringer på 11xx-12xx for å vise tilganger."""
+    """Hent debetføringer på 11xx-12xx og fjern reverseringer før visning."""
 
-    accessions: List[AssetAccession] = []
+    raw_entries: List[AssetAccession] = []
     for voucher in vouchers:
         supplier = (voucher.supplier_name or voucher.supplier_id or "—").strip()
         document = (voucher.document_number or voucher.transaction_id or "—").strip()
@@ -83,10 +84,10 @@ def find_asset_accessions(vouchers: Sequence[CostVoucher]) -> List[AssetAccessio
             )
 
         for account_number, (total_amount, account_name, description) in per_account.items():
-            if total_amount <= 0:
+            if math.isclose(total_amount, 0.0, abs_tol=0.01):
                 continue
 
-            accessions.append(
+            raw_entries.append(
                 AssetAccession(
                     date=voucher.transaction_date,
                     supplier=supplier or "—",
@@ -99,7 +100,8 @@ def find_asset_accessions(vouchers: Sequence[CostVoucher]) -> List[AssetAccessio
                 )
             )
 
-    return sorted(accessions, key=_accession_sort_key)
+    cleaned = _remove_reversals(raw_entries)
+    return sorted(cleaned, key=_accession_sort_key)
 
 
 def summarize_asset_accessions_by_account(
@@ -213,6 +215,50 @@ def _accession_sort_key(accession: AssetAccession) -> Tuple[Tuple[int, object], 
     account_key = _account_sort_key(accession.account)
     date_value = _date_sort_key(accession.date)
     return account_key, date_value
+
+
+def _remove_reversals(entries: Sequence[AssetAccession]) -> List[AssetAccession]:
+    """Netter bort reverserte beløp per konto."""
+
+    cancellation_pool: dict[str, float] = {}
+    for entry in entries:
+        if entry.amount < 0:
+            account_key = entry.account
+            cancellation_pool[account_key] = (
+                cancellation_pool.get(account_key, 0.0) + abs(entry.amount)
+            )
+
+    cleaned: List[AssetAccession] = []
+    for entry in entries:
+        if entry.amount <= 0:
+            continue
+
+        account_key = entry.account
+        available = cancellation_pool.get(account_key, 0.0)
+        remaining = entry.amount
+
+        if available > 0:
+            if available >= remaining - 0.01:
+                cancellation_pool[account_key] = max(0.0, available - remaining)
+                continue
+
+            remaining -= available
+            cancellation_pool[account_key] = 0.0
+
+        cleaned.append(
+            AssetAccession(
+                date=entry.date,
+                supplier=entry.supplier,
+                document=entry.document,
+                account=entry.account,
+                account_name=entry.account_name,
+                amount=round(remaining, 2),
+                description=entry.description,
+                comment=entry.comment,
+            )
+        )
+
+    return cleaned
 
 
 def _account_sort_key(account: str) -> Tuple[int, object]:

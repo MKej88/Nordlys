@@ -129,6 +129,7 @@ QSpinBox::down-arrow, QDoubleSpinBox::down-arrow { image: none; }
 QToolTip { background-color: #0f172a; color: #f8fafc; border: none; padding: 8px 10px; border-radius: 8px; }
 QTabWidget::pane { border: 1px solid rgba(148, 163, 184, 0.32); border-radius: 14px; background: #f4f7ff; margin-top: 12px; padding: 12px; }
 QTabWidget::tab-bar { left: 12px; }
+QTabWidget#fixedAssetTabs::pane { border: none; background: transparent; margin-top: 12px; padding: 0; }
 QTabBar::tab { background: rgba(148, 163, 184, 0.18); color: #0f172a; padding: 10px 20px; border-radius: 10px; margin-right: 8px; font-weight: 600; }
 QTabBar::tab:selected { background: #2563eb; color: #f8fafc; }
 QTabBar::tab:hover { background: rgba(37, 99, 235, 0.35); color: #0f172a; }
