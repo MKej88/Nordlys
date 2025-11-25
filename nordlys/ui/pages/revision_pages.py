@@ -1223,7 +1223,6 @@ class FixedAssetsPage(QWidget):
         card.add_widget(table)
         card.body_layout.setStretchFactor(empty, 1)
         card.body_layout.setStretchFactor(table, 1)
-        card.body_layout.addStretch(1)
         summary_label = QLabel("Summering per konto")
         summary_label.setObjectName("cardSubtitle")
         summary_table = create_table_widget()
