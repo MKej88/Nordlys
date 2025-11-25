@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPlainTextEdit,
+    QSpacerItem,
     QPushButton,
     QSizePolicy,
     QSpinBox,
@@ -1194,6 +1195,11 @@ class FixedAssetsPage(QWidget):
             "Tilganger",
             "Alle debetføringer mot 11xx-12xx-konti.",
         )
+        if card.body_layout.count() > 0:
+            last_item = card.body_layout.takeAt(card.body_layout.count() - 1)
+            if last_item is not None and last_item.spacerItem():
+                card._has_body_stretch = False  # type: ignore[attr-defined]
+
         table = create_table_widget()
         table.setColumnCount(8)
         table.setHorizontalHeaderLabels(
@@ -1216,6 +1222,9 @@ class FixedAssetsPage(QWidget):
         table.hide()
         card.add_widget(empty)
         card.add_widget(table)
+        card.body_layout.addSpacerItem(
+            QSpacerItem(0, 0, QSizePolicy.Minimum, QSizePolicy.Expanding)
+        )
         summary_label = QLabel("Summering per konto")
         summary_label.setObjectName("cardSubtitle")
         summary_table = create_table_widget()
