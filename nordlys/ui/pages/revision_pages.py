@@ -33,11 +33,13 @@ from ... import saft_customers
 from ...helpers.formatting import format_currency, format_difference
 from ...regnskap.driftsmidler import (
     AssetAccession,
+    AssetAccessionSummary,
     AssetMovement,
     CapitalizationCandidate,
     find_asset_accessions,
     find_capitalization_candidates,
     find_possible_disposals,
+    summarize_asset_accessions_by_account,
 )
 from ...saft.models import CostVoucher
 from ..tables import (
@@ -1061,6 +1063,8 @@ class FixedAssetsPage(QWidget):
         (
             self.addition_card,
             self.addition_table,
+            self.addition_summary_table,
+            self.addition_summary_label,
             self.addition_empty,
         ) = self._build_accession_card()
         layout.addWidget(self.addition_card)
@@ -1123,15 +1127,30 @@ class FixedAssetsPage(QWidget):
 
     def _build_accession_card(
         self,
-    ) -> Tuple[CardFrame, QTableWidget, EmptyStateWidget]:
+    ) -> Tuple[
+        CardFrame,
+        QTableWidget,
+        QTableWidget,
+        QLabel,
+        EmptyStateWidget,
+    ]:
         card = CardFrame(
             "Tilganger",
             "Alle debetføringer mot 11xx-12xx-konti.",
         )
         table = create_table_widget()
-        table.setColumnCount(6)
+        table.setColumnCount(8)
         table.setHorizontalHeaderLabels(
-            ["Dato", "Leverandør", "Bilag", "Konto", "Beløp", "Beskrivelse"]
+            [
+                "Konto",
+                "Kontonavn",
+                "Dato",
+                "Bilag",
+                "Leverandør",
+                "Beskrivelse",
+                "Beløp",
+                "Kommentar",
+            ]
         )
         empty = EmptyStateWidget(
             "Ingen tilganger funnet",
@@ -1141,7 +1160,18 @@ class FixedAssetsPage(QWidget):
         table.hide()
         card.add_widget(empty)
         card.add_widget(table)
-        return card, table, empty
+        summary_label = QLabel("Summering per konto")
+        summary_label.setObjectName("cardSubtitle")
+        summary_table = create_table_widget()
+        summary_table.setColumnCount(3)
+        summary_table.setHorizontalHeaderLabels(
+            ["Konto", "Kontonavn", "Sum tilganger"]
+        )
+        summary_label.hide()
+        summary_table.hide()
+        card.add_widget(summary_label)
+        card.add_widget(summary_table)
+        return card, table, summary_table, summary_label, empty
 
     def _build_movement_card(
         self, title: str, subtitle: str, empty_title: str
@@ -1189,24 +1219,55 @@ class FixedAssetsPage(QWidget):
     def _populate_accessions(self, accessions: Sequence[AssetAccession]) -> None:
         rows = [
             (
-                self._format_date(accession.date),
-                accession.supplier,
-                accession.document,
                 accession.account,
-                accession.amount,
+                accession.account_name or "—",
+                self._format_date(accession.date),
+                accession.document,
+                accession.supplier,
                 accession.description or "—",
+                accession.amount,
+                accession.comment or "—",
             )
             for accession in accessions
         ]
         populate_table(
             self.addition_table,
-            ["Dato", "Leverandør", "Bilag", "Konto", "Beløp", "Beskrivelse"],
+            [
+                "Konto",
+                "Kontonavn",
+                "Dato",
+                "Bilag",
+                "Leverandør",
+                "Beskrivelse",
+                "Beløp",
+                "Kommentar",
+            ],
             rows,
-            money_cols={4},
+            money_cols={6},
         )
-        self._toggle_empty_state(
-            self.addition_table, self.addition_empty, bool(rows)
+
+        summaries: Sequence[AssetAccessionSummary] = summarize_asset_accessions_by_account(
+            accessions
         )
+        summary_rows = [
+            (
+                summary.account,
+                summary.account_name or "—",
+                summary.total_amount,
+            )
+            for summary in summaries
+        ]
+        populate_table(
+            self.addition_summary_table,
+            ["Konto", "Kontonavn", "Sum tilganger"],
+            summary_rows,
+            money_cols={2},
+        )
+
+        has_rows = bool(rows)
+        self._toggle_empty_state(self.addition_table, self.addition_empty, has_rows)
+        self.addition_summary_label.setVisible(has_rows)
+        self.addition_summary_table.setVisible(has_rows)
 
     def _populate_capitalizations(
         self, candidates: Sequence[CapitalizationCandidate]

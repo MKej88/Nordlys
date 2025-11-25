@@ -2,11 +2,13 @@ import pandas as pd
 
 from nordlys.regnskap.driftsmidler import (
     AssetAccession,
+    AssetAccessionSummary,
     AssetMovement,
     CapitalizationCandidate,
     find_asset_accessions,
     find_capitalization_candidates,
     find_possible_disposals,
+    summarize_asset_accessions_by_account,
 )
 from nordlys.saft.models import CostVoucher, VoucherLine
 
@@ -69,9 +71,61 @@ def test_find_asset_accessions_collects_debits_on_asset_accounts():
             supplier="Leverandør",
             document="A1",
             account="1100",
+            account_name=None,
             amount=50_000,
             description="Ny maskin",
+            comment=None,
         )
+    ]
+
+
+def test_summarize_asset_accessions_by_account_groups_totals():
+    accessions = [
+        AssetAccession(
+            date=None,
+            supplier="Leverandør",
+            document="A1",
+            account="1100",
+            account_name="Maskiner",
+            amount=50_000,
+            description="Ny maskin",
+            comment=None,
+        ),
+        AssetAccession(
+            date=None,
+            supplier="Leverandør",
+            document="A2",
+            account="1100",
+            account_name=None,
+            amount=5_000,
+            description="Tilleggsdel",
+            comment=None,
+        ),
+        AssetAccession(
+            date=None,
+            supplier="Bilimport",
+            document="B1",
+            account="1200",
+            account_name="Biler",
+            amount=100_000,
+            description="Ny bil",
+            comment=None,
+        ),
+    ]
+
+    summary = summarize_asset_accessions_by_account(accessions)
+
+    assert summary == [
+        AssetAccessionSummary(
+            account="1100",
+            account_name="Maskiner",
+            total_amount=55_000,
+        ),
+        AssetAccessionSummary(
+            account="1200",
+            account_name="Biler",
+            total_amount=100_000,
+        ),
     ]
 
 

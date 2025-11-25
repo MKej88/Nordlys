@@ -29,8 +29,19 @@ class AssetAccession:
     supplier: str
     document: str
     account: str
+    account_name: Optional[str]
     amount: float
     description: Optional[str]
+    comment: Optional[str]
+
+
+@dataclass(frozen=True)
+class AssetAccessionSummary:
+    """Summering av tilganger per konto."""
+
+    account: str
+    account_name: Optional[str]
+    total_amount: float
 
 
 @dataclass(frozen=True)
@@ -68,11 +79,39 @@ def find_asset_accessions(vouchers: Sequence[CostVoucher]) -> List[AssetAccessio
                     supplier=supplier or "—",
                     document=document or "—",
                     account=line.account or "—",
+                    account_name=line.account_name,
                     amount=line_amount,
                     description=line.description or voucher.description,
+                    comment=None,
                 )
             )
     return accessions
+
+
+def summarize_asset_accessions_by_account(
+    accessions: Sequence[AssetAccession],
+) -> List[AssetAccessionSummary]:
+    """Summér tilganger per konto slik at totalsummer kan vises."""
+
+    totals: dict[str, AssetAccessionSummary] = {}
+    for accession in accessions:
+        account = accession.account or "—"
+        existing = totals.get(account)
+
+        if existing:
+            account_name = accession.account_name or existing.account_name
+            total_amount = existing.total_amount + accession.amount
+        else:
+            account_name = accession.account_name
+            total_amount = accession.amount
+
+        totals[account] = AssetAccessionSummary(
+            account=account,
+            account_name=account_name,
+            total_amount=total_amount,
+        )
+
+    return [totals[key] for key in sorted(totals)]
 
 
 def find_possible_disposals(tb: Optional[pd.DataFrame]) -> List[AssetMovement]:
@@ -166,8 +205,10 @@ def _normalize_account(value: Optional[str]) -> Optional[str]:
 __all__ = [
     "AssetMovement",
     "AssetAccession",
+    "AssetAccessionSummary",
     "CapitalizationCandidate",
     "find_asset_accessions",
+    "summarize_asset_accessions_by_account",
     "find_capitalization_candidates",
     "find_possible_disposals",
 ]
