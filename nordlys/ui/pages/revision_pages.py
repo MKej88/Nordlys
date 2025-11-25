@@ -1056,9 +1056,13 @@ class FixedAssetsPage(QWidget):
 
     def __init__(self, title: str, subtitle: str) -> None:
         super().__init__()
-        layout = QVBoxLayout(self)
+        layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(24)
+
+        left_column = QVBoxLayout()
+        left_column.setContentsMargins(0, 0, 0, 0)
+        left_column.setSpacing(24)
 
         (
             self.addition_card,
@@ -1067,7 +1071,15 @@ class FixedAssetsPage(QWidget):
             self.addition_summary_label,
             self.addition_empty,
         ) = self._build_accession_card()
-        layout.addWidget(self.addition_card)
+        self.addition_card.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Expanding
+        )
+        left_column.addWidget(self.addition_card)
+        left_column.addStretch(1)
+
+        right_column = QVBoxLayout()
+        right_column.setContentsMargins(0, 0, 0, 0)
+        right_column.setSpacing(24)
 
         (
             self.disposal_card,
@@ -1078,11 +1090,17 @@ class FixedAssetsPage(QWidget):
             "Kontoer i 11xx-12xx som har saldo ved IB, men ikke ved UB.",
             "Ingen mulige avganger identifisert",
         )
-        layout.addWidget(self.disposal_card)
+        self.disposal_card.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Expanding
+        )
+        right_column.addWidget(self.disposal_card, 1)
 
         self.capitalization_card = CardFrame(
             "Burde aktiveres",
             "Inngående faktura på 65xx over 30 000 som kan vurderes.",
+        )
+        self.capitalization_card.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Expanding
         )
         self.capitalization_table = create_table_widget()
         self.capitalization_table.setColumnCount(6)
@@ -1104,9 +1122,10 @@ class FixedAssetsPage(QWidget):
         self.capitalization_table.hide()
         self.capitalization_card.add_widget(self.capitalization_empty)
         self.capitalization_card.add_widget(self.capitalization_table)
-        layout.addWidget(self.capitalization_card)
+        right_column.addWidget(self.capitalization_card, 1)
 
-        layout.addStretch(1)
+        layout.addLayout(left_column, 1)
+        layout.addLayout(right_column, 1)
 
     def update_data(
         self,
