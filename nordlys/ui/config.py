@@ -32,11 +32,7 @@ REVISION_TASKS: Dict[str, List[str]] = {
         "Analyser periodiseringer",
         "Vurder avgrensninger mot investeringer",
     ],
-    "rev.driftsmidler": [
-        "Bekreft nyanskaffelser",
-        "Stem av avskrivninger mot regnskap",
-        "Test disposisjoner ved salg/utrangering",
-    ],
+    "rev.driftsmidler": [],
     "rev.finans": [
         "Avstem bank og lånesaldo",
         "Test renteberegning og covenants",

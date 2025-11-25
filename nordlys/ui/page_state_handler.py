@@ -18,6 +18,7 @@ from .pages.import_page import ImportPage
 from .pages.revision_pages import (
     ChecklistPage,
     CostVoucherReviewPage,
+    FixedAssetsPage,
     PurchasesApPage,
     SalesArPage,
 )
@@ -50,6 +51,7 @@ class PageStateHandler:
         self.sales_ar_page: Optional[SalesArPage] = None
         self.purchases_ap_page: Optional[PurchasesApPage] = None
         self.cost_review_page: Optional[CostVoucherReviewPage] = None
+        self.fixed_assets_page: Optional[FixedAssetsPage] = None
         self.revision_pages: Dict[str, QWidget] = {}
 
         self._latest_comparison_rows: Optional[
@@ -109,6 +111,11 @@ class PageStateHandler:
         elif key == "rev.kostnad" and isinstance(widget, CostVoucherReviewPage):
             self.cost_review_page = widget
             widget.set_vouchers(self._dataset_store.cost_vouchers)
+        elif key == "rev.driftsmidler" and isinstance(widget, FixedAssetsPage):
+            self.fixed_assets_page = widget
+            widget.update_data(
+                self._dataset_store.saft_df, self._dataset_store.cost_vouchers
+            )
         elif key in self._revision_tasks and isinstance(widget, ChecklistPage):
             widget.set_items(list(self._revision_tasks.get(key, [])))
         self._schedule_responsive_update()

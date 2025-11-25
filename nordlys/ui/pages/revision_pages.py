@@ -4,7 +4,7 @@ import math
 import random
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Callable, Iterable, List, Optional, Sequence, Tuple, cast
+from typing import TYPE_CHECKING, Callable, Iterable, List, Optional, Sequence, Tuple, cast
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPalette, QTextOption
@@ -31,6 +31,14 @@ from PySide6.QtWidgets import (
 
 from ... import saft_customers
 from ...helpers.formatting import format_currency, format_difference
+from ...regnskap.driftsmidler import (
+    AssetMovement,
+    CapitalizationCandidate,
+    find_capitalization_candidates,
+    find_possible_accessions,
+    find_possible_disposals,
+)
+from ...saft.models import CostVoucher
 from ..tables import (
     apply_compact_row_heights,
     compact_row_base_height,
@@ -39,7 +47,11 @@ from ..tables import (
 )
 from ..widgets import CardFrame, EmptyStateWidget, StatBadge
 
+if TYPE_CHECKING:  # pragma: no cover - kun for typekontroll
+    import pandas as pd
+
 __all__ = [
+    "FixedAssetsPage",
     "ChecklistPage",
     "VoucherReviewResult",
     "CostVoucherReviewPage",
@@ -1034,6 +1046,169 @@ class CostVoucherReviewPage(QWidget):
             "Arbeidspapir lagret",
             f"Arbeidspapiret ble lagret til {file_path}.",
         )
+
+
+class FixedAssetsPage(QWidget):
+    """Viser mulige tilganger, avganger og kostnader som kan aktiveres."""
+
+    def __init__(self, title: str, subtitle: str) -> None:
+        super().__init__()
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(24)
+
+        (
+            self.addition_card,
+            self.addition_table,
+            self.addition_empty,
+        ) = self._build_movement_card(
+            "Mulige tilganger",
+            "Kontoer i 11xx-12xx der UB er større enn IB.",
+            "Ingen økninger funnet ennå",
+        )
+        layout.addWidget(self.addition_card)
+
+        (
+            self.disposal_card,
+            self.disposal_table,
+            self.disposal_empty,
+        ) = self._build_movement_card(
+            "Mulige avganger",
+            "Kontoer i 11xx-12xx som har saldo ved IB, men ikke ved UB.",
+            "Ingen mulige avganger identifisert",
+        )
+        layout.addWidget(self.disposal_card)
+
+        self.capitalization_card = CardFrame(
+            "Burde aktiveres",
+            "Inngående faktura på 65xx over 30 000 som kan vurderes.",
+        )
+        self.capitalization_table = create_table_widget()
+        self.capitalization_table.setColumnCount(6)
+        self.capitalization_table.setHorizontalHeaderLabels(
+            [
+                "Dato",
+                "Leverandør",
+                "Bilag",
+                "Konto",
+                "Beløp",
+                "Beskrivelse",
+            ]
+        )
+        self.capitalization_empty = EmptyStateWidget(
+            "Ingen faktura over terskelen",
+            "Importer en SAF-T-fil for å se kostnader som kan aktiveres.",
+            icon="📄",
+        )
+        self.capitalization_table.hide()
+        self.capitalization_card.add_widget(self.capitalization_empty)
+        self.capitalization_card.add_widget(self.capitalization_table)
+        layout.addWidget(self.capitalization_card)
+
+        layout.addStretch(1)
+
+    def update_data(
+        self,
+        trial_balance: Optional["pd.DataFrame"],
+        vouchers: Sequence[CostVoucher],
+    ) -> None:
+        additions = find_possible_accessions(trial_balance)
+        self._populate_movements(self.addition_table, self.addition_empty, additions)
+
+        disposals = find_possible_disposals(trial_balance)
+        self._populate_movements(self.disposal_table, self.disposal_empty, disposals)
+
+        candidates = find_capitalization_candidates(vouchers)
+        self._populate_capitalizations(candidates)
+
+    def clear(self) -> None:
+        self.update_data(None, [])
+
+    def _build_movement_card(
+        self, title: str, subtitle: str, empty_title: str
+    ) -> Tuple[CardFrame, QTableWidget, EmptyStateWidget]:
+        card = CardFrame(title, subtitle)
+        table = create_table_widget()
+        table.setColumnCount(5)
+        table.setHorizontalHeaderLabels(
+            ["Konto", "Kontonavn", "IB", "UB", "Endring"]
+        )
+        empty = EmptyStateWidget(
+            empty_title,
+            "Importer en SAF-T-fil for å analysere driftsmidler.",
+            icon="📊",
+        )
+        table.hide()
+        card.add_widget(empty)
+        card.add_widget(table)
+        return card, table, empty
+
+    def _populate_movements(
+        self,
+        table: QTableWidget,
+        empty_state: EmptyStateWidget,
+        movements: Sequence[AssetMovement],
+    ) -> None:
+        rows = [
+            (
+                movement.account,
+                movement.name,
+                movement.opening_balance,
+                movement.closing_balance,
+                movement.change,
+            )
+            for movement in movements
+        ]
+        populate_table(
+            table,
+            ["Konto", "Kontonavn", "IB", "UB", "Endring"],
+            rows,
+            money_cols={2, 3, 4},
+        )
+        self._toggle_empty_state(table, empty_state, bool(rows))
+
+    def _populate_capitalizations(
+        self, candidates: Sequence[CapitalizationCandidate]
+    ) -> None:
+        rows = [
+            (
+                self._format_date(candidate.date),
+                candidate.supplier,
+                candidate.document,
+                candidate.account,
+                candidate.amount,
+                candidate.description or "—",
+            )
+            for candidate in candidates
+        ]
+        populate_table(
+            self.capitalization_table,
+            ["Dato", "Leverandør", "Bilag", "Konto", "Beløp", "Beskrivelse"],
+            rows,
+            money_cols={4},
+        )
+        self._toggle_empty_state(
+            self.capitalization_table, self.capitalization_empty, bool(rows)
+        )
+
+    @staticmethod
+    def _format_date(value: object) -> str:
+        if isinstance(value, (datetime, date)):
+            return value.isoformat()
+        if value is None:
+            return "—"
+        return str(value)
+
+    @staticmethod
+    def _toggle_empty_state(
+        table: QTableWidget, empty_state: EmptyStateWidget, has_rows: bool
+    ) -> None:
+        if has_rows:
+            empty_state.hide()
+            table.show()
+        else:
+            table.hide()
+            empty_state.show()
 
 
 class SalesArPage(QWidget):

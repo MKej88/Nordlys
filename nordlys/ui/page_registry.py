@@ -21,6 +21,7 @@ if TYPE_CHECKING:  # pragma: no cover - kun for typekontroll
     from .pages.revision_pages import (
         ChecklistPage,
         CostVoucherReviewPage,
+        FixedAssetsPage,
         PurchasesApPage,
         SalesArPage,
     )
@@ -129,6 +130,14 @@ class PageRegistry:
                     ),
                     attr="cost_review_page",
                 )
+            elif key == "rev.driftsmidler":
+                self._manager.register_lazy_page(
+                    key,
+                    lambda title=title, subtitle=subtitle: self._build_fixed_assets_page(
+                        title, subtitle
+                    ),
+                    attr="fixed_assets_page",
+                )
             else:
                 self._manager.register_lazy_page(
                     key,
@@ -196,6 +205,13 @@ class PageRegistry:
         from .pages.revision_pages import CostVoucherReviewPage
 
         return CostVoucherReviewPage(title, subtitle)
+
+    def _build_fixed_assets_page(
+        self, title: str, subtitle: str
+    ) -> "FixedAssetsPage":
+        from .pages.revision_pages import FixedAssetsPage
+
+        return FixedAssetsPage(title, subtitle)
 
     def _build_checklist_page(
         self, _key: str, title: str, subtitle: str
