@@ -9,7 +9,7 @@ from typing import List, Optional, Sequence, Tuple
 
 import pandas as pd
 
-from nordlys.saft.models import CostVoucher
+from nordlys.saft.models import CostVoucher, VoucherLine
 
 
 @dataclass(frozen=True)
@@ -148,17 +148,26 @@ def find_capitalization_candidates(
 
     candidates: List[CapitalizationCandidate] = []
     for voucher in vouchers:
+        relevant_lines: list[tuple[VoucherLine, float]] = []
+        total_amount = 0.0
         for line in voucher.lines:
             normalized_account = _normalize_account(line.account)
             if normalized_account is None or not normalized_account.startswith("65"):
                 continue
 
             line_amount = (line.debit or 0.0) - (line.credit or 0.0)
-            if line_amount < threshold:
+            total_amount += line_amount
+            relevant_lines.append((line, line_amount))
+
+        if total_amount < threshold:
+            continue
+
+        supplier = (voucher.supplier_name or voucher.supplier_id or "—").strip()
+        document = (voucher.document_number or voucher.transaction_id or "—").strip()
+        for line, line_amount in relevant_lines:
+            if line_amount <= 0:
                 continue
 
-            supplier = (voucher.supplier_name or voucher.supplier_id or "—").strip()
-            document = (voucher.document_number or voucher.transaction_id or "—").strip()
             candidates.append(
                 CapitalizationCandidate(
                     date=voucher.transaction_date,

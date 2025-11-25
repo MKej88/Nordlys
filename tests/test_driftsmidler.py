@@ -454,3 +454,83 @@ def test_find_capitalization_candidates_filters_by_account_and_threshold():
             description=None,
         )
     ]
+
+
+def test_find_capitalization_candidates_aggregates_per_voucher():
+    vouchers = [
+        CostVoucher(
+            transaction_id="1",
+            document_number="A1",
+            transaction_date=None,
+            supplier_id="S1",
+            supplier_name="Leverandør",
+            description="",
+            amount=40_000,
+            lines=[
+                VoucherLine(
+                    account="6500",
+                    account_name=None,
+                    description="Del 1",
+                    vat_code=None,
+                    debit=20_000,
+                    credit=0,
+                ),
+                VoucherLine(
+                    account="6510",
+                    account_name=None,
+                    description="Del 2",
+                    vat_code=None,
+                    debit=20_000,
+                    credit=0,
+                ),
+            ],
+        ),
+        CostVoucher(
+            transaction_id="2",
+            document_number="A2",
+            transaction_date=None,
+            supplier_id="S2",
+            supplier_name="",
+            description="",
+            amount=25_000,
+            lines=[
+                VoucherLine(
+                    account="6500",
+                    account_name=None,
+                    description=None,
+                    vat_code=None,
+                    debit=15_000,
+                    credit=0,
+                ),
+                VoucherLine(
+                    account="6500",
+                    account_name=None,
+                    description=None,
+                    vat_code=None,
+                    debit=10_000,
+                    credit=0,
+                ),
+            ],
+        ),
+    ]
+
+    candidates = find_capitalization_candidates(vouchers, threshold=30_000)
+
+    assert candidates == [
+        CapitalizationCandidate(
+            date=None,
+            supplier="Leverandør",
+            document="A1",
+            account="6500",
+            amount=20_000,
+            description="Del 1",
+        ),
+        CapitalizationCandidate(
+            date=None,
+            supplier="Leverandør",
+            document="A1",
+            account="6510",
+            amount=20_000,
+            description="Del 2",
+        ),
+    ]
