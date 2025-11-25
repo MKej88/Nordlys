@@ -46,6 +46,7 @@ class NordlysWindow(QMainWindow):
         self._page_manager: Optional[PageManager] = None
         self._page_registry: Optional[PageRegistry] = None
         self._startup_done = False
+        self._startup_timer: Optional[QTimer] = None
         components = setup_components(self)
         self._bind_components(components)
         self._apply_styles()
@@ -59,7 +60,6 @@ class NordlysWindow(QMainWindow):
         self.header_bar.open_requested.connect(self._handle_open_requested)
         self.header_bar.export_requested.connect(self._handle_export_requested)
         self.header_bar.export_pdf_requested.connect(self._handle_export_pdf_requested)
-        QTimer.singleShot(0, self._finish_startup)
 
     def _bind_components(self, components: WindowComponents) -> None:
         self.nav_panel = components.nav_panel
@@ -80,6 +80,7 @@ class NordlysWindow(QMainWindow):
 
     def showEvent(self, event) -> None:  # type: ignore[override]
         super().showEvent(event)
+        self._schedule_startup()
         self._responsive.schedule_update()
 
     def resizeEvent(self, event) -> None:  # type: ignore[override]
@@ -174,9 +175,21 @@ class NordlysWindow(QMainWindow):
         if not self._startup_done:
             self._finish_startup()
 
+    def _schedule_startup(self) -> None:
+        if self._startup_done:
+            return
+        if self._startup_timer is None:
+            self._startup_timer = QTimer(self)
+            self._startup_timer.setSingleShot(True)
+            self._startup_timer.timeout.connect(self._finish_startup)
+        if not self._startup_timer.isActive():
+            self._startup_timer.start(0)
+
     def _finish_startup(self) -> None:
         if self._startup_done:
             return
+        if self._startup_timer is not None and self._startup_timer.isActive():
+            self._startup_timer.stop()
         (
             self._dataset_store,
             self._analytics,
