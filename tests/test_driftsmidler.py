@@ -1,16 +1,81 @@
 import pandas as pd
 
 from nordlys.regnskap.driftsmidler import (
+    AssetAccession,
     AssetMovement,
     CapitalizationCandidate,
+    find_asset_accessions,
     find_capitalization_candidates,
-    find_possible_accessions,
     find_possible_disposals,
 )
 from nordlys.saft.models import CostVoucher, VoucherLine
 
 
-def test_find_possible_accessions_and_disposals_filters_accounts():
+def test_find_asset_accessions_collects_debits_on_asset_accounts():
+    vouchers = [
+        CostVoucher(
+            transaction_id="1",
+            document_number="A1",
+            transaction_date=None,
+            supplier_id="S1",
+            supplier_name="Leverandør",
+            description="Maskinkjøp",
+            amount=50_000,
+            lines=[
+                VoucherLine(
+                    account="1100",
+                    account_name=None,
+                    description="Ny maskin",
+                    vat_code=None,
+                    debit=50_000,
+                    credit=0,
+                ),
+                VoucherLine(
+                    account="4000",
+                    account_name=None,
+                    description=None,
+                    vat_code=None,
+                    debit=0,
+                    credit=0,
+                ),
+            ],
+        ),
+        CostVoucher(
+            transaction_id="2",
+            document_number="A2",
+            transaction_date=None,
+            supplier_id="S2",
+            supplier_name="Andre",
+            description=None,
+            amount=10_000,
+            lines=[
+                VoucherLine(
+                    account="1200",
+                    account_name=None,
+                    description=None,
+                    vat_code=None,
+                    debit=0,
+                    credit=10_000,
+                ),
+            ],
+        ),
+    ]
+
+    additions = find_asset_accessions(vouchers)
+
+    assert additions == [
+        AssetAccession(
+            date=None,
+            supplier="Leverandør",
+            document="A1",
+            account="1100",
+            amount=50_000,
+            description="Ny maskin",
+        )
+    ]
+
+
+def test_find_possible_disposals_filters_accounts():
     df = pd.DataFrame(
         {
             "Konto": ["1100", "1200", "3000"],
@@ -20,18 +85,8 @@ def test_find_possible_accessions_and_disposals_filters_accounts():
         }
     )
 
-    additions = find_possible_accessions(df)
     disposals = find_possible_disposals(df)
 
-    assert additions == [
-        AssetMovement(
-            account="1100",
-            name="Maskiner",
-            opening_balance=100_000,
-            closing_balance=150_000,
-            change=50_000,
-        )
-    ]
     assert disposals == [
         AssetMovement(
             account="1200",

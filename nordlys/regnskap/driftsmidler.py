@@ -22,6 +22,18 @@ class AssetMovement:
 
 
 @dataclass(frozen=True)
+class AssetAccession:
+    """Enkel bilagslinje som representerer en tilgang på et driftsmiddel."""
+
+    date: Optional[object]
+    supplier: str
+    document: str
+    account: str
+    amount: float
+    description: Optional[str]
+
+
+@dataclass(frozen=True)
 class CapitalizationCandidate:
     """Bilagslinje på 65xx som kan vurderes for aktivering."""
 
@@ -33,15 +45,34 @@ class CapitalizationCandidate:
     description: Optional[str]
 
 
-def find_possible_accessions(tb: Optional[pd.DataFrame]) -> List[AssetMovement]:
-    """Finn kontoer i 11xx-12xx der UB overstiger IB."""
+def find_asset_accessions(vouchers: Sequence[CostVoucher]) -> List[AssetAccession]:
+    """Hent alle debetføringer på 11xx-12xx for å vise tilganger."""
 
-    work = _prepare_asset_frame(tb)
-    if work is None:
-        return []
+    accessions: List[AssetAccession] = []
+    for voucher in vouchers:
+        supplier = (voucher.supplier_name or voucher.supplier_id or "—").strip()
+        document = (voucher.document_number or voucher.transaction_id or "—").strip()
 
-    mask = work["UB_netto"] > work["IB_netto"]
-    return _build_movements(work.loc[mask])
+        for line in voucher.lines:
+            normalized_account = _normalize_account(line.account)
+            if normalized_account is None or not normalized_account.startswith(("11", "12")):
+                continue
+
+            line_amount = (line.debit or 0.0) - (line.credit or 0.0)
+            if line_amount <= 0:
+                continue
+
+            accessions.append(
+                AssetAccession(
+                    date=voucher.transaction_date,
+                    supplier=supplier or "—",
+                    document=document or "—",
+                    account=line.account or "—",
+                    amount=line_amount,
+                    description=line.description or voucher.description,
+                )
+            )
+    return accessions
 
 
 def find_possible_disposals(tb: Optional[pd.DataFrame]) -> List[AssetMovement]:
@@ -134,8 +165,9 @@ def _normalize_account(value: Optional[str]) -> Optional[str]:
 
 __all__ = [
     "AssetMovement",
+    "AssetAccession",
     "CapitalizationCandidate",
+    "find_asset_accessions",
     "find_capitalization_candidates",
-    "find_possible_accessions",
     "find_possible_disposals",
 ]

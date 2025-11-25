@@ -32,10 +32,11 @@ from PySide6.QtWidgets import (
 from ... import saft_customers
 from ...helpers.formatting import format_currency, format_difference
 from ...regnskap.driftsmidler import (
+    AssetAccession,
     AssetMovement,
     CapitalizationCandidate,
+    find_asset_accessions,
     find_capitalization_candidates,
-    find_possible_accessions,
     find_possible_disposals,
 )
 from ...saft.models import CostVoucher
@@ -1061,11 +1062,7 @@ class FixedAssetsPage(QWidget):
             self.addition_card,
             self.addition_table,
             self.addition_empty,
-        ) = self._build_movement_card(
-            "Mulige tilganger",
-            "Kontoer i 11xx-12xx der UB er større enn IB.",
-            "Ingen økninger funnet ennå",
-        )
+        ) = self._build_accession_card()
         layout.addWidget(self.addition_card)
 
         (
@@ -1112,8 +1109,8 @@ class FixedAssetsPage(QWidget):
         trial_balance: Optional["pd.DataFrame"],
         vouchers: Sequence[CostVoucher],
     ) -> None:
-        additions = find_possible_accessions(trial_balance)
-        self._populate_movements(self.addition_table, self.addition_empty, additions)
+        additions = find_asset_accessions(vouchers)
+        self._populate_accessions(additions)
 
         disposals = find_possible_disposals(trial_balance)
         self._populate_movements(self.disposal_table, self.disposal_empty, disposals)
@@ -1123,6 +1120,28 @@ class FixedAssetsPage(QWidget):
 
     def clear(self) -> None:
         self.update_data(None, [])
+
+    def _build_accession_card(
+        self,
+    ) -> Tuple[CardFrame, QTableWidget, EmptyStateWidget]:
+        card = CardFrame(
+            "Tilganger",
+            "Alle debetføringer mot 11xx-12xx-konti.",
+        )
+        table = create_table_widget()
+        table.setColumnCount(6)
+        table.setHorizontalHeaderLabels(
+            ["Dato", "Leverandør", "Bilag", "Konto", "Beløp", "Beskrivelse"]
+        )
+        empty = EmptyStateWidget(
+            "Ingen tilganger funnet",
+            "Importer en SAF-T-fil for å se nye investeringer i driftsmidler.",
+            icon="🧾",
+        )
+        table.hide()
+        card.add_widget(empty)
+        card.add_widget(table)
+        return card, table, empty
 
     def _build_movement_card(
         self, title: str, subtitle: str, empty_title: str
@@ -1166,6 +1185,28 @@ class FixedAssetsPage(QWidget):
             money_cols={2, 3, 4},
         )
         self._toggle_empty_state(table, empty_state, bool(rows))
+
+    def _populate_accessions(self, accessions: Sequence[AssetAccession]) -> None:
+        rows = [
+            (
+                self._format_date(accession.date),
+                accession.supplier,
+                accession.document,
+                accession.account,
+                accession.amount,
+                accession.description or "—",
+            )
+            for accession in accessions
+        ]
+        populate_table(
+            self.addition_table,
+            ["Dato", "Leverandør", "Bilag", "Konto", "Beløp", "Beskrivelse"],
+            rows,
+            money_cols={4},
+        )
+        self._toggle_empty_state(
+            self.addition_table, self.addition_empty, bool(rows)
+        )
 
     def _populate_capitalizations(
         self, candidates: Sequence[CapitalizationCandidate]
