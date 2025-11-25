@@ -1056,13 +1056,30 @@ class FixedAssetsPage(QWidget):
 
     def __init__(self, title: str, subtitle: str) -> None:
         super().__init__()
-        layout = QHBoxLayout(self)
+        layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(24)
+        layout.setSpacing(0)
 
-        left_column = QVBoxLayout()
-        left_column.setContentsMargins(0, 0, 0, 0)
-        left_column.setSpacing(24)
+        self.tab_widget = QTabWidget()
+        self.tab_widget.setObjectName("fixedAssetTabs")
+        self.tab_widget.setDocumentMode(True)
+        self.tab_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+        additions_page = self._build_accession_page()
+        disposals_page = self._build_disposal_page()
+        capitalizations_page = self._build_capitalization_page()
+
+        self.tab_widget.addTab(additions_page, "Tilganger")
+        self.tab_widget.addTab(disposals_page, "Avganger")
+        self.tab_widget.addTab(capitalizations_page, "Burde aktiveres")
+
+        layout.addWidget(self.tab_widget)
+
+    def _build_accession_page(self) -> QWidget:
+        page = QWidget()
+        page_layout = QVBoxLayout(page)
+        page_layout.setContentsMargins(0, 0, 0, 0)
+        page_layout.setSpacing(24)
 
         (
             self.addition_card,
@@ -1074,12 +1091,17 @@ class FixedAssetsPage(QWidget):
         self.addition_card.setSizePolicy(
             QSizePolicy.Expanding, QSizePolicy.Expanding
         )
-        left_column.addWidget(self.addition_card)
-        left_column.addStretch(1)
+        self._configure_full_width_table(self.addition_table)
+        self._configure_full_width_table(self.addition_summary_table)
 
-        right_column = QVBoxLayout()
-        right_column.setContentsMargins(0, 0, 0, 0)
-        right_column.setSpacing(24)
+        page_layout.addWidget(self.addition_card, 1)
+        return page
+
+    def _build_disposal_page(self) -> QWidget:
+        page = QWidget()
+        page_layout = QVBoxLayout(page)
+        page_layout.setContentsMargins(0, 0, 0, 0)
+        page_layout.setSpacing(24)
 
         (
             self.disposal_card,
@@ -1093,7 +1115,16 @@ class FixedAssetsPage(QWidget):
         self.disposal_card.setSizePolicy(
             QSizePolicy.Expanding, QSizePolicy.Expanding
         )
-        right_column.addWidget(self.disposal_card, 1)
+        self._configure_full_width_table(self.disposal_table)
+
+        page_layout.addWidget(self.disposal_card, 1)
+        return page
+
+    def _build_capitalization_page(self) -> QWidget:
+        page = QWidget()
+        page_layout = QVBoxLayout(page)
+        page_layout.setContentsMargins(0, 0, 0, 0)
+        page_layout.setSpacing(24)
 
         self.capitalization_card = CardFrame(
             "Burde aktiveres",
@@ -1114,6 +1145,7 @@ class FixedAssetsPage(QWidget):
                 "Beskrivelse",
             ]
         )
+        self._configure_full_width_table(self.capitalization_table)
         self.capitalization_empty = EmptyStateWidget(
             "Ingen faktura over terskelen",
             "Importer en SAF-T-fil for å se kostnader som kan aktiveres.",
@@ -1122,10 +1154,15 @@ class FixedAssetsPage(QWidget):
         self.capitalization_table.hide()
         self.capitalization_card.add_widget(self.capitalization_empty)
         self.capitalization_card.add_widget(self.capitalization_table)
-        right_column.addWidget(self.capitalization_card, 1)
 
-        layout.addLayout(left_column, 1)
-        layout.addLayout(right_column, 1)
+        page_layout.addWidget(self.capitalization_card, 1)
+        return page
+
+    def _configure_full_width_table(self, table: QTableWidget) -> None:
+        header = table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.Stretch)
+        table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
     def update_data(
         self,
