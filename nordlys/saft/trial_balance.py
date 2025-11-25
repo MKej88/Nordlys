@@ -21,15 +21,23 @@ class TrialBalanceResult:
     error: Optional[str]
 
 
-def compute_trial_balance(file_path: str) -> TrialBalanceResult:
+def compute_trial_balance(
+    file_path: str, *, streaming_enabled: bool | None = None
+) -> TrialBalanceResult:
     """Returner et tomt resultat uten streaming, eller beregn prøvebalanse.
 
-    Når ``NORDLYS_SAFT_STREAMING`` er deaktivert returneres et tomt
-    ``TrialBalanceResult`` uten balanse eller feil. Dersom streaming er aktivert
-    beregnes prøvebalansen, og eventuelle feil formidles via ``error``-feltet.
+    Når ``streaming_enabled`` er ``False`` (eller
+    ``NORDLYS_SAFT_STREAMING`` er deaktivert og argumentet ikke er gitt)
+    returneres et tomt ``TrialBalanceResult`` uten balanse eller feil. Dersom
+    streaming er aktivert beregnes prøvebalansen, og eventuelle feil formidles
+    via ``error``-feltet.
     """
 
-    if not SAFT_STREAMING_ENABLED:
+    effective_streaming = (
+        SAFT_STREAMING_ENABLED if streaming_enabled is None else streaming_enabled
+    )
+
+    if not effective_streaming:
         return TrialBalanceResult(balance=None, error=None)
 
     try:
