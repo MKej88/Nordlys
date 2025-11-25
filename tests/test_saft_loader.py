@@ -1,5 +1,6 @@
 from pathlib import Path
 import threading
+from pathlib import Path
 from threading import Event
 from types import SimpleNamespace
 
@@ -116,6 +117,88 @@ def test_loader_triggers_validation_and_enrichment_early(tmp_path, monkeypatch):
     assert result.validation.audit_file_version == "1.3"
     assert validation_started.is_set()
     assert enrichment_started.is_set()
+
+
+def test_loader_streams_trial_balance_for_heavy_files(tmp_path, monkeypatch):
+    xml_content = """
+    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <Header>
+        <Company>
+          <Name>Test</Name>
+          <RegistrationNumber>999999999</RegistrationNumber>
+        </Company>
+        <SelectionCriteria>
+          <PeriodStart>2023-01-01</PeriodStart>
+          <PeriodEnd>2023-12-31</PeriodEnd>
+          <PeriodEndYear>2023</PeriodEndYear>
+        </SelectionCriteria>
+        <AuditFileVersion>1.3</AuditFileVersion>
+      </Header>
+      <MasterFiles />
+      <GeneralLedgerEntries />
+    </AuditFile>
+    """
+
+    xml_path = tmp_path / "heavy.xml"
+    xml_path.write_text(xml_content)
+
+    monkeypatch.setattr(loader, "SAFT_STREAMING_ENABLED", False)
+
+    def fake_stat(self: Path) -> SimpleNamespace:
+        return SimpleNamespace(st_size=loader.HEAVY_SAFT_STREAMING_BYTES + 1)
+
+    monkeypatch.setattr(Path, "stat", fake_stat)
+
+    called_with_streaming: list[bool | None] = []
+
+    def fake_compute_trial_balance(
+        file_path: str, *, streaming_enabled: bool | None = None
+    ) -> SimpleNamespace:
+        called_with_streaming.append(streaming_enabled)
+        return SimpleNamespace(balance=None, error=None)
+
+    monkeypatch.setattr(loader, "compute_trial_balance", fake_compute_trial_balance)
+
+    monkeypatch.setattr(
+        loader.saft,
+        "validate_saft_against_xsd",
+        lambda path, version: SaftValidationResult(
+            audit_file_version="1.3",
+            version_family=None,
+            schema_version=None,
+            is_valid=None,
+            details=None,
+        ),
+    )
+    monkeypatch.setattr(
+        loader,
+        "enrich_from_header",
+        lambda header: BrregEnrichment(
+            brreg_json=None,
+            brreg_map=None,
+            brreg_error=None,
+            industry=None,
+            industry_error=None,
+        ),
+    )
+    monkeypatch.setattr(loader.saft, "parse_saldobalanse", lambda root: pd.DataFrame())
+    monkeypatch.setattr(loader.saft, "parse_customers", lambda root: {})
+    monkeypatch.setattr(loader.saft, "parse_suppliers", lambda root: {})
+    monkeypatch.setattr(
+        loader,
+        "build_customer_supplier_analysis",
+        lambda header, root, ns: CustomerSupplierAnalysis(
+            analysis_year=None,
+            customer_sales=None,
+            supplier_purchases=None,
+            cost_vouchers=[],
+        ),
+    )
+    monkeypatch.setattr(loader.saft, "ns4102_summary_from_tb", lambda df: {})
+
+    loader.load_saft_file(str(xml_path))
+
+    assert called_with_streaming == [True]
 
 
 def test_suggest_max_workers_caps_for_two_heavy_files(monkeypatch):

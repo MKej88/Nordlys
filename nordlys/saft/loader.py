@@ -26,6 +26,7 @@ _LOGGER = logging.getLogger(__name__)
 HEAVY_SAFT_FILE_BYTES = 25 * 1024 * 1024  # 25 MB
 HEAVY_SAFT_TOTAL_BYTES = 150 * 1024 * 1024  # 150 MB samlet
 HEAVY_SAFT_MAX_WORKERS = 2
+HEAVY_SAFT_STREAMING_BYTES = HEAVY_SAFT_FILE_BYTES
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -86,12 +87,15 @@ def load_saft_file(
     enrichment: Optional[BrregEnrichment] = None
 
     background_workers = max(3, min(6, os.cpu_count() or 1))
+    use_streaming = _should_stream_trial_balance(file_path)
 
     with ThreadPoolExecutor(max_workers=background_workers) as executor:
         trial_balance_future = None
-        if SAFT_STREAMING_ENABLED:
+        if use_streaming:
             _report_progress(5, f"Leser hovedbok (streaming) for {file_name}")
-            trial_balance_future = executor.submit(compute_trial_balance, file_path)
+            trial_balance_future = executor.submit(
+                compute_trial_balance, file_path, streaming_enabled=True
+            )
 
         tree, ns = saft_customers.parse_saft(file_path)
         root = tree.getroot()
@@ -319,3 +323,21 @@ def _suggest_max_workers(
         return min(desired, HEAVY_SAFT_MAX_WORKERS)
 
     return desired
+
+
+def _should_stream_trial_balance(file_path: str | os.PathLike[str]) -> bool:
+    """Velger streaming for prøvebalansen når det er forventet gevinster.
+
+    Streaming tvinges på for store filer, selv om miljøvariabelen ikke er satt,
+    for å unngå at importen blir begrenset av minne- og I/O-flaskehalser.
+    """
+
+    if SAFT_STREAMING_ENABLED:
+        return True
+
+    try:
+        size = Path(file_path).stat().st_size
+    except OSError:
+        return False
+
+    return size >= HEAVY_SAFT_STREAMING_BYTES
