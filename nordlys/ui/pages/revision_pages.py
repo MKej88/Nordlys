@@ -1199,6 +1199,14 @@ class FixedAssetsPage(QWidget):
             if last_item is not None and last_item.spacerItem():
                 card._has_body_stretch = False  # type: ignore[attr-defined]
 
+        content_container = QWidget()
+        content_container.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Expanding
+        )
+        content_layout = QVBoxLayout(content_container)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(8)
+
         table = create_table_widget()
         table.setColumnCount(8)
         table.setHorizontalHeaderLabels(
@@ -1219,10 +1227,20 @@ class FixedAssetsPage(QWidget):
             icon="🧾",
         )
         table.hide()
-        card.add_widget(empty)
-        card.add_widget(table)
-        card.body_layout.setStretchFactor(empty, 1)
-        card.body_layout.setStretchFactor(table, 1)
+        content_layout.addWidget(empty, 1)
+        content_layout.addWidget(table, 1)
+        content_container.setLayout(content_layout)
+        card.add_widget(content_container)
+        card.body_layout.setStretchFactor(content_container, 1)
+
+        summary_container = QWidget()
+        summary_container.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Maximum
+        )
+        summary_layout = QVBoxLayout(summary_container)
+        summary_layout.setContentsMargins(0, 0, 0, 0)
+        summary_layout.setSpacing(4)
+
         summary_label = QLabel("Summering per konto")
         summary_label.setObjectName("cardSubtitle")
         summary_table = create_table_widget()
@@ -1232,8 +1250,10 @@ class FixedAssetsPage(QWidget):
         )
         summary_label.hide()
         summary_table.hide()
-        card.add_widget(summary_label)
-        card.add_widget(summary_table)
+        summary_layout.addWidget(summary_label)
+        summary_layout.addWidget(summary_table)
+        summary_container.setLayout(summary_layout)
+        card.add_widget(summary_container)
         return card, table, summary_table, summary_label, empty
 
     def _build_movement_card(
