@@ -146,10 +146,9 @@ def extract_cost_vouchers(
 
             if _is_cost_account(account):
                 has_cost_line = True
-            if normalized_account and normalized_account.startswith(("11", "12")):
+                total += debit - credit
+            elif normalized_account and normalized_account.startswith(("11", "12")):
                 has_asset_line = True
-
-            if has_cost_line or has_asset_line:
                 total += debit - credit
 
             voucher_lines.append(
