@@ -37,7 +37,7 @@ def create_table_widget() -> QTableWidget:
     table.setFocusPolicy(Qt.NoFocus)
     table.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
     table.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
-    table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+    table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
     table.verticalHeader().setVisible(False)
     table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
     table.setObjectName("cardTable")
