@@ -206,9 +206,7 @@ class PageRegistry:
 
         return CostVoucherReviewPage(title, subtitle)
 
-    def _build_fixed_assets_page(
-        self, title: str, subtitle: str
-    ) -> "FixedAssetsPage":
+    def _build_fixed_assets_page(self, title: str, subtitle: str) -> "FixedAssetsPage":
         from .pages.revision_pages import FixedAssetsPage
 
         return FixedAssetsPage(title, subtitle)

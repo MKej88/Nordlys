@@ -4,7 +4,16 @@ import math
 import random
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import TYPE_CHECKING, Callable, Iterable, List, Optional, Sequence, Tuple, cast
+from typing import (
+    TYPE_CHECKING,
+    Callable,
+    Iterable,
+    List,
+    Optional,
+    Sequence,
+    Tuple,
+    cast,
+)
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPalette, QTextOption
@@ -1088,9 +1097,7 @@ class FixedAssetsPage(QWidget):
             self.addition_summary_label,
             self.addition_empty,
         ) = self._build_accession_card()
-        self.addition_card.setSizePolicy(
-            QSizePolicy.Expanding, QSizePolicy.Expanding
-        )
+        self.addition_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self._configure_full_width_table(self.addition_table)
         self._configure_full_width_table(self.addition_summary_table)
 
@@ -1112,9 +1119,7 @@ class FixedAssetsPage(QWidget):
             "Kontoer i 11xx-12xx som har saldo ved IB, men ikke ved UB.",
             "Ingen mulige avganger identifisert",
         )
-        self.disposal_card.setSizePolicy(
-            QSizePolicy.Expanding, QSizePolicy.Expanding
-        )
+        self.disposal_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self._configure_full_width_table(self.disposal_table)
 
         page_layout.addWidget(self.disposal_card, 1)
@@ -1200,9 +1205,7 @@ class FixedAssetsPage(QWidget):
                 card._has_body_stretch = False  # type: ignore[attr-defined]
 
         content_container = QWidget()
-        content_container.setSizePolicy(
-            QSizePolicy.Expanding, QSizePolicy.Expanding
-        )
+        content_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         content_layout = QVBoxLayout(content_container)
         content_layout.setContentsMargins(0, 0, 0, 0)
         content_layout.setSpacing(8)
@@ -1234,9 +1237,7 @@ class FixedAssetsPage(QWidget):
         card.body_layout.setStretchFactor(content_container, 1)
 
         summary_container = QWidget()
-        summary_container.setSizePolicy(
-            QSizePolicy.Expanding, QSizePolicy.Maximum
-        )
+        summary_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
         summary_layout = QVBoxLayout(summary_container)
         summary_layout.setContentsMargins(0, 0, 0, 0)
         summary_layout.setSpacing(4)
@@ -1245,9 +1246,7 @@ class FixedAssetsPage(QWidget):
         summary_label.setObjectName("cardSubtitle")
         summary_table = create_table_widget()
         summary_table.setColumnCount(3)
-        summary_table.setHorizontalHeaderLabels(
-            ["Konto", "Kontonavn", "Sum tilganger"]
-        )
+        summary_table.setHorizontalHeaderLabels(["Konto", "Kontonavn", "Sum tilganger"])
         summary_label.hide()
         summary_table.hide()
         summary_layout.addWidget(summary_label)
@@ -1262,9 +1261,7 @@ class FixedAssetsPage(QWidget):
         card = CardFrame(title, subtitle)
         table = create_table_widget()
         table.setColumnCount(5)
-        table.setHorizontalHeaderLabels(
-            ["Konto", "Kontonavn", "IB", "UB", "Endring"]
-        )
+        table.setHorizontalHeaderLabels(["Konto", "Kontonavn", "IB", "UB", "Endring"])
         empty = EmptyStateWidget(
             empty_title,
             "Importer en SAF-T-fil for å analysere driftsmidler.",
@@ -1329,8 +1326,8 @@ class FixedAssetsPage(QWidget):
             money_cols={6},
         )
 
-        summaries: Sequence[AssetAccessionSummary] = summarize_asset_accessions_by_account(
-            accessions
+        summaries: Sequence[AssetAccessionSummary] = (
+            summarize_asset_accessions_by_account(accessions)
         )
         summary_rows = [
             (

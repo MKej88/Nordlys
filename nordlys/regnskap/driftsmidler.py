@@ -69,12 +69,18 @@ def find_asset_accessions(vouchers: Sequence[CostVoucher]) -> List[AssetAccessio
         per_account: dict[str, Tuple[float, Optional[str], Optional[str]]] = {}
         for line in voucher.lines:
             normalized_account = _normalize_account(line.account)
-            if normalized_account is None or not normalized_account.startswith(("11", "12")):
+            if normalized_account is None or not normalized_account.startswith(
+                ("11", "12")
+            ):
                 continue
 
             line_amount = (line.debit or 0.0) - (line.credit or 0.0)
             if normalized_account not in per_account:
-                per_account[normalized_account] = (0.0, line.account_name, line.description)
+                per_account[normalized_account] = (
+                    0.0,
+                    line.account_name,
+                    line.description,
+                )
             previous_amount, account_name, description = per_account[normalized_account]
             combined_amount = previous_amount + line_amount
             per_account[normalized_account] = (
@@ -83,7 +89,11 @@ def find_asset_accessions(vouchers: Sequence[CostVoucher]) -> List[AssetAccessio
                 description or line.description,
             )
 
-        for account_number, (total_amount, account_name, description) in per_account.items():
+        for account_number, (
+            total_amount,
+            account_name,
+            description,
+        ) in per_account.items():
             if math.isclose(total_amount, 0.0, abs_tol=0.01):
                 continue
 
@@ -220,7 +230,9 @@ def _build_movements(rows: pd.DataFrame) -> List[AssetMovement]:
     return movements
 
 
-def _accession_sort_key(accession: AssetAccession) -> Tuple[Tuple[int, object], datetime]:
+def _accession_sort_key(
+    accession: AssetAccession,
+) -> Tuple[Tuple[int, object], datetime]:
     account_key = _account_sort_key(accession.account)
     date_value = _date_sort_key(accession.date)
     return account_key, date_value
@@ -233,9 +245,9 @@ def _remove_reversals(entries: Sequence[AssetAccession]) -> List[AssetAccession]
     for entry in entries:
         if entry.amount < 0:
             account_key = entry.account
-            cancellation_pool[account_key] = (
-                cancellation_pool.get(account_key, 0.0) + abs(entry.amount)
-            )
+            cancellation_pool[account_key] = cancellation_pool.get(
+                account_key, 0.0
+            ) + abs(entry.amount)
 
     cleaned: List[AssetAccession] = []
     for entry in entries:
