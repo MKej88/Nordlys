@@ -1,4 +1,5 @@
 from pathlib import Path
+import threading
 from threading import Event
 from types import SimpleNamespace
 
@@ -133,3 +134,101 @@ def test_suggest_max_workers_caps_for_two_heavy_files(monkeypatch):
     suggested = loader._suggest_max_workers(dummy_paths, cpu_limit=8)
 
     assert suggested == loader.HEAVY_SAFT_MAX_WORKERS
+
+
+def test_loader_runs_heavy_parsers_in_background_threads(tmp_path, monkeypatch):
+    xml_content = """
+    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <Header>
+        <Company>
+          <Name>Test</Name>
+          <RegistrationNumber>999999999</RegistrationNumber>
+        </Company>
+        <SelectionCriteria>
+          <PeriodStart>2023-01-01</PeriodStart>
+          <PeriodEnd>2023-12-31</PeriodEnd>
+          <PeriodEndYear>2023</PeriodEndYear>
+        </SelectionCriteria>
+        <AuditFileVersion>1.3</AuditFileVersion>
+      </Header>
+      <MasterFiles />
+      <GeneralLedgerEntries />
+    </AuditFile>
+    """
+
+    xml_path = tmp_path / "sample.xml"
+    xml_path.write_text(xml_content)
+
+    worker_threads: set[int] = set()
+    main_thread_id = threading.get_ident()
+
+    def _record_thread() -> None:
+        worker_threads.add(threading.get_ident())
+
+    def fake_validate(path: str, version: str | None) -> SaftValidationResult:
+        _record_thread()
+        return SaftValidationResult(
+            audit_file_version=version,
+            version_family=None,
+            schema_version=None,
+            is_valid=None,
+            details=None,
+        )
+
+    def fake_enrich(header) -> BrregEnrichment:
+        _record_thread()
+        return BrregEnrichment(
+            brreg_json=None,
+            brreg_map=None,
+            brreg_error=None,
+            industry=None,
+            industry_error=None,
+        )
+
+    def fake_parse_saldobalanse(root) -> pd.DataFrame:
+        _record_thread()
+        return pd.DataFrame(
+            {
+                "Konto": [],
+                "Kontonavn": [],
+                "IB Debet": [],
+                "IB Kredit": [],
+                "Endring Debet": [],
+                "Endring Kredit": [],
+                "UB Debet": [],
+                "UB Kredit": [],
+                "IB_netto": [],
+                "UB_netto": [],
+                "Konto_int": [],
+            }
+        )
+
+    def fake_parse_customers(root):
+        _record_thread()
+        return {}
+
+    def fake_parse_suppliers(root):
+        _record_thread()
+        return {}
+
+    def fake_build_analysis(header, root, ns):
+        _record_thread()
+        return CustomerSupplierAnalysis(
+            analysis_year=None,
+            customer_sales=None,
+            supplier_purchases=None,
+            cost_vouchers=[],
+        )
+
+    monkeypatch.setattr(loader.saft, "validate_saft_against_xsd", fake_validate)
+    monkeypatch.setattr(loader, "enrich_from_header", fake_enrich)
+    monkeypatch.setattr(loader.saft, "parse_saldobalanse", fake_parse_saldobalanse)
+    monkeypatch.setattr(loader.saft, "parse_customers", fake_parse_customers)
+    monkeypatch.setattr(loader.saft, "parse_suppliers", fake_parse_suppliers)
+    monkeypatch.setattr(loader, "build_customer_supplier_analysis", fake_build_analysis)
+    monkeypatch.setattr(loader.saft, "ns4102_summary_from_tb", lambda df: {})
+
+    loader.load_saft_file(str(xml_path))
+
+    assert worker_threads
+    assert all(thread_id != main_thread_id for thread_id in worker_threads)
