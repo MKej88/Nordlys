@@ -85,7 +85,7 @@ def load_saft_file(
     validation: Optional["saft.SaftValidationResult"] = None
     enrichment: Optional[BrregEnrichment] = None
 
-    background_workers = max(1, min(3, os.cpu_count() or 1))
+    background_workers = max(3, min(6, os.cpu_count() or 1))
 
     with ThreadPoolExecutor(max_workers=background_workers) as executor:
         trial_balance_future = None
@@ -106,14 +106,19 @@ def load_saft_file(
         )
         enrichment_future = executor.submit(enrich_from_header, header)
 
-        dataframe = saft.parse_saldobalanse(root)
-        _report_progress(25, f"Tolker saldobalanse for {file_name}")
-        customers = saft.parse_customers(root)
-        suppliers = saft.parse_suppliers(root)
-
-        analysis: CustomerSupplierAnalysis = build_customer_supplier_analysis(
-            header, root, ns
+        dataframe_future = executor.submit(saft.parse_saldobalanse, root)
+        customers_future = executor.submit(saft.parse_customers, root)
+        suppliers_future = executor.submit(saft.parse_suppliers, root)
+        analysis_future = executor.submit(
+            build_customer_supplier_analysis, header, root, ns
         )
+
+        dataframe = dataframe_future.result()
+        customers = customers_future.result()
+        suppliers = suppliers_future.result()
+        _report_progress(25, f"Tolker saldobalanse for {file_name}")
+
+        analysis: CustomerSupplierAnalysis = analysis_future.result()
         analysis_year = analysis.analysis_year
         customer_sales = analysis.customer_sales
         supplier_purchases = analysis.supplier_purchases
