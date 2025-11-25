@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Optional, Sequence
+from datetime import datetime
+from typing import List, Optional, Sequence, Tuple
 
 import pandas as pd
 
@@ -57,20 +58,32 @@ class CapitalizationCandidate:
 
 
 def find_asset_accessions(vouchers: Sequence[CostVoucher]) -> List[AssetAccession]:
-    """Hent alle debetføringer på 11xx-12xx for å vise tilganger."""
+    """Hent alle nettopositiver debetføringer på 11xx-12xx for å vise tilganger."""
 
     accessions: List[AssetAccession] = []
     for voucher in vouchers:
         supplier = (voucher.supplier_name or voucher.supplier_id or "—").strip()
         document = (voucher.document_number or voucher.transaction_id or "—").strip()
 
+        per_account: dict[str, Tuple[float, Optional[str], Optional[str]]] = {}
         for line in voucher.lines:
             normalized_account = _normalize_account(line.account)
             if normalized_account is None or not normalized_account.startswith(("11", "12")):
                 continue
 
             line_amount = (line.debit or 0.0) - (line.credit or 0.0)
-            if line_amount <= 0:
+            if normalized_account not in per_account:
+                per_account[normalized_account] = (0.0, line.account_name, line.description)
+            previous_amount, account_name, description = per_account[normalized_account]
+            combined_amount = previous_amount + line_amount
+            per_account[normalized_account] = (
+                combined_amount,
+                account_name or line.account_name,
+                description or line.description,
+            )
+
+        for account_number, (total_amount, account_name, description) in per_account.items():
+            if total_amount <= 0:
                 continue
 
             accessions.append(
@@ -78,14 +91,15 @@ def find_asset_accessions(vouchers: Sequence[CostVoucher]) -> List[AssetAccessio
                     date=voucher.transaction_date,
                     supplier=supplier or "—",
                     document=document or "—",
-                    account=line.account or "—",
-                    account_name=line.account_name,
-                    amount=line_amount,
-                    description=line.description or voucher.description,
+                    account=account_number,
+                    account_name=account_name,
+                    amount=total_amount,
+                    description=description or voucher.description,
                     comment=None,
                 )
             )
-    return accessions
+
+    return sorted(accessions, key=_accession_sort_key)
 
 
 def summarize_asset_accessions_by_account(
@@ -193,6 +207,29 @@ def _build_movements(rows: pd.DataFrame) -> List[AssetMovement]:
             )
         )
     return movements
+
+
+def _accession_sort_key(accession: AssetAccession) -> Tuple[Tuple[int, object], datetime]:
+    account_key = _account_sort_key(accession.account)
+    date_value = _date_sort_key(accession.date)
+    return account_key, date_value
+
+
+def _account_sort_key(account: str) -> Tuple[int, object]:
+    normalized = _normalize_account(account) or ""
+    if normalized.isdigit():
+        return (0, int(normalized))
+    return (1, normalized)
+
+
+def _date_sort_key(value: object) -> datetime:
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, pd.Timestamp):
+        return value.to_pydatetime()
+    if hasattr(value, "year") and hasattr(value, "month") and hasattr(value, "day"):
+        return datetime(int(value.year), int(value.month), int(value.day))
+    return datetime.min
 
 
 def _normalize_account(value: Optional[str]) -> Optional[str]:

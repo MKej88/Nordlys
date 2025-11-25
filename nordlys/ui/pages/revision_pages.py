@@ -1295,8 +1295,10 @@ class FixedAssetsPage(QWidget):
 
     @staticmethod
     def _format_date(value: object) -> str:
-        if isinstance(value, (datetime, date)):
-            return value.isoformat()
+        if isinstance(value, datetime):
+            return value.strftime("%d.%m.%Y")
+        if isinstance(value, date):
+            return value.strftime("%d.%m.%Y")
         if value is None:
             return "—"
         return str(value)
