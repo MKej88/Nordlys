@@ -19,7 +19,6 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPlainTextEdit,
-    QSpacerItem,
     QPushButton,
     QSizePolicy,
     QSpinBox,
@@ -1222,9 +1221,9 @@ class FixedAssetsPage(QWidget):
         table.hide()
         card.add_widget(empty)
         card.add_widget(table)
-        card.body_layout.addSpacerItem(
-            QSpacerItem(0, 0, QSizePolicy.Minimum, QSizePolicy.Expanding)
-        )
+        card.body_layout.setStretchFactor(empty, 1)
+        card.body_layout.setStretchFactor(table, 1)
+        card.body_layout.addStretch(1)
         summary_label = QLabel("Summering per konto")
         summary_label.setObjectName("cardSubtitle")
         summary_table = create_table_widget()
