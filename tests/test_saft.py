@@ -23,6 +23,7 @@ from nordlys.saft import (
     SaftValidationResult,
     validate_saft_against_xsd,
 )
+from nordlys.saft.reporting_accounts import extract_cost_vouchers
 from nordlys.saft.header import SaftHeader
 from nordlys.saft.customer_analysis import (
     _parse_date,
@@ -1951,3 +1952,49 @@ def test_suggest_max_workers_limits_large_imports(monkeypatch, tmp_path):
     # Når datasettet er lite skal ikke heuristikken begrense.
     unrestricted = loader._suggest_max_workers(files[:2], cpu_limit=2)
     assert unrestricted == 2
+
+
+def test_extract_cost_vouchers_includes_asset_transactions():
+    root = build_sample_root()
+    namespace = root.tag.split("}")[0].lstrip("{")
+    ns = {"n1": namespace}
+
+    journal = root.find(".//{urn:StandardAuditFile-Taxation-Financial:NO}Journal")
+    assert journal is not None
+
+    transaction = ET.SubElement(
+        journal, "{urn:StandardAuditFile-Taxation-Financial:NO}Transaction"
+    )
+    ET.SubElement(
+        transaction, "{urn:StandardAuditFile-Taxation-Financial:NO}TransactionDate"
+    ).text = "2023-08-15"
+
+    asset_line = ET.SubElement(
+        transaction, "{urn:StandardAuditFile-Taxation-Financial:NO}Line"
+    )
+    ET.SubElement(
+        asset_line, "{urn:StandardAuditFile-Taxation-Financial:NO}AccountID"
+    ).text = "1200"
+    ET.SubElement(
+        asset_line, "{urn:StandardAuditFile-Taxation-Financial:NO}DebitAmount"
+    ).text = "75000"
+
+    credit_line = ET.SubElement(
+        transaction, "{urn:StandardAuditFile-Taxation-Financial:NO}Line"
+    )
+    ET.SubElement(
+        credit_line, "{urn:StandardAuditFile-Taxation-Financial:NO}AccountID"
+    ).text = "2400"
+    ET.SubElement(
+        credit_line, "{urn:StandardAuditFile-Taxation-Financial:NO}CreditAmount"
+    ).text = "75000"
+    ET.SubElement(
+        credit_line, "{urn:StandardAuditFile-Taxation-Financial:NO}SupplierID"
+    ).text = "S1"
+
+    vouchers = extract_cost_vouchers(root, ns, year=2023)
+
+    assert any(
+        any(line.account.startswith("12") for line in voucher.lines)
+        for voucher in vouchers
+    )
