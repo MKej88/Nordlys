@@ -67,6 +67,7 @@ def load_saft_file(
     file_path: str,
     *,
     progress_callback: Optional[Callable[[int, str], None]] = None,
+    file_size: Optional[int] = None,
 ) -> SaftLoadResult:
     """Laster en enkelt SAF-T-fil og returnerer resultatet."""
 
@@ -87,7 +88,7 @@ def load_saft_file(
     enrichment: Optional[BrregEnrichment] = None
 
     background_workers = max(3, min(6, os.cpu_count() or 1))
-    use_streaming = _should_stream_trial_balance(file_path)
+    use_streaming = _should_stream_trial_balance(file_path, file_size=file_size)
 
     with ThreadPoolExecutor(max_workers=background_workers) as executor:
         trial_balance_future = None
@@ -192,6 +193,7 @@ def load_saft_files(
         paths = [str(file_paths)]
     else:
         paths = list(file_paths)
+    file_sizes = [_file_size_bytes(path) for path in paths]
     total = len(paths)
     if total == 0:
         if progress_callback is not None:
@@ -242,16 +244,26 @@ def load_saft_files(
 
             return _inner
 
-    max_workers = _suggest_max_workers(paths)
+    max_workers = _suggest_max_workers(paths, file_sizes=file_sizes)
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {}
-        for index, path in enumerate(paths):
+        submission_order = sorted(range(total), key=lambda idx: -(file_sizes[idx] or 0))
+        for index in submission_order:
+            path = paths[index]
             progress_arg = _progress_factory(index)
-            kwargs = {}
             if progress_callback is not None:
-                kwargs["progress_callback"] = progress_arg
-            futures[executor.submit(load_saft_file, path, **kwargs)] = index
+                future = executor.submit(
+                    load_saft_file,
+                    path,
+                    progress_callback=progress_arg,
+                    file_size=file_sizes[index],
+                )
+            else:
+                future = executor.submit(
+                    load_saft_file, path, file_size=file_sizes[index]
+                )
+            futures[future] = index
 
         for future in as_completed(futures):
             index = futures[future]
@@ -293,7 +305,10 @@ def load_saft_files(
 
 
 def _suggest_max_workers(
-    paths: Sequence[str], *, cpu_limit: Optional[int] = None
+    paths: Sequence[str],
+    *,
+    cpu_limit: Optional[int] = None,
+    file_sizes: Optional[Sequence[Optional[int]]] = None,
 ) -> int:
     """Velger et trådantall som unngår minnepress ved store filer."""
 
@@ -307,10 +322,13 @@ def _suggest_max_workers(
 
     heavy_files = 0
     total_bytes = 0
-    for path in paths:
-        try:
-            size = Path(path).stat().st_size
-        except OSError:
+    for idx, path in enumerate(paths):
+        size = None
+        if file_sizes is not None and idx < len(file_sizes):
+            size = file_sizes[idx]
+        if size is None:
+            size = _file_size_bytes(path)
+        if size is None:
             continue
         total_bytes += size
         if size >= HEAVY_SAFT_FILE_BYTES:
@@ -325,7 +343,9 @@ def _suggest_max_workers(
     return desired
 
 
-def _should_stream_trial_balance(file_path: str | os.PathLike[str]) -> bool:
+def _should_stream_trial_balance(
+    file_path: str | os.PathLike[str], *, file_size: Optional[int] = None
+) -> bool:
     """Velger streaming for prøvebalansen når det er forventet gevinster.
 
     Streaming tvinges på for store filer, selv om miljøvariabelen ikke er satt,
@@ -335,9 +355,17 @@ def _should_stream_trial_balance(file_path: str | os.PathLike[str]) -> bool:
     if SAFT_STREAMING_ENABLED:
         return True
 
-    try:
-        size = Path(file_path).stat().st_size
-    except OSError:
+    size = file_size if file_size is not None else _file_size_bytes(file_path)
+    if size is None:
         return False
 
     return size >= HEAVY_SAFT_STREAMING_BYTES
+
+
+def _file_size_bytes(path: str | os.PathLike[str]) -> Optional[int]:
+    """Returnerer filstørrelse i bytes, eller ``None`` ved feil."""
+
+    try:
+        return Path(path).stat().st_size
+    except OSError:
+        return None

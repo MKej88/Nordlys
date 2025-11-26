@@ -1828,7 +1828,7 @@ def test_load_saft_files_parallel_progress(monkeypatch):
         is_valid=None,
     )
 
-    def fake_load(path: str, progress_callback=None):
+    def fake_load(path: str, progress_callback=None, file_size=None):
         if progress_callback is not None:
             progress_callback(0, f"Forbereder {path}")
             progress_callback(50, f"Halvveis {path}")
@@ -1873,7 +1873,7 @@ def test_load_saft_files_keeps_successes_when_one_fails(monkeypatch):
         is_valid=None,
     )
 
-    def fake_load(path: str, progress_callback=None):
+    def fake_load(path: str, progress_callback=None, file_size=None):
         if "bad" in path:
             raise RuntimeError("Kunne ikke lese fil")
         return SaftLoadResult(
@@ -1911,7 +1911,7 @@ def test_load_saft_files_raises_on_partial_failure_without_progress(monkeypatch)
         is_valid=None,
     )
 
-    def fake_load(path: str, progress_callback=None):
+    def fake_load(path: str, progress_callback=None, file_size=None):
         if "bad" in path:
             raise RuntimeError("Kunne ikke lese fil")
         return SaftLoadResult(
