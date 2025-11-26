@@ -76,9 +76,34 @@ class SaftDatasetStore:
     def apply_batch(self, results: Sequence[SaftLoadResult]) -> None:
         """Lagrer resultatene fra SAF-T-importen i intern struktur."""
 
-        self.reset()
+        if not results:
+            self.reset()
+            return
 
-        next_position = 0
+        incoming_orgnrs = {
+            self._resolve_dataset_orgnr(res) for res in results if res is not None
+        }
+        unique_orgnrs = {orgnr for orgnr in incoming_orgnrs if orgnr}
+        if len(unique_orgnrs) > 1:
+            raise ValueError(
+                "Får ikke laste flere selskaper samtidig. Velg filer fra ett selskap."
+            )
+
+        incoming_orgnr = next(iter(unique_orgnrs), None)
+        existing_orgnrs = {orgnr for orgnr in self._orgnrs.values() if orgnr}
+        existing_orgnr = next(iter(existing_orgnrs), None)
+
+        should_reset = False
+        if self._results:
+            if existing_orgnr and incoming_orgnr and existing_orgnr != incoming_orgnr:
+                should_reset = True
+            elif existing_orgnr and incoming_orgnr is None:
+                should_reset = True
+
+        if should_reset:
+            self.reset()
+
+        next_position = (max(self._positions.values()) + 1) if self._positions else 0
         for res in results:
             if res.file_path not in self._positions:
                 self._positions[res.file_path] = next_position
