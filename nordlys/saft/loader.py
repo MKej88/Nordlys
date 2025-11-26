@@ -252,11 +252,18 @@ def load_saft_files(
         for index in submission_order:
             path = paths[index]
             progress_arg = _progress_factory(index)
-            kwargs = {}
             if progress_callback is not None:
-                kwargs["progress_callback"] = progress_arg
-            kwargs["file_size"] = file_sizes[index]
-            futures[executor.submit(load_saft_file, path, **kwargs)] = index
+                future = executor.submit(
+                    load_saft_file,
+                    path,
+                    progress_callback=progress_arg,
+                    file_size=file_sizes[index],
+                )
+            else:
+                future = executor.submit(
+                    load_saft_file, path, file_size=file_sizes[index]
+                )
+            futures[future] = index
 
         for future in as_completed(futures):
             index = futures[future]
