@@ -140,37 +140,19 @@ class PageStateHandler:
 
         return [
             (
-                "Driftsinntekter",
-                summary.get("driftsinntekter"),
-                brreg_map.get("driftsinntekter"),
-                None,
-            ),
-            (
-                "EBIT",
-                summary.get("ebit"),
-                brreg_map.get("ebit"),
-                None,
-            ),
-            (
-                "Årsresultat",
-                summary.get("arsresultat"),
-                brreg_map.get("arsresultat"),
-                None,
-            ),
-            (
-                "Eiendeler (UB)",
+                "Eiendeler",
                 summary.get("eiendeler_UB_brreg"),
                 brreg_map.get("eiendeler_UB"),
                 None,
             ),
             (
-                "Egenkapital (UB)",
+                "Egenkapital",
                 summary.get("egenkapital_UB"),
                 brreg_map.get("egenkapital_UB"),
                 None,
             ),
             (
-                "Gjeld (UB)",
+                "Gjeld",
                 summary.get("gjeld_UB_brreg"),
                 brreg_map.get("gjeld_UB"),
                 None,
