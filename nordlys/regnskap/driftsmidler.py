@@ -1,0 +1,318 @@
+"""Analysefunksjoner for driftsmidler basert på saldobalanse og kostnadsbilag."""
+
+from __future__ import annotations
+
+import math
+from dataclasses import dataclass
+from datetime import datetime
+from typing import List, Optional, Sequence, Tuple
+
+import pandas as pd
+
+from nordlys.saft.models import CostVoucher, VoucherLine
+
+
+@dataclass(frozen=True)
+class AssetMovement:
+    """Beskriver en konto med endring i balansen."""
+
+    account: str
+    name: str
+    opening_balance: float
+    closing_balance: float
+    change: float
+
+
+@dataclass(frozen=True)
+class AssetAccession:
+    """Enkel bilagslinje som representerer en tilgang på et driftsmiddel."""
+
+    date: Optional[object]
+    supplier: str
+    document: str
+    account: str
+    account_name: Optional[str]
+    amount: float
+    description: Optional[str]
+    comment: Optional[str]
+
+
+@dataclass(frozen=True)
+class AssetAccessionSummary:
+    """Summering av tilganger per konto."""
+
+    account: str
+    account_name: Optional[str]
+    total_amount: float
+
+
+@dataclass(frozen=True)
+class CapitalizationCandidate:
+    """Bilagslinje på 65xx som kan vurderes for aktivering."""
+
+    date: Optional[object]
+    supplier: str
+    document: str
+    account: str
+    amount: float
+    description: Optional[str]
+
+
+def find_asset_accessions(vouchers: Sequence[CostVoucher]) -> List[AssetAccession]:
+    """Hent debetføringer på 11xx-12xx og fjern reverseringer før visning."""
+
+    raw_entries: List[AssetAccession] = []
+    for voucher in vouchers:
+        supplier = (voucher.supplier_name or voucher.supplier_id or "—").strip()
+        document = (voucher.document_number or voucher.transaction_id or "—").strip()
+
+        per_account: dict[str, Tuple[float, Optional[str], Optional[str]]] = {}
+        for line in voucher.lines:
+            normalized_account = _normalize_account(line.account)
+            if normalized_account is None or not normalized_account.startswith(
+                ("11", "12")
+            ):
+                continue
+
+            line_amount = (line.debit or 0.0) - (line.credit or 0.0)
+            if normalized_account not in per_account:
+                per_account[normalized_account] = (
+                    0.0,
+                    line.account_name,
+                    line.description,
+                )
+            previous_amount, account_name, description = per_account[normalized_account]
+            combined_amount = previous_amount + line_amount
+            per_account[normalized_account] = (
+                combined_amount,
+                account_name or line.account_name,
+                description or line.description,
+            )
+
+        for account_number, (
+            total_amount,
+            account_name,
+            description,
+        ) in per_account.items():
+            if math.isclose(total_amount, 0.0, abs_tol=0.01):
+                continue
+
+            raw_entries.append(
+                AssetAccession(
+                    date=voucher.transaction_date,
+                    supplier=supplier or "—",
+                    document=document or "—",
+                    account=account_number,
+                    account_name=account_name,
+                    amount=total_amount,
+                    description=description or voucher.description,
+                    comment=None,
+                )
+            )
+
+    cleaned = _remove_reversals(raw_entries)
+    return sorted(cleaned, key=_accession_sort_key)
+
+
+def summarize_asset_accessions_by_account(
+    accessions: Sequence[AssetAccession],
+) -> List[AssetAccessionSummary]:
+    """Summér tilganger per konto slik at totalsummer kan vises."""
+
+    totals: dict[str, AssetAccessionSummary] = {}
+    for accession in accessions:
+        account = accession.account or "—"
+        existing = totals.get(account)
+
+        if existing:
+            account_name = accession.account_name or existing.account_name
+            total_amount = existing.total_amount + accession.amount
+        else:
+            account_name = accession.account_name
+            total_amount = accession.amount
+
+        totals[account] = AssetAccessionSummary(
+            account=account,
+            account_name=account_name,
+            total_amount=total_amount,
+        )
+
+    return [totals[key] for key in sorted(totals)]
+
+
+def find_possible_disposals(tb: Optional[pd.DataFrame]) -> List[AssetMovement]:
+    """Finn kontoer i 11xx-12xx som har IB men ingen UB."""
+
+    work = _prepare_asset_frame(tb)
+    if work is None:
+        return []
+
+    mask = (work["IB_netto"] != 0) & (work["UB_netto"] == 0)
+    return _build_movements(work.loc[mask])
+
+
+def find_capitalization_candidates(
+    vouchers: Sequence[CostVoucher], *, threshold: float = 30_000.0
+) -> List[CapitalizationCandidate]:
+    """Hent kostnadsbilag på 65xx over gitt terskel."""
+
+    candidates: List[CapitalizationCandidate] = []
+    for voucher in vouchers:
+        relevant_lines: list[tuple[VoucherLine, float]] = []
+        total_amount = 0.0
+        for line in voucher.lines:
+            normalized_account = _normalize_account(line.account)
+            if normalized_account is None or not normalized_account.startswith("65"):
+                continue
+
+            line_amount = (line.debit or 0.0) - (line.credit or 0.0)
+            total_amount += line_amount
+            relevant_lines.append((line, line_amount))
+
+        if total_amount < threshold:
+            continue
+
+        supplier = (voucher.supplier_name or voucher.supplier_id or "—").strip()
+        document = (voucher.document_number or voucher.transaction_id or "—").strip()
+        for line, line_amount in relevant_lines:
+            if line_amount <= 0:
+                continue
+
+            candidates.append(
+                CapitalizationCandidate(
+                    date=voucher.transaction_date,
+                    supplier=supplier or "—",
+                    document=document or "—",
+                    account=line.account or "—",
+                    amount=line_amount,
+                    description=line.description,
+                )
+            )
+    return candidates
+
+
+def _prepare_asset_frame(tb: Optional[pd.DataFrame]) -> Optional[pd.DataFrame]:
+    if tb is None or tb.empty:
+        return None
+    required = {"Konto", "Kontonavn", "IB_netto", "UB_netto"}
+    if not required.issubset(tb.columns):
+        return None
+
+    work = tb.loc[:, list(required)].copy()
+    work["Konto"] = work["Konto"].apply(_normalize_account)  # type: ignore[assignment]
+    work = work.dropna(subset=["Konto"])
+    work["IB_netto"] = pd.to_numeric(work["IB_netto"], errors="coerce").fillna(0.0)
+    work["UB_netto"] = pd.to_numeric(work["UB_netto"], errors="coerce").fillna(0.0)
+
+    mask = work["Konto"].str.startswith(("11", "12"))
+    filtered = work.loc[mask]
+    if filtered.empty:
+        return None
+    return filtered
+
+
+def _build_movements(rows: pd.DataFrame) -> List[AssetMovement]:
+    movements: List[AssetMovement] = []
+    for _, row in rows.sort_values("Konto").iterrows():
+        account = str(row.get("Konto", "")).strip()
+        name = str(row.get("Kontonavn", "")).strip()
+        opening = float(row.get("IB_netto", 0.0))
+        closing = float(row.get("UB_netto", 0.0))
+        movements.append(
+            AssetMovement(
+                account=account,
+                name=name,
+                opening_balance=opening,
+                closing_balance=closing,
+                change=closing - opening,
+            )
+        )
+    return movements
+
+
+def _accession_sort_key(
+    accession: AssetAccession,
+) -> Tuple[Tuple[int, object], datetime]:
+    account_key = _account_sort_key(accession.account)
+    date_value = _date_sort_key(accession.date)
+    return account_key, date_value
+
+
+def _remove_reversals(entries: Sequence[AssetAccession]) -> List[AssetAccession]:
+    """Netter bort reverserte beløp per konto."""
+
+    cancellation_pool: dict[str, float] = {}
+    for entry in entries:
+        if entry.amount < 0:
+            account_key = entry.account
+            cancellation_pool[account_key] = cancellation_pool.get(
+                account_key, 0.0
+            ) + abs(entry.amount)
+
+    cleaned: List[AssetAccession] = []
+    for entry in entries:
+        if entry.amount <= 0:
+            continue
+
+        account_key = entry.account
+        available = cancellation_pool.get(account_key, 0.0)
+        remaining = entry.amount
+
+        if available > 0:
+            if available >= remaining - 0.01:
+                cancellation_pool[account_key] = max(0.0, available - remaining)
+                continue
+
+            remaining -= available
+            cancellation_pool[account_key] = 0.0
+
+        cleaned.append(
+            AssetAccession(
+                date=entry.date,
+                supplier=entry.supplier,
+                document=entry.document,
+                account=entry.account,
+                account_name=entry.account_name,
+                amount=round(remaining, 2),
+                description=entry.description,
+                comment=entry.comment,
+            )
+        )
+
+    return cleaned
+
+
+def _account_sort_key(account: str) -> Tuple[int, object]:
+    normalized = _normalize_account(account) or ""
+    if normalized.isdigit():
+        return (0, int(normalized))
+    return (1, normalized)
+
+
+def _date_sort_key(value: object) -> datetime:
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, pd.Timestamp):
+        return value.to_pydatetime()
+    if hasattr(value, "year") and hasattr(value, "month") and hasattr(value, "day"):
+        return datetime(int(value.year), int(value.month), int(value.day))
+    return datetime.min
+
+
+def _normalize_account(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+__all__ = [
+    "AssetMovement",
+    "AssetAccession",
+    "AssetAccessionSummary",
+    "CapitalizationCandidate",
+    "find_asset_accessions",
+    "summarize_asset_accessions_by_account",
+    "find_capitalization_candidates",
+    "find_possible_disposals",
+]

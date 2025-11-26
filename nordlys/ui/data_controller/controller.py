@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from ..pages.import_page import ImportPage
     from ..pages.revision_pages import (
         CostVoucherReviewPage,
+        FixedAssetsPage,
         PurchasesApPage,
         SalesArPage,
     )
@@ -149,6 +150,14 @@ class SaftDataController:
     @cost_review_page.setter
     def cost_review_page(self, widget: Optional["CostVoucherReviewPage"]) -> None:
         self._pages.cost_review_page = widget
+
+    @property
+    def fixed_assets_page(self) -> Optional["FixedAssetsPage"]:
+        return self._pages.fixed_assets_page
+
+    @fixed_assets_page.setter
+    def fixed_assets_page(self, widget: Optional["FixedAssetsPage"]) -> None:
+        self._pages.fixed_assets_page = widget
 
     @property
     def revision_pages(self) -> Dict[str, QWidget]:
