@@ -15,11 +15,12 @@ def _make_result(
     *,
     analysis_year: int | None,
     fiscal_year: str | None,
+    orgnr: str = "123456789",
     summary: Optional[Dict[str, float]] = None,
 ) -> SaftLoadResult:
     header = SaftHeader(
         company_name="Test AS",
-        orgnr="123456789",
+        orgnr=orgnr,
         fiscal_year=fiscal_year,
         period_start="2023-01-01",
         period_end="2023-12-31",
@@ -133,26 +134,66 @@ def test_current_year_text_none_when_no_year_available() -> None:
     assert store.current_year_text is None
 
 
-def test_apply_batch_appends_to_existing_results() -> None:
+def test_apply_batch_adds_years_for_same_company() -> None:
     store = SaftDatasetStore()
-    latest = _make_result(
-        "2024.xml",
-        analysis_year=2024,
-        fiscal_year="2024",
-    )
     previous = _make_result(
         "2023.xml",
         analysis_year=2023,
         fiscal_year="2023",
     )
-
-    store.apply_batch([latest])
-    assert store.dataset_order == ["2024.xml"]
+    latest = _make_result(
+        "2024.xml",
+        analysis_year=2024,
+        fiscal_year="2024",
+    )
 
     store.apply_batch([previous])
+    store.apply_batch([latest])
 
     assert store.dataset_order == ["2023.xml", "2024.xml"]
-    assert store.dataset_items()[1].result is latest
+    assert store.activate("2023.xml")
+    assert store.activate("2024.xml")
+
+
+def test_apply_batch_resets_on_new_company() -> None:
+    store = SaftDatasetStore()
+    company_one = _make_result(
+        "2023.xml",
+        analysis_year=2023,
+        fiscal_year="2023",
+        orgnr="123456789",
+    )
+    company_two = _make_result(
+        "2024.xml",
+        analysis_year=2024,
+        fiscal_year="2024",
+        orgnr="987654321",
+    )
+
+    store.apply_batch([company_one])
+    store.apply_batch([company_two])
+
+    assert store.dataset_order == ["2024.xml"]
+    assert not store.activate("2023.xml")
+
+
+def test_apply_batch_blocks_multiple_companies_in_same_batch() -> None:
+    store = SaftDatasetStore()
+    first = _make_result(
+        "2023.xml",
+        analysis_year=2023,
+        fiscal_year="2023",
+        orgnr="123456789",
+    )
+    other = _make_result(
+        "2024.xml",
+        analysis_year=2024,
+        fiscal_year="2024",
+        orgnr="987654321",
+    )
+
+    with pytest.raises(ValueError):
+        store.apply_batch([first, other])
 
 
 def test_recent_summaries_limits_and_marks_current() -> None:

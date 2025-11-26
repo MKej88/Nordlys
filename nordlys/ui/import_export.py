@@ -114,12 +114,10 @@ class ImportExportController(QObject):
         )
         if not file_names:
             return
-        summary = (
-            "Starter import av 1 SAF-T-fil"
-            if len(file_names) == 1
-            else f"Starter import av {len(file_names)} SAF-T-filer"
+        file_count = len(file_names)
+        self._log_import_event(
+            f"Starter import av {file_count} SAF-T-fil(er)", reset=True
         )
-        self._log_import_event(summary, reset=True)
         for name in file_names:
             self._log_import_event(f"Forbereder: {Path(name).name}")
         description = "Importer SAF-T"
