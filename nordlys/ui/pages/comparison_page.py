@@ -96,7 +96,9 @@ class ComparisonPage(QWidget):
         self, row: int, column: int, text: str, *, align_center: bool = False
     ) -> None:
         item = QTableWidgetItem(text)
-        alignment = Qt.AlignVCenter | (Qt.AlignHCenter if align_center else Qt.AlignLeft)
+        alignment = Qt.AlignVCenter | (
+            Qt.AlignHCenter if align_center else Qt.AlignLeft
+        )
         item.setTextAlignment(alignment)
         self.table.setItem(row, column, item)
 
