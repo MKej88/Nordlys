@@ -92,10 +92,13 @@ class SaftDatasetStore:
         incoming_orgnr = next(iter(unique_orgnrs), None)
         existing_orgnrs = {orgnr for orgnr in self._orgnrs.values() if orgnr}
         existing_orgnr = next(iter(existing_orgnrs), None)
+        has_unknown_company = any(orgnr is None for orgnr in self._orgnrs.values())
 
         should_reset = False
         if self._results:
-            if existing_orgnr and incoming_orgnr and existing_orgnr != incoming_orgnr:
+            if has_unknown_company and incoming_orgnr:
+                should_reset = True
+            elif existing_orgnr and incoming_orgnr and existing_orgnr != incoming_orgnr:
                 should_reset = True
             elif existing_orgnr and incoming_orgnr is None:
                 should_reset = True
