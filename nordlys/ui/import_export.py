@@ -106,23 +106,27 @@ class ImportExportController(QObject):
                 ),
             )
             return
-        file_name, _ = QFileDialog.getOpenFileName(
+        file_names, _ = QFileDialog.getOpenFileNames(
             self._window,
             "Åpne SAF-T XML",
             str(Path.home()),
             "SAF-T XML (*.xml);;Alle filer (*)",
         )
-        if not file_name:
+        if not file_names:
             return
-        self._log_import_event("Starter import av 1 SAF-T-fil", reset=True)
-        self._log_import_event(f"Forbereder: {Path(file_name).name}")
+        file_count = len(file_names)
+        self._log_import_event(
+            f"Starter import av {file_count} SAF-T-fil(er)", reset=True
+        )
+        for name in file_names:
+            self._log_import_event(f"Forbereder: {Path(name).name}")
         description = "Importer SAF-T"
         task_id = self._task_runner.run(
             saft_loader.load_saft_files,
-            [file_name],
+            file_names,
             description=description,
         )
-        self._task_state.start(task_id, [file_name], description)
+        self._task_state.start(task_id, file_names, description)
         self._progress_display.set_files(self._task_state.loading_files)
 
     def handle_export(self) -> None:
