@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Callable, Optional, Tuple
 
 from PySide6.QtWidgets import QApplication, QMainWindow, QStatusBar, QTreeWidgetItem
@@ -18,20 +19,49 @@ from .responsive import ResponsiveLayoutController
 from .window_layout import WindowComponents, setup_main_window
 
 
-def configure_window_geometry(window: QMainWindow) -> None:
+@dataclass(frozen=True)
+class ScreenProfile:
+    width: int
+    height: int
+    scale_factor: float
+
+
+def detect_screen_profile() -> ScreenProfile:
+    """Kartlegg skjermstørrelse og foreslå en skaleringsfaktor."""
+
+    screen = QApplication.primaryScreen()
+    if screen is None:
+        return ScreenProfile(width=1460, height=940, scale_factor=1.0)
+
+    available = screen.availableGeometry()
+    width = available.width()
+    height = available.height()
+
+    if width <= 1500:
+        scale_factor = 0.9
+    elif width <= 1900:
+        scale_factor = 0.95
+    elif width >= 2500:
+        scale_factor = 1.05
+    else:
+        scale_factor = 1.0
+
+    return ScreenProfile(width=width, height=height, scale_factor=scale_factor)
+
+
+def configure_window_geometry(window: QMainWindow) -> ScreenProfile:
     """Sett størrelse og tittel på hovedvinduet."""
 
     window.setWindowTitle(APP_TITLE)
-    screen = QApplication.primaryScreen()
-    if screen is not None:
-        available = screen.availableGeometry()
-        width = max(1100, int(available.width() * 0.82))
-        height = max(720, int(available.height() * 0.82))
-        window.resize(width, height)
-    else:
-        window.resize(1460, 940)
-    window.setMinimumSize(1024, 680)
+    profile = detect_screen_profile()
+    width = max(int(1100 * profile.scale_factor), int(profile.width * 0.82))
+    height = max(int(720 * profile.scale_factor), int(profile.height * 0.82))
+    window.resize(width, height)
+    min_width = max(900, int(1024 * profile.scale_factor))
+    min_height = max(620, int(680 * profile.scale_factor))
+    window.setMinimumSize(min_width, min_height)
     window.setMaximumSize(16777215, 16777215)
+    return profile
 
 
 def create_dataset_services(
@@ -56,10 +86,13 @@ def create_responsive_controller(
     stack,
     content_layout,
     nav_panel,
+    scale_factor: float = 1.0,
 ) -> ResponsiveLayoutController:
     """Opprett controller som håndterer responsiv layout."""
 
-    controller = ResponsiveLayoutController(window, stack, content_layout, nav_panel)
+    controller = ResponsiveLayoutController(
+        window, stack, content_layout, nav_panel, scale_factor
+    )
     stack.currentChanged.connect(lambda _: controller.schedule_update())
     return controller
 

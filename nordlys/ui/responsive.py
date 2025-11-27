@@ -29,6 +29,7 @@ class ResponsiveLayoutController:
         stack: QStackedWidget,
         content_layout: QVBoxLayout,
         nav_panel: NavigationPanel,
+        scale_factor: float = 1.0,
     ) -> None:
         self._window = window
         self._stack = stack
@@ -39,6 +40,7 @@ class ResponsiveLayoutController:
         self._layout_signature: Optional[Tuple[str, int, int, int, int, int, int]] = (
             None
         )
+        self._scale_factor = max(0.85, min(scale_factor, 1.1))
 
     def schedule_update(self) -> None:
         """Kjører en oppdatering i neste event-loop for å unngå hakkete UI."""
@@ -90,6 +92,14 @@ class ResponsiveLayoutController:
             nav_spacing = 24
             header_min = 120
 
+        nav_width = self._scaled(nav_width)
+        margin = self._scaled(margin)
+        spacing = self._scaled(spacing)
+        card_margin = self._scaled(card_margin)
+        card_spacing = self._scaled(card_spacing)
+        nav_spacing = self._scaled(nav_spacing)
+        header_min = self._scaled(header_min)
+
         if NAV_PANEL_WIDTH_OVERRIDE is not None:
             nav_width = max(160, NAV_PANEL_WIDTH_OVERRIDE)
 
@@ -134,6 +144,9 @@ class ResponsiveLayoutController:
         self._apply_table_sizing(header_min, width)
 
     # region interne hjelpere
+    def _scaled(self, value: int) -> int:
+        return max(1, int(round(value * self._scale_factor)))
+
     def _run_update(self) -> None:
         self._responsive_update_pending = False
         self.update_layout()
