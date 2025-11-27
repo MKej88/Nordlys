@@ -1373,6 +1373,17 @@ class RegnskapsanalysePage(QWidget):
                 (self.balance_table, self.result_table), self._default_table_font_size
             )
 
+        self._schedule_table_height_adjustment(self.balance_table)
+        self._schedule_table_height_adjustment(self.result_table)
+
+    def _stacked_table_max_height(self) -> Optional[int]:
+        if self._analysis_layout_mode != "stacked":
+            return None
+        widget_height = self.height()
+        if widget_height <= 0:
+            return None
+        return max(260, int(widget_height * 0.45))
+
     def _lock_analysis_column_widths(self, table: QTableWidget) -> None:
         header = table.horizontalHeader()
         column_count = table.columnCount()
@@ -1421,6 +1432,14 @@ class RegnskapsanalysePage(QWidget):
             + margins.top()
             + margins.bottom()
         )
+        max_height = None
+        if table in (self.balance_table, self.result_table):
+            max_height = self._stacked_table_max_height()
+        if max_height is not None:
+            total = min(total, max_height)
+            table.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        else:
+            table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         table.setMinimumHeight(total)
         table.setMaximumHeight(total)
 
