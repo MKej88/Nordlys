@@ -130,20 +130,14 @@ class ImportExportController(QObject):
         self._progress_display.set_files(self._task_state.loading_files)
 
     def handle_export(self) -> None:
-        if self._dataset_store.saft_df is None:
-            QMessageBox.warning(
-                self._window,
-                "Ingenting å eksportere",
-                "Last inn SAF-T først.",
-            )
+        if not self._require_dataset_loaded():
             return
-        file_name, _ = QFileDialog.getSaveFileName(
-            self._window,
-            "Eksporter rapport",
+        file_name = self._prompt_export_path(
             str(Path.home() / "SAFT_rapport.xlsx"),
             "Excel (*.xlsx)",
+            ensure_suffix=".xlsx",
         )
-        if not file_name:
+        if file_name is None:
             return
         try:
             self._load_excel_exporter()(self._dataset_store, file_name)
@@ -154,23 +148,15 @@ class ImportExportController(QObject):
             QMessageBox.critical(self._window, "Feil ved eksport", str(exc))
 
     def handle_export_pdf(self) -> None:
-        if self._dataset_store.saft_df is None:
-            QMessageBox.warning(
-                self._window,
-                "Ingenting å eksportere",
-                "Last inn SAF-T først.",
-            )
+        if not self._require_dataset_loaded():
             return
-        file_name, _ = QFileDialog.getSaveFileName(
-            self._window,
-            "Eksporter rapport",
+        file_name = self._prompt_export_path(
             str(Path.home() / "SAFT_rapport.pdf"),
             "PDF (*.pdf)",
+            ensure_suffix=".pdf",
         )
-        if not file_name:
+        if file_name is None:
             return
-        if not file_name.lower().endswith(".pdf"):
-            file_name = f"{file_name}.pdf"
         try:
             self._load_pdf_exporter()(self._dataset_store, file_name)
             self._status_callback(f"PDF eksportert: {file_name}")
@@ -263,6 +249,36 @@ class ImportExportController(QObject):
     # endregion
 
     # region Hjelpere
+    def _require_dataset_loaded(self) -> bool:
+        if self._dataset_store.saft_df is None:
+            QMessageBox.warning(
+                self._window,
+                "Ingenting å eksportere",
+                "Last inn SAF-T først.",
+            )
+            return False
+        return True
+
+    def _prompt_export_path(
+        self,
+        default_name: str,
+        file_filter: str,
+        *,
+        ensure_suffix: Optional[str] = None,
+        dialog_func: Optional[
+            Callable[[QWidget, str, str, str], tuple[str, str]]
+        ] = None,
+    ) -> Optional[str]:
+        dialog = dialog_func or QFileDialog.getSaveFileName
+        file_name, _ = dialog(
+            self._window, "Eksporter rapport", default_name, file_filter
+        )
+        if not file_name:
+            return None
+        if ensure_suffix and not file_name.lower().endswith(ensure_suffix.lower()):
+            file_name = f"{file_name}{ensure_suffix}"
+        return file_name
+
     def _cast_results(self, result_obj: object) -> List["SaftLoadResult"]:
         result_type = saft_loader.SaftLoadResult
         if isinstance(result_obj, list):
