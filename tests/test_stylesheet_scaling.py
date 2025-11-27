@@ -13,3 +13,9 @@ def test_build_stylesheet_scales_padding_values() -> None:
     scaled = build_stylesheet(0.9)
 
     assert "padding: 9px 18px;" in scaled
+
+
+def test_zero_values_are_preserved() -> None:
+    scaled = build_stylesheet(0.9)
+
+    assert "padding-bottom: 0px;" in scaled

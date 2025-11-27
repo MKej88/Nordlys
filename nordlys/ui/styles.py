@@ -175,6 +175,9 @@ def _scale_stylesheet(stylesheet: str, scale_factor: float) -> str:
 
     def _replace_px(match: Match[str]) -> str:
         value = int(match.group(1))
+        if value == 0:
+            return "0px"
+
         scaled = max(1, round(value * bounded_scale))
         return f"{scaled}px"
 
