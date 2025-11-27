@@ -116,16 +116,7 @@ def get_session() -> requests.Session:
                 session = requests_cache.CachedSession(
                     backend="memory", expire_after=_CACHE_TTL_SECONDS
                 )
-            retry = Retry(
-                total=3,
-                connect=3,
-                read=3,
-                status=3,
-                backoff_factor=1.0,
-                status_forcelist=(429, 500, 502, 503, 504),
-                allowed_methods=("GET",),
-            )
-            adapter = HTTPAdapter(max_retries=retry)
+            adapter = _build_retry_adapter()
             session.mount("https://", adapter)
             session.mount("http://", adapter)
             _SESSION = session
@@ -137,6 +128,9 @@ def get_session() -> requests.Session:
                     "men vi anbefaler å installere pakken for bedre ytelse."
                 )
                 _FALLBACK_WARNING_EMITTED = True
+            adapter = _build_retry_adapter()
+            _SESSION.mount("https://", adapter)
+            _SESSION.mount("http://", adapter)
     assert _SESSION is not None
     return _SESSION
 
@@ -200,3 +194,16 @@ def clear_fallback_cache() -> None:
 def set_session(session: Optional[requests.Session]) -> None:
     global _SESSION
     _SESSION = session
+
+
+def _build_retry_adapter() -> HTTPAdapter:
+    retry = Retry(
+        total=3,
+        connect=3,
+        read=3,
+        status=3,
+        backoff_factor=1.0,
+        status_forcelist=(429, 500, 502, 503, 504),
+        allowed_methods=("GET",),
+    )
+    return HTTPAdapter(max_retries=retry)
