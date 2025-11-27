@@ -9,6 +9,7 @@ from typing import Callable, Iterable, List, Mapping, Optional, Sequence, Tuple
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
+    QBoxLayout,
     QHeaderView,
     QHBoxLayout,
     QLabel,
@@ -119,9 +120,14 @@ class RegnskapsanalysePage(QWidget):
         )
         self.balance_info.setWordWrap(True)
         balance_layout.addWidget(self.balance_info)
+        self._default_table_font_size = 8
+        self._compact_table_font_size = 7
+
         self.balance_table = create_table_widget()
         self.balance_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self._configure_analysis_table(self.balance_table, font_point_size=8)
+        self._configure_analysis_table(
+            self.balance_table, font_point_size=self._default_table_font_size
+        )
         balance_layout.addWidget(self.balance_table, 1)
         self.balance_table.hide()
 
@@ -140,7 +146,9 @@ class RegnskapsanalysePage(QWidget):
         result_layout.addWidget(self.result_info)
         self.result_table = create_table_widget()
         self.result_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self._configure_analysis_table(self.result_table, font_point_size=8)
+        self._configure_analysis_table(
+            self.result_table, font_point_size=self._default_table_font_size
+        )
         result_layout.addWidget(self.result_table, 1)
         self.result_table.hide()
 
@@ -150,15 +158,15 @@ class RegnskapsanalysePage(QWidget):
 
         analysis_container = QWidget()
         analysis_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        analysis_layout = QHBoxLayout(analysis_container)
-        analysis_layout.setContentsMargins(0, 0, 0, 0)
-        analysis_layout.setSpacing(0)
+        self._analysis_layout = QHBoxLayout(analysis_container)
+        self._analysis_layout.setContentsMargins(0, 0, 0, 0)
+        self._analysis_layout.setSpacing(24)
 
-        analysis_layout.addWidget(self.balance_section, 1)
-        analysis_layout.addSpacing(24)
-        analysis_layout.addWidget(self.result_section, 1)
-        analysis_layout.setAlignment(self.balance_section, Qt.AlignTop)
-        analysis_layout.setAlignment(self.result_section, Qt.AlignTop)
+        self._analysis_layout.addWidget(self.balance_section, 1)
+        self._analysis_layout.addWidget(self.result_section, 1)
+        self._analysis_layout.setAlignment(self.balance_section, Qt.AlignTop)
+        self._analysis_layout.setAlignment(self.result_section, Qt.AlignTop)
+        self._analysis_layout_mode: str | None = None
 
         last_two_widget = QWidget()
         last_two_layout = QVBoxLayout(last_two_widget)
@@ -255,6 +263,7 @@ class RegnskapsanalysePage(QWidget):
         layout.addWidget(self.analysis_card, 1)
 
         self._set_active_section(0)
+        self._update_analysis_layout_mode(force=True)
 
         self._summary_history: List[SummarySnapshot] = []
         self._comparison_rows: Optional[
@@ -275,6 +284,10 @@ class RegnskapsanalysePage(QWidget):
             button.blockSignals(True)
             button.setChecked(idx == safe_index)
             button.blockSignals(False)
+
+    def resizeEvent(self, event) -> None:  # type: ignore[override]
+        super().resizeEvent(event)
+        self._update_analysis_layout_mode()
 
     def set_dataframe(
         self, df: Optional[pd.DataFrame], fiscal_year: Optional[str] = None
@@ -1320,6 +1333,45 @@ class RegnskapsanalysePage(QWidget):
             setter(True)
         table.setStyleSheet("QTableWidget::item { padding: 0px 6px; }")
         apply_compact_row_heights(table)
+
+    def _set_table_font_size(
+        self, tables: Sequence[QTableWidget], point_size: int
+    ) -> None:
+        for table in tables:
+            font = table.font()
+            if font.pointSize() != point_size:
+                font.setPointSize(point_size)
+                table.setFont(font)
+            header = table.horizontalHeader()
+            header_font = header.font()
+            if header_font.pointSize() != point_size:
+                header_font.setPointSize(point_size)
+                header.setFont(header_font)
+            self._lock_analysis_column_widths(table)
+            self._schedule_table_height_adjustment(table)
+
+    def _update_analysis_layout_mode(self, *, force: bool = False) -> None:
+        available_width = self.width()
+        if available_width <= 0 and not force:
+            return
+
+        mode = "stacked" if available_width and available_width < 1240 else "wide"
+        if not force and mode == self._analysis_layout_mode:
+            return
+
+        self._analysis_layout_mode = mode
+        if mode == "stacked":
+            self._analysis_layout.setDirection(QBoxLayout.TopToBottom)
+            self._analysis_layout.setSpacing(12)
+            self._set_table_font_size(
+                (self.balance_table, self.result_table), self._compact_table_font_size
+            )
+        else:
+            self._analysis_layout.setDirection(QBoxLayout.LeftToRight)
+            self._analysis_layout.setSpacing(24)
+            self._set_table_font_size(
+                (self.balance_table, self.result_table), self._default_table_font_size
+            )
 
     def _lock_analysis_column_widths(self, table: QTableWidget) -> None:
         header = table.horizontalHeader()
