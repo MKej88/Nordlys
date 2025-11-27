@@ -176,7 +176,9 @@ def test_prompt_export_path_adds_suffix_and_uses_dialog(dummy_pyside6: None) -> 
 
     captured_calls: list[tuple[object, str, str, str]] = []
 
-    def fake_dialog(parent: object, title: str, default: str, filter_str: str) -> tuple[str, str]:
+    def fake_dialog(
+        parent: object, title: str, default: str, filter_str: str
+    ) -> tuple[str, str]:
         captured_calls.append((parent, title, default, filter_str))
         return "rapport", ""
 
