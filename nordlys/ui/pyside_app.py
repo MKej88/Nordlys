@@ -12,7 +12,7 @@ from PySide6.QtWidgets import QApplication, QMainWindow, QTreeWidgetItem
 
 from ..saft.periods import format_header_period
 from .import_export import ImportExportController
-from .styles import APPLICATION_STYLESHEET
+from .styles import build_stylesheet
 from .window_layout import WindowComponents
 from .window_initializers import (
     configure_window_geometry,
@@ -20,6 +20,7 @@ from .window_initializers import (
     create_dataset_services,
     create_import_controller,
     create_responsive_controller,
+    ScreenProfile,
     initialize_pages,
     populate_navigation,
     setup_components,
@@ -38,7 +39,7 @@ class NordlysWindow(QMainWindow):
 
     def __init__(self) -> None:
         super().__init__()
-        configure_window_geometry(self)
+        self._screen_profile: ScreenProfile = configure_window_geometry(self)
         self._dataset_store: Optional[SaftDatasetStore] = None
         self._analytics: Optional[SaftAnalytics] = None
         self._task_runner: Optional[TaskRunner] = None
@@ -55,6 +56,7 @@ class NordlysWindow(QMainWindow):
             self.stack,
             self._content_layout,
             self.nav_panel,
+            scale_factor=self._screen_profile.scale_factor,
         )
         self._import_controller: Optional[ImportExportController] = None
         self.header_bar.open_requested.connect(self._handle_open_requested)
@@ -76,7 +78,7 @@ class NordlysWindow(QMainWindow):
 
     # region UI
     def _apply_styles(self) -> None:
-        self.setStyleSheet(APPLICATION_STYLESHEET)
+        self.setStyleSheet(build_stylesheet(self._screen_profile.scale_factor))
 
     def showEvent(self, event) -> None:  # type: ignore[override]
         super().showEvent(event)

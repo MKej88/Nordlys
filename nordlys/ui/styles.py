@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from string import Template
+from typing import Match
 
 _ICON_DIR = Path(__file__).resolve().parent.parent / "resources" / "icons"
 
@@ -162,11 +164,38 @@ QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
 """
 )
 
-APPLICATION_STYLESHEET = _APPLICATION_STYLESHEET_TEMPLATE.substitute(
-    {
-        "up_icon": _icon_path("chevron-up.svg"),
-        "down_icon": _icon_path("chevron-down.svg"),
-    }
-)
 
-__all__ = ["APPLICATION_STYLESHEET"]
+def _scale_stylesheet(stylesheet: str, scale_factor: float) -> str:
+    """Skaler px-verdier i stilarket for å tilpasse ulike skjermstørrelser."""
+
+    if abs(scale_factor - 1.0) < 0.01:
+        return stylesheet
+
+    bounded_scale = max(0.85, min(scale_factor, 1.1))
+
+    def _replace_px(match: Match[str]) -> str:
+        value = int(match.group(1))
+        if value == 0:
+            return "0px"
+
+        scaled = max(1, round(value * bounded_scale))
+        return f"{scaled}px"
+
+    return re.sub(r"(\d+)px", _replace_px, stylesheet)
+
+
+def build_stylesheet(scale_factor: float = 1.0) -> str:
+    """Returner hoved-stilarket med valgfri skalering av px-verdier."""
+
+    stylesheet = _APPLICATION_STYLESHEET_TEMPLATE.substitute(
+        {
+            "up_icon": _icon_path("chevron-up.svg"),
+            "down_icon": _icon_path("chevron-down.svg"),
+        }
+    )
+    return _scale_stylesheet(stylesheet, scale_factor)
+
+
+APPLICATION_STYLESHEET = build_stylesheet()
+
+__all__ = ["APPLICATION_STYLESHEET", "build_stylesheet"]
