@@ -164,6 +164,7 @@ QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
 """
 )
 
+
 def _scale_stylesheet(stylesheet: str, scale_factor: float) -> str:
     """Skaler px-verdier i stilarket for å tilpasse ulike skjermstørrelser."""
 
