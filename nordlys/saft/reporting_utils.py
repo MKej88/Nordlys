@@ -62,12 +62,10 @@ def _ensure_date(value: Optional[object]) -> Optional[date]:
 def _iter_transactions(root: ET.Element, ns: NamespaceMap) -> Iterable[ET.Element]:
     entries = _find(root, "n1:GeneralLedgerEntries", ns)
     if entries is None:
-        return []
-    transactions: list[ET.Element] = []
+        return
     for journal in _findall(entries, "n1:Journal", ns):
         for transaction in _findall(journal, "n1:Transaction", ns):
-            transactions.append(transaction)
-    return transactions
+            yield transaction
 
 
 def _format_decimal(value: Decimal) -> float:
