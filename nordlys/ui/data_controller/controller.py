@@ -184,7 +184,9 @@ class SaftDataController:
         self._dataset_flow.activate_dataset(key, log_event=log_event)
 
     def update_comparison_tables(
-        self, rows: Optional[ComparisonRows], suggestions: Optional[Sequence[str]] = None
+        self,
+        rows: Optional[ComparisonRows],
+        suggestions: Optional[Sequence[str]] = None,
     ) -> None:
         self._dataset_flow.update_comparison_tables(rows, suggestions)
 

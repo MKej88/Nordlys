@@ -63,7 +63,9 @@ class DatasetFlowController:
                 self._messenger.log_import_event(f"Viser datasett: {label}")
 
     def update_comparison_tables(
-        self, rows: Optional[ComparisonRows], suggestions: Optional[Sequence[str]] = None
+        self,
+        rows: Optional[ComparisonRows],
+        suggestions: Optional[Sequence[str]] = None,
     ) -> None:
         self._context.pages.update_comparison_tables(rows, suggestions)
 
