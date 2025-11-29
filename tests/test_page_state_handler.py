@@ -181,3 +181,35 @@ def test_suggestions_are_shown_as_table(_qapp: QApplication) -> None:
     assert "<table" in combined_html
     assert "<tr>" in combined_html
     assert "Sum" in combined_html
+    assert " ub" not in combined_html.lower()
+
+
+def test_separator_between_assets_and_liabilities(_qapp: QApplication) -> None:
+    store = SaftDatasetStore()
+    store._saft_summary = {  # type: ignore[attr-defined]
+        "eiendeler_UB_brreg": 200.0,
+        "egenkapital_UB": 0.0,
+        "gjeld_UB_brreg": 0.0,
+    }
+    store._brreg_map = {  # type: ignore[attr-defined]
+        "eiendeler_UB": 0.0,
+        "egenkapital_UB": 0.0,
+        "gjeld_UB": 100.0,
+    }
+    store._saft_df = pd.DataFrame(  # type: ignore[attr-defined]
+        {
+            "Konto": ["1000", "2400"],
+            "Kontonavn": ["Bank", "Leverandørgjeld"],
+            "UB_netto": [200.0, -100.0],
+        }
+    )
+
+    handler = PageStateHandler(store, {}, lambda: None)
+
+    result = handler.build_brreg_comparison_rows()
+    assert result is not None
+    _, suggestions = result
+
+    combined_html = "".join(suggestions)
+    assert "<hr" in combined_html
+    assert combined_html.index("Gjeld") > combined_html.index("<hr")

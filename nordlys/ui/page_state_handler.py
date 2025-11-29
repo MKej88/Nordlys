@@ -189,7 +189,12 @@ class PageStateHandler:
                 matches = self._find_balance_matches(diff)
                 if matches:
                     suggestions.extend(
-                        self._format_match_suggestions(label, diff, matches)
+                        self._format_match_suggestions(
+                            label,
+                            diff,
+                            matches,
+                            prepend_separator=label.lower().startswith("gjeld"),
+                        )
                     )
 
             comparison_rows.append((label, saf_value, brreg_value, diff))
@@ -271,9 +276,7 @@ class PageStateHandler:
         for i in range(len(triple_entries)):
             for j in range(i + 1, len(triple_entries)):
                 for k in range(j + 1, len(triple_entries)):
-                    _consider(
-                        [triple_entries[i], triple_entries[j], triple_entries[k]]
-                    )
+                    _consider([triple_entries[i], triple_entries[j], triple_entries[k]])
 
         return matches[:5]
 
@@ -298,7 +301,12 @@ class PageStateHandler:
             )
 
     def _format_match_suggestions(
-        self, label: str, diff: float, matches: Sequence[Sequence[BalanceEntry]]
+        self,
+        label: str,
+        diff: float,
+        matches: Sequence[Sequence[BalanceEntry]],
+        *,
+        prepend_separator: bool = False,
     ) -> List[str]:
         diff_text = format_currency(diff)
         if not matches:
@@ -309,43 +317,52 @@ class PageStateHandler:
             rows = [self._format_entry_row(entry) for entry in combo]
             total = sum(entry.value for entry in combo)
             total_label = (
-                "Sum (≈ avvik)"
-                if self._is_close(total, diff, tolerance=1.0)
-                else "Sum"
+                "Sum (≈ avvik)" if self._is_close(total, diff, tolerance=1.0) else "Sum"
             )
             rows.append(self._format_total_row(total, total_label))
             rows_html = "".join(rows)
 
             tables.append(
                 """
-                <table style="border-collapse: collapse; margin: 6px 0 12px 0;">
+                <table style="border-collapse: collapse; margin: 6px 0 12px 0; width: auto;">
                     <tbody>
                         {rows_html}
                     </tbody>
                 </table>
-                """.format(rows_html=rows_html)
+                """.format(
+                    rows_html=rows_html
+                )
             )
 
         table_block = "".join(tables)
+        separator = (
+            '<hr style="border: 0; border-top: 2px solid #000; margin: 12px 0;" />'
+            if prepend_separator
+            else ""
+        )
         return [
             """
             <div style="margin-bottom: 12px;">
+                {separator}
                 <div><strong>{label}</strong> (avvik {diff_text}):</div>
                 {table_block}
             </div>
-            """.format(label=label, diff_text=diff_text, table_block=table_block)
+            """.format(
+                label=label,
+                diff_text=diff_text,
+                table_block=table_block,
+                separator=separator,
+            )
         ]
 
     def _format_entry_row(self, entry: BalanceEntry) -> str:
-        column_label = "UB" if "UB" in entry.column.upper() else "IB"
         account_label = entry.account or "ukjent konto"
         name_label = f" ({entry.name})" if entry.name else ""
         value_text = format_currency(entry.value)
         return (
             "<tr>"
-            f"<td style=\"padding: 2px 8px 2px 0;\">{account_label}{name_label}</td>"
-            f"<td style=\"padding: 2px 12px; text-align: right;\">{value_text}</td>"
-            f"<td style=\"padding: 2px 0; color: #555;\">{column_label.lower()}</td>"
+            f'<td style="padding: 2px 8px 2px 0;">{account_label}{name_label}</td>'
+            f'<td style="padding: 2px 12px; text-align: right;">{value_text}</td>'
             "</tr>"
         )
 
@@ -353,9 +370,8 @@ class PageStateHandler:
         total_text = format_currency(total)
         return (
             "<tr>"
-            f"<td style=\"padding: 6px 8px 2px 0;\"><strong>{label}</strong></td>"
-            f"<td style=\"padding: 6px 12px; text-align: right;\"><strong>{total_text}</strong></td>"
-            "<td style=\"padding: 6px 0;\"></td>"
+            f'<td style="padding: 6px 8px 2px 0; border-top: 2px solid #000;"><strong>{label}</strong></td>'
+            f'<td style="padding: 6px 12px; text-align: right; border-top: 2px solid #000;"><strong>{total_text}</strong></td>'
             "</tr>"
         )
 
