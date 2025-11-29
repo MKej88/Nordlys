@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable, Dict, Optional, Sequence
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Sequence, Tuple
 
 from PySide6.QtWidgets import QStatusBar, QWidget
 
@@ -183,10 +183,14 @@ class SaftDataController:
     def activate_dataset(self, key: str, *, log_event: bool = False) -> None:
         self._dataset_flow.activate_dataset(key, log_event=log_event)
 
-    def update_comparison_tables(self, rows: Optional[ComparisonRows]) -> None:
-        self._dataset_flow.update_comparison_tables(rows)
+    def update_comparison_tables(
+        self, rows: Optional[ComparisonRows], suggestions: Optional[Sequence[str]] = None
+    ) -> None:
+        self._dataset_flow.update_comparison_tables(rows, suggestions)
 
-    def build_brreg_comparison_rows(self) -> Optional[ComparisonRows]:
+    def build_brreg_comparison_rows(
+        self,
+    ) -> Optional[Tuple[ComparisonRows, List[str]]]:
         return self._dataset_flow.build_brreg_comparison_rows()
 
     # endregion

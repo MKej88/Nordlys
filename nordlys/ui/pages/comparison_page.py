@@ -6,14 +6,10 @@ from typing import Optional, Sequence, Tuple
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QBrush, QColor
-from PySide6.QtWidgets import QTableWidgetItem, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QLabel, QTableWidgetItem, QVBoxLayout, QWidget
 
 from ...helpers.formatting import format_currency, format_difference
-from ..tables import (
-    apply_compact_row_heights,
-    compact_row_base_height,
-    create_table_widget,
-)
+from ..tables import apply_compact_row_heights, create_table_widget
 from ..widgets import CardFrame
 
 __all__ = ["ComparisonPage"]
@@ -47,6 +43,20 @@ class ComparisonPage(QWidget):
         )
         self.card.add_widget(self.table)
         layout.addWidget(self.card)
+        self.suggestion_card = CardFrame(
+            "Mulige forklaringer",
+            (
+                "Viser konti med beløp som er omtrent det samme som avvikene i "
+                "kontrollen."
+            ),
+        )
+        self.suggestion_label = QLabel(
+            "Ingen forslag enda. Kjør kontrollen for å se mulige forklaringer."
+        )
+        self.suggestion_label.setWordWrap(True)
+        self.suggestion_card.add_widget(self.suggestion_label)
+        self.suggestion_card.hide()
+        layout.addWidget(self.suggestion_card)
         layout.addStretch(1)
 
     def update_comparison(
@@ -58,7 +68,6 @@ class ComparisonPage(QWidget):
                     Optional[float],
                     Optional[float],
                     Optional[float],
-                    Optional[str],
                 ]
             ]
         ],
@@ -74,16 +83,12 @@ class ComparisonPage(QWidget):
             self.table.setHorizontalHeaderLabels(headers)
 
             status_states = []
-            for row_idx, (label, saf_v, brreg_v, _, explanation) in enumerate(rows):
+            for row_idx, (label, saf_v, brreg_v, _) in enumerate(rows):
                 self._set_item(row_idx, 0, label)
                 self._set_item(row_idx, 1, format_currency(saf_v), align_center=True)
                 self._set_item(row_idx, 2, format_currency(brreg_v), align_center=True)
                 status_text, is_ok = self._status_and_flag(saf_v, brreg_v)
                 status_states.append(is_ok)
-                if explanation and is_ok is False:
-                    status_text = f"{status_text}\n{explanation}"
-                    base_height = compact_row_base_height(self.table)
-                    self.table.setRowHeight(row_idx, int(base_height * 2))
                 self._set_item(row_idx, 3, status_text)
 
             self._apply_status_highlighting(status_states)
@@ -91,6 +96,18 @@ class ComparisonPage(QWidget):
             self.table.setUpdatesEnabled(True)
             self.table.resizeColumnsToContents()
             apply_compact_row_heights(self.table)
+
+    def update_suggestions(self, suggestions: Optional[Sequence[str]]) -> None:
+        if not suggestions:
+            self.suggestion_label.setText(
+                "Ingen forslag enda. Kjør kontrollen for å se mulige forklaringer."
+            )
+            self.suggestion_card.hide()
+            return
+
+        bullet_list = "".join(f"<li>{text}</li>" for text in suggestions)
+        self.suggestion_label.setText(f"<ul>{bullet_list}</ul>")
+        self.suggestion_card.show()
 
     def _status_and_flag(
         self, saf_value: Optional[float], brreg_value: Optional[float]

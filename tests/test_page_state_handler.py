@@ -43,14 +43,50 @@ def test_build_brreg_comparison_rows_suggests_matching_account(
 
     handler = PageStateHandler(store, {}, lambda: None)
 
-    rows = handler.build_brreg_comparison_rows()
-    assert rows is not None
+    result = handler.build_brreg_comparison_rows()
+    assert result is not None
+    rows, suggestions = result
 
     assets_row = next(row for row in rows if row[0] == "Eiendeler")
-    _, saf_value, brreg_value, diff, explanation = assets_row
+    _, saf_value, brreg_value, diff = assets_row
 
     assert saf_value == pytest.approx(1100.0)
     assert brreg_value == pytest.approx(1000.0)
     assert diff == pytest.approx(100.0)
-    assert explanation is not None
-    assert "1920" in explanation
+    assert suggestions
+    assert any("1920" in text for text in suggestions)
+
+
+def test_build_brreg_comparison_rows_finds_combination(_qapp: QApplication) -> None:
+    store = SaftDatasetStore()
+    store._saft_summary = {  # type: ignore[attr-defined]
+        "eiendeler_UB_brreg": 200.0,
+        "egenkapital_UB": 0.0,
+        "gjeld_UB_brreg": 0.0,
+    }
+    store._brreg_map = {  # type: ignore[attr-defined]
+        "eiendeler_UB": 50.0,
+        "egenkapital_UB": 0.0,
+        "gjeld_UB": 0.0,
+    }
+    store._saft_df = pd.DataFrame(  # type: ignore[attr-defined]
+        {
+            "Konto": ["1900", "1910"],
+            "Kontonavn": ["Bank A", "Bank B"],
+            "UB_netto": [80.0, 70.5],
+        }
+    )
+
+    handler = PageStateHandler(store, {}, lambda: None)
+
+    result = handler.build_brreg_comparison_rows()
+    assert result is not None
+    rows, suggestions = result
+
+    assets_row = next(row for row in rows if row[0] == "Eiendeler")
+    _, saf_value, brreg_value, diff = assets_row
+
+    assert saf_value == pytest.approx(200.0)
+    assert brreg_value == pytest.approx(50.0)
+    assert diff == pytest.approx(150.0)
+    assert any("1900" in text and "1910" in text for text in suggestions)
