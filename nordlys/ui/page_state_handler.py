@@ -223,6 +223,8 @@ class PageStateHandler:
 
             entries = []
             for idx, value in numeric_series.items():
+                if abs(value) < 0.5:
+                    continue
                 raw_account = df.at[idx, account_col]
                 account_value = "" if pd.isna(raw_account) else str(raw_account).strip()
                 name_value = ""
@@ -299,24 +301,31 @@ class PageStateHandler:
         self, label: str, diff: float, matches: Sequence[Sequence[BalanceEntry]]
     ) -> List[str]:
         diff_text = format_currency(diff)
-        suggestions: List[str] = []
+        entries: List[str] = []
         for combo in matches:
-            intro = "Mulig konto" if len(combo) == 1 else "Mulig kombinasjon"
-            accounts_text = ", ".join(self._format_entry_text(entry) for entry in combo)
-            suggestions.append(
-                f"{label}: avvik {diff_text}. {intro}: {accounts_text}."
+            intro = "Konto" if len(combo) == 1 else "Kombinasjon"
+            accounts_text = "; ".join(
+                self._format_entry_text(entry) for entry in combo
             )
-        return suggestions
+            entries.append(f"{intro}: {accounts_text}")
+
+        if not entries:
+            return []
+
+        detail_items = "".join(f"<li>{text}</li>" for text in entries)
+        return [
+            (
+                f"<strong>{label}</strong> (avvik {diff_text}):"
+                f"<ul>{detail_items}</ul>"
+            )
+        ]
 
     def _format_entry_text(self, entry: BalanceEntry) -> str:
         column_label = "UB" if "UB" in entry.column.upper() else "IB"
         account_label = entry.account or "ukjent konto"
         name_label = f" ({entry.name})" if entry.name else ""
         value_text = format_currency(entry.value)
-        return (
-            f"{account_label}{name_label}: {value_text} "
-            f"i {column_label.lower()}"
-        )
+        return f"{account_label}{name_label} – {value_text} i {column_label.lower()}"
 
     @staticmethod
     def _first_existing_column(

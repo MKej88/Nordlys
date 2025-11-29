@@ -90,3 +90,62 @@ def test_build_brreg_comparison_rows_finds_combination(_qapp: QApplication) -> N
     assert brreg_value == pytest.approx(50.0)
     assert diff == pytest.approx(150.0)
     assert any("1900" in text and "1910" in text for text in suggestions)
+
+
+def test_zero_balances_are_not_suggested(_qapp: QApplication) -> None:
+    store = SaftDatasetStore()
+    store._saft_summary = {  # type: ignore[attr-defined]
+        "eiendeler_UB_brreg": 150.0,
+        "egenkapital_UB": 0.0,
+        "gjeld_UB_brreg": 0.0,
+    }
+    store._brreg_map = {  # type: ignore[attr-defined]
+        "eiendeler_UB": 0.0,
+        "egenkapital_UB": 0.0,
+        "gjeld_UB": 0.0,
+    }
+    store._saft_df = pd.DataFrame(  # type: ignore[attr-defined]
+        {
+            "Konto": ["3000", "3010"],
+            "Kontonavn": ["Inntekt", "Tom konto"],
+            "UB_netto": [150.0, 0.0],
+        }
+    )
+
+    handler = PageStateHandler(store, {}, lambda: None)
+
+    result = handler.build_brreg_comparison_rows()
+    assert result is not None
+    _, suggestions = result
+
+    assert any("3000" in text for text in suggestions)
+    assert all("3010" not in text for text in suggestions)
+
+
+def test_no_suggestions_for_small_difference(_qapp: QApplication) -> None:
+    store = SaftDatasetStore()
+    store._saft_summary = {  # type: ignore[attr-defined]
+        "eiendeler_UB_brreg": 1000.5,
+        "egenkapital_UB": 0.0,
+        "gjeld_UB_brreg": 0.0,
+    }
+    store._brreg_map = {  # type: ignore[attr-defined]
+        "eiendeler_UB": 1000.0,
+        "egenkapital_UB": 0.0,
+        "gjeld_UB": 0.0,
+    }
+    store._saft_df = pd.DataFrame(  # type: ignore[attr-defined]
+        {
+            "Konto": ["4000"],
+            "Kontonavn": ["Varekjøp"],
+            "UB_netto": [0.5],
+        }
+    )
+
+    handler = PageStateHandler(store, {}, lambda: None)
+
+    result = handler.build_brreg_comparison_rows()
+    assert result is not None
+    _, suggestions = result
+
+    assert suggestions == []
