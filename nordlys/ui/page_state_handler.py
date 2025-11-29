@@ -301,31 +301,63 @@ class PageStateHandler:
         self, label: str, diff: float, matches: Sequence[Sequence[BalanceEntry]]
     ) -> List[str]:
         diff_text = format_currency(diff)
-        entries: List[str] = []
-        for combo in matches:
-            intro = "Konto" if len(combo) == 1 else "Kombinasjon"
-            accounts_text = "; ".join(
-                self._format_entry_text(entry) for entry in combo
-            )
-            entries.append(f"{intro}: {accounts_text}")
-
-        if not entries:
+        if not matches:
             return []
 
-        detail_items = "".join(f"<li>{text}</li>" for text in entries)
-        return [
-            (
-                f"<strong>{label}</strong> (avvik {diff_text}):"
-                f"<ul>{detail_items}</ul>"
+        tables: List[str] = []
+        for combo in matches:
+            rows = [self._format_entry_row(entry) for entry in combo]
+            total = sum(entry.value for entry in combo)
+            total_label = (
+                "Sum (≈ avvik)"
+                if self._is_close(total, diff, tolerance=1.0)
+                else "Sum"
             )
+            rows.append(self._format_total_row(total, total_label))
+            rows_html = "".join(rows)
+
+            tables.append(
+                """
+                <table style="border-collapse: collapse; margin: 6px 0 12px 0;">
+                    <tbody>
+                        {rows_html}
+                    </tbody>
+                </table>
+                """.format(rows_html=rows_html)
+            )
+
+        table_block = "".join(tables)
+        return [
+            """
+            <div style="margin-bottom: 12px;">
+                <div><strong>{label}</strong> (avvik {diff_text}):</div>
+                {table_block}
+            </div>
+            """.format(label=label, diff_text=diff_text, table_block=table_block)
         ]
 
-    def _format_entry_text(self, entry: BalanceEntry) -> str:
+    def _format_entry_row(self, entry: BalanceEntry) -> str:
         column_label = "UB" if "UB" in entry.column.upper() else "IB"
         account_label = entry.account or "ukjent konto"
         name_label = f" ({entry.name})" if entry.name else ""
         value_text = format_currency(entry.value)
-        return f"{account_label}{name_label} – {value_text} i {column_label.lower()}"
+        return (
+            "<tr>"
+            f"<td style=\"padding: 2px 8px 2px 0;\">{account_label}{name_label}</td>"
+            f"<td style=\"padding: 2px 12px; text-align: right;\">{value_text}</td>"
+            f"<td style=\"padding: 2px 0; color: #555;\">{column_label.lower()}</td>"
+            "</tr>"
+        )
+
+    def _format_total_row(self, total: float, label: str) -> str:
+        total_text = format_currency(total)
+        return (
+            "<tr>"
+            f"<td style=\"padding: 6px 8px 2px 0;\"><strong>{label}</strong></td>"
+            f"<td style=\"padding: 6px 12px; text-align: right;\"><strong>{total_text}</strong></td>"
+            "<td style=\"padding: 6px 0;\"></td>"
+            "</tr>"
+        )
 
     @staticmethod
     def _first_existing_column(

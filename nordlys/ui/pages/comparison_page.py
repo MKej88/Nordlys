@@ -105,8 +105,8 @@ class ComparisonPage(QWidget):
             self.suggestion_card.hide()
             return
 
-        bullet_list = "".join(f"<li>{text}</li>" for text in suggestions)
-        self.suggestion_label.setText(f"<ul>{bullet_list}</ul>")
+        blocks = "".join(f"<div>{text}</div>" for text in suggestions)
+        self.suggestion_label.setText(blocks)
         self.suggestion_card.show()
 
     def _status_and_flag(

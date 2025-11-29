@@ -149,3 +149,35 @@ def test_no_suggestions_for_small_difference(_qapp: QApplication) -> None:
     _, suggestions = result
 
     assert suggestions == []
+
+
+def test_suggestions_are_shown_as_table(_qapp: QApplication) -> None:
+    store = SaftDatasetStore()
+    store._saft_summary = {  # type: ignore[attr-defined]
+        "eiendeler_UB_brreg": 300.0,
+        "egenkapital_UB": 0.0,
+        "gjeld_UB_brreg": 0.0,
+    }
+    store._brreg_map = {  # type: ignore[attr-defined]
+        "eiendeler_UB": 0.0,
+        "egenkapital_UB": 0.0,
+        "gjeld_UB": 0.0,
+    }
+    store._saft_df = pd.DataFrame(  # type: ignore[attr-defined]
+        {
+            "Konto": ["1920", "1940"],
+            "Kontonavn": ["Bankinnskudd", "Reskontro"],
+            "UB_netto": [200.0, 100.0],
+        }
+    )
+
+    handler = PageStateHandler(store, {}, lambda: None)
+
+    result = handler.build_brreg_comparison_rows()
+    assert result is not None
+    _, suggestions = result
+
+    combined_html = "".join(suggestions)
+    assert "<table" in combined_html
+    assert "<tr>" in combined_html
+    assert "Sum" in combined_html
