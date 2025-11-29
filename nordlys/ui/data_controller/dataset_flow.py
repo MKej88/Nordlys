@@ -10,6 +10,7 @@ from PySide6.QtWidgets import QMessageBox
 
 from ...saft.periods import format_header_period
 from ...helpers.formatting import format_currency
+from ..page_state_handler import ComparisonRows
 from .context import ControllerContext
 from .messaging import ImportMessenger
 
@@ -63,15 +64,14 @@ class DatasetFlowController:
 
     def update_comparison_tables(
         self,
-        rows: Optional[
-            List[Tuple[str, Optional[float], Optional[float], Optional[float]]]
-        ],
+        rows: Optional[ComparisonRows],
+        suggestions: Optional[Sequence[str]] = None,
     ) -> None:
-        self._context.pages.update_comparison_tables(rows)
+        self._context.pages.update_comparison_tables(rows, suggestions)
 
     def build_brreg_comparison_rows(
         self,
-    ) -> Optional[List[Tuple[str, Optional[float], Optional[float], Optional[float]]]]:
+    ) -> Optional[Tuple[ComparisonRows, List[str]]]:
         return self._context.pages.build_brreg_comparison_rows()
 
     def _apply_saft_result(self, _key: str, *, log_event: bool = False) -> None:
@@ -326,8 +326,12 @@ class DatasetFlowController:
             messenger.log_import_event(message)
             return message
 
-        comparison_rows = self.build_brreg_comparison_rows()
-        self.update_comparison_tables(comparison_rows)
+        comparison_result = self.build_brreg_comparison_rows()
+        if comparison_result is None:
+            self.update_comparison_tables(None, None)
+        else:
+            rows, suggestions = comparison_result
+            self.update_comparison_tables(rows, suggestions)
         message = "Regnskapsregister: import vellykket."
         if pages.import_page:
             pages.import_page.update_brreg_status(message)

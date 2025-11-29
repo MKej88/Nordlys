@@ -6,7 +6,7 @@ from typing import Optional, Sequence, Tuple
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QBrush, QColor
-from PySide6.QtWidgets import QTableWidgetItem, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QLabel, QTableWidgetItem, QVBoxLayout, QWidget
 
 from ...helpers.formatting import format_currency, format_difference
 from ..tables import apply_compact_row_heights, create_table_widget
@@ -43,12 +43,33 @@ class ComparisonPage(QWidget):
         )
         self.card.add_widget(self.table)
         layout.addWidget(self.card)
+        self.suggestion_card = CardFrame(
+            "Mulige forklaringer",
+            (
+                "Viser konti med beløp som er omtrent det samme som avvikene i "
+                "kontrollen."
+            ),
+        )
+        self.suggestion_label = QLabel(
+            "Ingen forslag enda. Kjør kontrollen for å se mulige forklaringer."
+        )
+        self.suggestion_label.setWordWrap(True)
+        self.suggestion_card.add_widget(self.suggestion_label)
+        self.suggestion_card.hide()
+        layout.addWidget(self.suggestion_card)
         layout.addStretch(1)
 
     def update_comparison(
         self,
         rows: Optional[
-            Sequence[Tuple[str, Optional[float], Optional[float], Optional[float]]]
+            Sequence[
+                Tuple[
+                    str,
+                    Optional[float],
+                    Optional[float],
+                    Optional[float],
+                ]
+            ]
         ],
     ) -> None:
         if not rows:
@@ -75,6 +96,18 @@ class ComparisonPage(QWidget):
             self.table.setUpdatesEnabled(True)
             self.table.resizeColumnsToContents()
             apply_compact_row_heights(self.table)
+
+    def update_suggestions(self, suggestions: Optional[Sequence[str]]) -> None:
+        if not suggestions:
+            self.suggestion_label.setText(
+                "Ingen forslag enda. Kjør kontrollen for å se mulige forklaringer."
+            )
+            self.suggestion_card.hide()
+            return
+
+        blocks = "".join(f"<div>{text}</div>" for text in suggestions)
+        self.suggestion_label.setText(blocks)
+        self.suggestion_card.show()
 
     def _status_and_flag(
         self, saf_value: Optional[float], brreg_value: Optional[float]

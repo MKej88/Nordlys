@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Callable, Dict, List, Mapping, Optional, Sequence, Tuple
+from dataclasses import dataclass
+from typing import Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
+
+import pandas as pd
 
 from PySide6.QtWidgets import QWidget
 
+from ..helpers.formatting import format_currency
 from .pages import (
     ComparisonPage,
     RegnskapsanalysePage,
@@ -25,7 +29,16 @@ from .pages.revision_pages import (
 from .data_manager import SaftDatasetStore
 
 
-ComparisonRows = Sequence[Tuple[str, Optional[float], Optional[float], Optional[float]]]
+ComparisonRow = Tuple[str, Optional[float], Optional[float], Optional[float]]
+ComparisonRows = Sequence[ComparisonRow]
+
+
+@dataclass(frozen=True)
+class BalanceEntry:
+    account: str
+    name: str
+    value: float
+    column: str
 
 
 class PageStateHandler:
@@ -54,9 +67,8 @@ class PageStateHandler:
         self.fixed_assets_page: Optional[FixedAssetsPage] = None
         self.revision_pages: Dict[str, QWidget] = {}
 
-        self._latest_comparison_rows: Optional[
-            List[Tuple[str, Optional[float], Optional[float], Optional[float]]]
-        ] = None
+        self._latest_comparison_rows: Optional[List[ComparisonRow]] = None
+        self._latest_comparison_suggestions: Optional[List[str]] = None
 
     def apply_page_state(self, key: str, widget: QWidget) -> None:
         """Lagrer referansen og oppdaterer siden med eksisterende data."""
@@ -74,6 +86,7 @@ class PageStateHandler:
         elif key == "plan.kontroll" and isinstance(widget, ComparisonPage):
             self.kontroll_page = widget
             widget.update_comparison(self._latest_comparison_rows)
+            widget.update_suggestions(self._latest_comparison_suggestions)
         elif key == "plan.regnskapsanalyse" and isinstance(
             widget, RegnskapsanalysePage
         ):
@@ -120,25 +133,34 @@ class PageStateHandler:
             widget.set_items(list(self._revision_tasks.get(key, [])))
         self._schedule_responsive_update()
 
-    def update_comparison_tables(self, rows: Optional[ComparisonRows]) -> None:
+    def update_comparison_tables(
+        self,
+        rows: Optional[ComparisonRows],
+        suggestions: Optional[Sequence[str]] = None,
+    ) -> None:
         self._latest_comparison_rows = list(rows) if rows is not None else None
+        self._latest_comparison_suggestions = (
+            list(suggestions) if suggestions is not None else None
+        )
         if self.kontroll_page:
             self.kontroll_page.update_comparison(rows)
+            self.kontroll_page.update_suggestions(self._latest_comparison_suggestions)
         if self.regnskap_page:
             self.regnskap_page.update_comparison(rows)
 
     def clear_comparison_tables(self) -> None:
-        self.update_comparison_tables(None)
+        self.update_comparison_tables(None, None)
 
     def build_brreg_comparison_rows(
         self,
-    ) -> Optional[List[Tuple[str, Optional[float], Optional[float], Optional[float]]]]:
+    ) -> Optional[Tuple[List[ComparisonRow], List[str]]]:
         summary = self._dataset_store.saft_summary
         brreg_map = self._dataset_store.brreg_map
         if not summary or not brreg_map:
             return None
 
-        return [
+        base_rows: List[Tuple[str, Optional[float], Optional[float], Optional[float]]]
+        base_rows = [
             (
                 "Eiendeler",
                 summary.get("eiendeler_UB_brreg"),
@@ -159,5 +181,215 @@ class PageStateHandler:
             ),
         ]
 
+        comparison_rows: List[ComparisonRow] = []
+        suggestions: List[str] = []
+        for label, saf_value, brreg_value, _ in base_rows:
+            diff = self._safe_difference(saf_value, brreg_value)
+            if diff is not None and abs(diff) > 2:
+                matches = self._find_balance_matches(diff)
+                if matches:
+                    suggestions.extend(
+                        self._format_match_suggestions(
+                            label,
+                            diff,
+                            matches,
+                            prepend_separator=label.lower().startswith("gjeld"),
+                        )
+                    )
 
-__all__ = ["PageStateHandler", "ComparisonRows"]
+            comparison_rows.append((label, saf_value, brreg_value, diff))
+
+        return comparison_rows, suggestions
+
+    def _safe_difference(
+        self, saf_value: Optional[float], brreg_value: Optional[float]
+    ) -> Optional[float]:
+        if saf_value is None or brreg_value is None:
+            return None
+        try:
+            return float(saf_value) - float(brreg_value)
+        except (TypeError, ValueError):
+            return None
+
+    def _find_balance_matches(self, target: float) -> List[List[BalanceEntry]]:
+        df = self._dataset_store.saft_df
+        if df is None or df.empty:
+            return []
+
+        account_col = self._first_existing_column(df, ("Konto", "AccountID"))
+        if account_col is None:
+            return []
+        name_col = self._first_existing_column(df, ("Kontonavn", "AccountDescription"))
+
+        for column_name, series in self._balance_series(df):
+            numeric_series = pd.to_numeric(series, errors="coerce").dropna()
+            if numeric_series.empty:
+                continue
+
+            entries = []
+            for idx, value in numeric_series.items():
+                if abs(value) < 0.5:
+                    continue
+                raw_account = df.at[idx, account_col]
+                account_value = "" if pd.isna(raw_account) else str(raw_account).strip()
+                name_value = ""
+                if name_col:
+                    raw_name = df.at[idx, name_col]
+                    if not pd.isna(raw_name):
+                        name_value = str(raw_name).strip()
+                entries.append(
+                    BalanceEntry(account_value, name_value, float(value), column_name)
+                )
+
+            matches = self._search_matches(entries, target)
+            if matches:
+                return matches
+
+        return []
+
+    def _search_matches(
+        self, entries: Sequence[BalanceEntry], target: float
+    ) -> List[List[BalanceEntry]]:
+        tolerance = 1.0
+        matches: List[List[BalanceEntry]] = []
+        seen: set[Tuple[int, Tuple[Tuple[str, str], ...]]] = set()
+        limited_entries = list(entries)[:120]
+
+        def _consider(combo: Sequence[BalanceEntry]) -> None:
+            total = sum(entry.value for entry in combo)
+            if not self._is_close(total, target, tolerance):
+                return
+            key = (len(combo), tuple(sorted((e.account, e.column) for e in combo)))
+            if key in seen:
+                return
+            seen.add(key)
+            matches.append(list(combo))
+
+        for entry in limited_entries:
+            _consider([entry])
+
+        for i in range(len(limited_entries)):
+            for j in range(i + 1, len(limited_entries)):
+                _consider([limited_entries[i], limited_entries[j]])
+
+        triple_entries = limited_entries[:40]
+        for i in range(len(triple_entries)):
+            for j in range(i + 1, len(triple_entries)):
+                for k in range(j + 1, len(triple_entries)):
+                    _consider([triple_entries[i], triple_entries[j], triple_entries[k]])
+
+        return matches[:5]
+
+    def _balance_series(self, df: pd.DataFrame) -> Iterable[Tuple[str, pd.Series]]:
+        seen: set[str] = set()
+
+        def _existing(column: str) -> Optional[pd.Series]:
+            return df[column] if column in df.columns else None
+
+        for column in ("UB_netto", "UB", "IB_netto", "IB"):
+            series = _existing(column)
+            if series is not None and column not in seen:
+                seen.add(column)
+                yield column, series
+
+        debit = df.get("UB Debet")
+        credit = df.get("UB Kredit")
+        if debit is not None and credit is not None and "UB" not in seen:
+            seen.add("UB")
+            yield "UB", pd.to_numeric(debit, errors="coerce") - pd.to_numeric(
+                credit, errors="coerce"
+            )
+
+    def _format_match_suggestions(
+        self,
+        label: str,
+        diff: float,
+        matches: Sequence[Sequence[BalanceEntry]],
+        *,
+        prepend_separator: bool = False,
+    ) -> List[str]:
+        diff_text = format_currency(diff)
+        if not matches:
+            return []
+
+        tables: List[str] = []
+        for combo in matches:
+            rows = [self._format_entry_row(entry) for entry in combo]
+            total = sum(entry.value for entry in combo)
+            total_label = (
+                "Sum (≈ avvik)" if self._is_close(total, diff, tolerance=1.0) else "Sum"
+            )
+            rows.append(self._format_total_row(total, total_label))
+            rows_html = "".join(rows)
+
+            tables.append(
+                """
+                <table style="border-collapse: collapse; margin: 6px 0 12px 0; width: auto;">
+                    <tbody>
+                        {rows_html}
+                    </tbody>
+                </table>
+                """.format(
+                    rows_html=rows_html
+                )
+            )
+
+        table_block = "".join(tables)
+        separator = (
+            '<hr style="border: 0; border-top: 2px solid #000; margin: 12px 0;" />'
+            if prepend_separator
+            else ""
+        )
+        return [
+            """
+            <div style="margin-bottom: 12px;">
+                {separator}
+                <div><strong>{label}</strong> (avvik {diff_text}):</div>
+                {table_block}
+            </div>
+            """.format(
+                label=label,
+                diff_text=diff_text,
+                table_block=table_block,
+                separator=separator,
+            )
+        ]
+
+    def _format_entry_row(self, entry: BalanceEntry) -> str:
+        account_label = entry.account or "ukjent konto"
+        name_label = f" ({entry.name})" if entry.name else ""
+        value_text = format_currency(entry.value)
+        return (
+            "<tr>"
+            f'<td style="padding: 2px 8px 2px 0;">{account_label}{name_label}</td>'
+            f'<td style="padding: 2px 12px; text-align: right;">{value_text}</td>'
+            "</tr>"
+        )
+
+    def _format_total_row(self, total: float, label: str) -> str:
+        total_text = format_currency(total)
+        return (
+            "<tr>"
+            f'<td style="padding: 6px 8px 2px 0; border-top: 2px solid #000;"><strong>{label}</strong></td>'
+            f'<td style="padding: 6px 12px; text-align: right; border-top: 2px solid #000;"><strong>{total_text}</strong></td>'
+            "</tr>"
+        )
+
+    @staticmethod
+    def _first_existing_column(
+        df: pd.DataFrame, candidates: Sequence[str]
+    ) -> Optional[str]:
+        for column in candidates:
+            if column in df.columns:
+                return column
+        return None
+
+    @staticmethod
+    def _is_close(value: float, target: float, tolerance: float) -> bool:
+        return (
+            abs(value - target) <= tolerance
+            or abs(abs(value) - abs(target)) <= tolerance
+        )
+
+
+__all__ = ["PageStateHandler", "ComparisonRow", "ComparisonRows", "BalanceEntry"]
