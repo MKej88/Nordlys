@@ -9,7 +9,11 @@ from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import QTableWidgetItem, QVBoxLayout, QWidget
 
 from ...helpers.formatting import format_currency, format_difference
-from ..tables import apply_compact_row_heights, create_table_widget
+from ..tables import (
+    apply_compact_row_heights,
+    compact_row_base_height,
+    create_table_widget,
+)
 from ..widgets import CardFrame
 
 __all__ = ["ComparisonPage"]
@@ -48,7 +52,15 @@ class ComparisonPage(QWidget):
     def update_comparison(
         self,
         rows: Optional[
-            Sequence[Tuple[str, Optional[float], Optional[float], Optional[float]]]
+            Sequence[
+                Tuple[
+                    str,
+                    Optional[float],
+                    Optional[float],
+                    Optional[float],
+                    Optional[str],
+                ]
+            ]
         ],
     ) -> None:
         if not rows:
@@ -62,12 +74,16 @@ class ComparisonPage(QWidget):
             self.table.setHorizontalHeaderLabels(headers)
 
             status_states = []
-            for row_idx, (label, saf_v, brreg_v, _) in enumerate(rows):
+            for row_idx, (label, saf_v, brreg_v, _, explanation) in enumerate(rows):
                 self._set_item(row_idx, 0, label)
                 self._set_item(row_idx, 1, format_currency(saf_v), align_center=True)
                 self._set_item(row_idx, 2, format_currency(brreg_v), align_center=True)
                 status_text, is_ok = self._status_and_flag(saf_v, brreg_v)
                 status_states.append(is_ok)
+                if explanation and is_ok is False:
+                    status_text = f"{status_text}\n{explanation}"
+                    base_height = compact_row_base_height(self.table)
+                    self.table.setRowHeight(row_idx, int(base_height * 2))
                 self._set_item(row_idx, 3, status_text)
 
             self._apply_status_highlighting(status_states)

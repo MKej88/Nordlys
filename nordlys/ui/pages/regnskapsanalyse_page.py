@@ -258,7 +258,15 @@ class RegnskapsanalysePage(QWidget):
 
         self._summary_history: List[SummarySnapshot] = []
         self._comparison_rows: Optional[
-            Sequence[Tuple[str, Optional[float], Optional[float], Optional[float]]]
+            Sequence[
+                Tuple[
+                    str,
+                    Optional[float],
+                    Optional[float],
+                    Optional[float],
+                    Optional[str],
+                ]
+            ]
         ] = None
         self._prepared_df: Optional[pd.DataFrame] = None
         self._fiscal_year: Optional[str] = None
@@ -1281,7 +1289,7 @@ class RegnskapsanalysePage(QWidget):
     def _comparison_notice(self) -> Optional[str]:
         if not self._comparison_rows:
             return None
-        for label, saf_value, brreg_value, _ in self._comparison_rows:
+        for label, saf_value, brreg_value, *_ in self._comparison_rows:
             if (
                 label.lower().startswith("driftsinntekter")
                 and saf_value is not None

@@ -62,7 +62,9 @@ def apply_compact_row_heights(table: QTableWidget | QTableView) -> None:
         if row_count == 0:
             return
         for row in range(row_count):
-            table.setRowHeight(row, minimum_height)
+            current_height = table.rowHeight(row)
+            target_height = max(minimum_height, current_height)
+            table.setRowHeight(row, target_height)
         return
 
     model = table.model()

@@ -10,6 +10,7 @@ from PySide6.QtWidgets import QMessageBox
 
 from ...saft.periods import format_header_period
 from ...helpers.formatting import format_currency
+from ..page_state_handler import ComparisonRows
 from .context import ControllerContext
 from .messaging import ImportMessenger
 
@@ -61,17 +62,10 @@ class DatasetFlowController:
                 label = store.dataset_label(current_result)
                 self._messenger.log_import_event(f"Viser datasett: {label}")
 
-    def update_comparison_tables(
-        self,
-        rows: Optional[
-            List[Tuple[str, Optional[float], Optional[float], Optional[float]]]
-        ],
-    ) -> None:
+    def update_comparison_tables(self, rows: Optional[ComparisonRows]) -> None:
         self._context.pages.update_comparison_tables(rows)
 
-    def build_brreg_comparison_rows(
-        self,
-    ) -> Optional[List[Tuple[str, Optional[float], Optional[float], Optional[float]]]]:
+    def build_brreg_comparison_rows(self) -> Optional[ComparisonRows]:
         return self._context.pages.build_brreg_comparison_rows()
 
     def _apply_saft_result(self, _key: str, *, log_event: bool = False) -> None:
