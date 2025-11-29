@@ -185,7 +185,7 @@ class PageStateHandler:
         suggestions: List[str] = []
         for label, saf_value, brreg_value, _ in base_rows:
             diff = self._safe_difference(saf_value, brreg_value)
-            if diff is not None and abs(diff) > 1:
+            if diff is not None and abs(diff) > 2:
                 matches = self._find_balance_matches(diff)
                 if matches:
                     suggestions.extend(

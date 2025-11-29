@@ -151,6 +151,37 @@ def test_no_suggestions_for_small_difference(_qapp: QApplication) -> None:
     assert suggestions == []
 
 
+def test_no_suggestions_when_difference_is_between_one_and_two(
+    _qapp: QApplication,
+) -> None:
+    store = SaftDatasetStore()
+    store._saft_summary = {  # type: ignore[attr-defined]
+        "eiendeler_UB_brreg": 1001.5,
+        "egenkapital_UB": 0.0,
+        "gjeld_UB_brreg": 0.0,
+    }
+    store._brreg_map = {  # type: ignore[attr-defined]
+        "eiendeler_UB": 1000.0,
+        "egenkapital_UB": 0.0,
+        "gjeld_UB": 0.0,
+    }
+    store._saft_df = pd.DataFrame(  # type: ignore[attr-defined]
+        {
+            "Konto": ["4100"],
+            "Kontonavn": ["Kjøp"],
+            "UB_netto": [1.5],
+        }
+    )
+
+    handler = PageStateHandler(store, {}, lambda: None)
+
+    result = handler.build_brreg_comparison_rows()
+    assert result is not None
+    _, suggestions = result
+
+    assert suggestions == []
+
+
 def test_suggestions_are_shown_as_table(_qapp: QApplication) -> None:
     store = SaftDatasetStore()
     store._saft_summary = {  # type: ignore[attr-defined]
