@@ -160,11 +160,16 @@ def _compute_customer_sales_map(
     end_date: Optional[date],
     year: Optional[int],
     last_period: Optional[int],
-) -> Tuple[Dict[str, Decimal], Dict[str, int]]:
-    """Returnerer netto salg per kunde basert på 1500- og 27xx-linjer."""
+    include_suppliers: bool = False,
+) -> Tuple[Dict[str, Decimal], Dict[str, int], Dict[str, Decimal], Dict[str, int]]:
+    """Returnerer netto salg per kunde og (valgfritt) kostnader per leverandør."""
 
-    totals: Dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
-    counts: Dict[str, int] = defaultdict(int)
+    customer_totals: Dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
+    customer_counts: Dict[str, int] = defaultdict(int)
+    supplier_totals: Dict[str, Decimal] = (
+        defaultdict(lambda: Decimal("0")) if include_suppliers else {}
+    )
+    supplier_counts: Dict[str, int] = defaultdict(int) if include_suppliers else {}
     use_range = start_date is not None or end_date is not None
     description_customer_map = _build_description_customer_map(root, ns)
 
@@ -206,6 +211,8 @@ def _compute_customer_sales_map(
         has_revenue_account = False
         vat_share_per_customer: Dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
         revenue_total = Decimal("0")
+        purchase_total = Decimal("0")
+        has_purchase = False
         transaction_customer_id = get_tx_customer_id(transaction, ns, lines=lines_list)
         if not transaction_customer_id:
             transaction_customer_id = _lookup_description_customer(
@@ -266,6 +273,16 @@ def _compute_customer_sales_map(
             elif normalized.startswith("27"):
                 vat_found = True
                 vat_total += credit - debit
+
+            if include_suppliers and normalized and _is_cost_account(normalized):
+                has_purchase = True
+                purchase_total += debit - credit
+
+        if include_suppliers and has_purchase:
+            supplier_id = get_tx_supplier_id(transaction, ns, lines=lines_list)
+            if supplier_id:
+                supplier_totals[supplier_id] += purchase_total
+                supplier_counts[supplier_id] += 1
 
         if not vat_found and not has_revenue_account:
             continue
@@ -344,10 +361,10 @@ def _compute_customer_sales_map(
             net_amount = gross_amount - (vat_total * share)
             if net_amount == 0:
                 continue
-            totals[customer_id] += net_amount
-            counts[customer_id] += 1
+            customer_totals[customer_id] += net_amount
+            customer_counts[customer_id] += 1
 
-    return totals, counts
+    return customer_totals, customer_counts, supplier_totals, supplier_counts
 
 
 def compute_customer_supplier_totals(
@@ -373,68 +390,20 @@ def compute_customer_supplier_totals(
     elif year is None:
         raise ValueError("Angi enten year eller date_from/date_to.")
 
-    customer_totals, customer_counts = _compute_customer_sales_map(
+    (
+        customer_totals,
+        customer_counts,
+        supplier_totals,
+        supplier_counts,
+    ) = _compute_customer_sales_map(
         root,
         ns,
         start_date=start_date,
         end_date=end_date,
         year=year,
         last_period=last_period if not use_range else None,
+        include_suppliers=True,
     )
-    supplier_totals: Dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
-    supplier_counts: Dict[str, int] = defaultdict(int)
-
-    for transaction in _iter_transactions(root, ns):
-        lines_list = list(_findall(transaction, "n1:Line", ns))
-        if not lines_list:
-            continue
-
-        date_element = _find(transaction, "n1:TransactionDate", ns)
-        tx_date = _ensure_date(date_element.text if date_element is not None else None)
-        if use_range:
-            if tx_date is None:
-                continue
-            if start_date and tx_date < start_date:
-                continue
-            if end_date and tx_date > end_date:
-                continue
-        else:
-            if year is None:
-                continue
-            period_year, period_number = _extract_transaction_period(transaction, ns)
-            if period_year is None and tx_date is not None:
-                period_year = tx_date.year
-            if period_year is None or period_year != year:
-                continue
-            if last_period is not None:
-                if period_number is None and tx_date is not None:
-                    period_number = tx_date.month
-                if period_number is None or period_number > last_period:
-                    continue
-
-        purchase_total = Decimal("0")
-        has_purchase = False
-
-        for line in lines_list:
-            account_element = _find(line, "n1:AccountID", ns)
-            account_text = _clean_text(
-                account_element.text if account_element is not None else None
-            )
-            if not account_text:
-                continue
-
-            credit = get_amount(line, "CreditAmount", ns)
-            debit = get_amount(line, "DebitAmount", ns)
-
-            if _is_cost_account(account_text):
-                has_purchase = True
-                purchase_total += debit - credit
-
-        if has_purchase:
-            supplier_id = get_tx_supplier_id(transaction, ns, lines=lines_list)
-            if supplier_id:
-                supplier_totals[supplier_id] += purchase_total
-                supplier_counts[supplier_id] += 1
 
     lookup_map = parent_map
     if (customer_totals or supplier_totals) and lookup_map is None:
@@ -524,7 +493,7 @@ def compute_sales_per_customer(
     elif year is None:
         raise ValueError("Angi enten year eller date_from/date_to.")
 
-    totals, counts = _compute_customer_sales_map(
+    totals, counts, _, _ = _compute_customer_sales_map(
         root,
         ns,
         start_date=start_date,
