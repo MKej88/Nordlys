@@ -6,7 +6,7 @@ import pytest
 
 try:  # pragma: no cover - miljøavhengig
     from PySide6.QtWidgets import QApplication, QLineEdit
-    from PySide6.QtCore import Qt
+    from PySide6.QtCore import QEvent, Qt
 except (ImportError, OSError) as exc:  # pragma: no cover - miljøavhengig
     pytest.skip(f"PySide6 er ikke tilgjengelig: {exc}", allow_module_level=True)
 
@@ -147,3 +147,33 @@ def test_row_height_is_increased_for_visibility(qapp: QApplication) -> None:
     assert threshold_header.defaultSectionSize() >= 32
     assert page.metrics_table.rowHeight(0) >= 32
     assert page.threshold_table.rowHeight(0) >= 32
+
+
+def test_tables_use_full_height_without_scrollbars(qapp: QApplication) -> None:
+    page = SummaryPage("Vesentlighet", "Test")
+    page.update_summary({"sum_inntekter": 1000.0})
+
+    assert page.metrics_table.verticalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
+    assert page.threshold_table.verticalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
+    assert page.metrics_table.minimumHeight() > 0
+
+
+def test_editor_expands_and_restores_row_height(qapp: QApplication) -> None:
+    page = SummaryPage("Vesentlighet", "Test")
+    page.update_summary({"sum_inntekter": 1000.0})
+
+    delegate = page.metrics_table.itemDelegate()
+    model_index = page.metrics_table.model().index(0, 2)
+    editor = delegate.createEditor(
+        page.metrics_table, page.metrics_table.viewOptions(), model_index
+    )
+    base_height = page.metrics_table.rowHeight(0)
+
+    QApplication.sendEvent(editor, QEvent(QEvent.FocusIn))
+    expanded_height = page.metrics_table.rowHeight(0)
+    assert expanded_height >= base_height
+
+    QApplication.sendEvent(editor, QEvent(QEvent.FocusOut))
+    restored_height = page.metrics_table.rowHeight(0)
+    assert restored_height == base_height
+    delegate.destroyEditor(editor, model_index)

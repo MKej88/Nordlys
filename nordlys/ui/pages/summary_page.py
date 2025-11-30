@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from typing import Iterable, Mapping, Optional, Sequence, Tuple, TYPE_CHECKING
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, Qt
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QLabel,
     QLineEdit,
+    QSizePolicy,
     QHeaderView,
     QTableWidget,
     QTableWidgetItem,
@@ -18,7 +19,12 @@ from PySide6.QtWidgets import (
 )
 
 from ..delegates import CompactRowDelegate
-from ..tables import create_table_widget, format_money_norwegian, populate_table
+from ..tables import (
+    compact_row_base_height,
+    create_table_widget,
+    format_money_norwegian,
+    populate_table,
+)
 from ..helpers import SignalBlocker
 from ..widgets import CardFrame
 
@@ -39,6 +45,7 @@ class SummaryPage(QWidget):
         layout.setSpacing(24)
 
         self.card = CardFrame(title, subtitle)
+        self.card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.industry_label = QLabel("Bransje: —")
         self.industry_label.setObjectName("statusLabel")
         self.industry_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
@@ -49,7 +56,12 @@ class SummaryPage(QWidget):
             ["Type", "Beløp", "% fra", "Minimum", "% til", "Maksimum"]
         )
         self.metrics_table.setEditTriggers(QAbstractItemView.AllEditTriggers)
-        self.metrics_table.setItemDelegate(_ReadableItemDelegate(self.metrics_table))
+        self.metrics_table.setItemDelegate(
+            _ExpandingReadableDelegate(self.metrics_table)
+        )
+        self.metrics_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.metrics_table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.metrics_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
         self.threshold_table = create_table_widget()
         self.threshold_table.setColumnCount(5)
@@ -66,10 +78,14 @@ class SummaryPage(QWidget):
         self.threshold_table.setEditTriggers(QAbstractItemView.AllEditTriggers)
         self.threshold_table.setAlternatingRowColors(True)
         self.threshold_table.setItemDelegate(
-            _ReadableItemDelegate(self.threshold_table)
+            _ExpandingReadableDelegate(self.threshold_table)
         )
+        self.threshold_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.threshold_table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.threshold_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self._populate_threshold_rows(["Ordinær", "Skatter og avgifter"])
         self._set_row_heights(self.threshold_table, 32)
+        self._fit_table_height(self.threshold_table)
 
         self.metrics_table.itemChanged.connect(self._on_metrics_item_changed)
 
@@ -77,8 +93,7 @@ class SummaryPage(QWidget):
         self.card.add_widget(self.metrics_table)
         self.card.add_widget(self.threshold_table)
 
-        layout.addWidget(self.card)
-        layout.addStretch(1)
+        layout.addWidget(self.card, 1)
 
     def update_summary(
         self,
@@ -100,6 +115,8 @@ class SummaryPage(QWidget):
             self._metrics_populating = False
         self._lock_metric_columns()
         self._set_row_heights(self.metrics_table, 32)
+        self._fit_table_height(self.metrics_table)
+        self._fit_table_height(self.threshold_table)
 
     def _build_metric_rows(
         self, summary: Mapping[str, float]
@@ -281,8 +298,24 @@ class SummaryPage(QWidget):
         for row in range(table.rowCount()):
             table.setRowHeight(row, height)
 
+    def _fit_table_height(self, table: QTableWidget) -> None:
+        header = table.horizontalHeader()
+        header_height = header.height() if header is not None else 0
+        margins = table.contentsMargins()
+        frame_height = table.frameWidth() * 2
+        row_heights = sum(table.rowHeight(row) for row in range(table.rowCount()))
+        total_height = header_height + row_heights + frame_height
+        total_height += margins.top() + margins.bottom()
+        table.setMinimumHeight(total_height)
 
-class _ReadableItemDelegate(CompactRowDelegate):
+
+class _ExpandingReadableDelegate(CompactRowDelegate):
+    _ROW_PROPERTY = "_summary_row"
+
+    def __init__(self, parent: QTableWidget) -> None:
+        super().__init__(parent)
+        self._original_heights: dict[int, int] = {}
+
     def createEditor(self, parent, option, index):  # type: ignore[override]
         editor = super().createEditor(parent, option, index)
         if isinstance(editor, QLineEdit):
@@ -297,6 +330,9 @@ class _ReadableItemDelegate(CompactRowDelegate):
             editor.setAutoFillBackground(True)
             editor.setAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
             editor.setTextMargins(6, 0, 6, 0)
+            editor.setContentsMargins(0, 0, 0, 0)
+            editor.setProperty(self._ROW_PROPERTY, index.row())
+            editor.installEventFilter(self)
         return editor
 
     def setEditorData(self, editor, index):  # type: ignore[override]
@@ -306,3 +342,53 @@ class _ReadableItemDelegate(CompactRowDelegate):
             editor.selectAll()
             return
         super().setEditorData(editor, index)
+
+    def destroyEditor(self, editor, index):  # type: ignore[override]
+        if isinstance(editor, QLineEdit):
+            self._restore_row_height(editor)
+        super().destroyEditor(editor, index)
+
+    def eventFilter(self, obj, event):  # type: ignore[override]
+        if isinstance(obj, QLineEdit):
+            if event.type() == QEvent.FocusIn:
+                self._expand_row_for_editor(obj)
+            elif event.type() in {QEvent.FocusOut, QEvent.Hide}:
+                self._restore_row_height(obj)
+        return super().eventFilter(obj, event)
+
+    def _expand_row_for_editor(self, editor: QLineEdit) -> None:
+        table = self.parent()
+        if not isinstance(table, QTableWidget):
+            return
+        row = editor.property(self._ROW_PROPERTY)
+        if not isinstance(row, int):
+            return
+        header = table.verticalHeader()
+        if header is None:
+            return
+        base_height = header.sectionSize(row)
+        desired_height = max(
+            base_height,
+            editor.sizeHint().height() + 4,
+            compact_row_base_height(table) + 4,
+        )
+        if desired_height <= base_height:
+            return
+        self._original_heights[row] = base_height
+        header.resizeSection(row, desired_height)
+        table.setRowHeight(row, desired_height)
+
+    def _restore_row_height(self, editor: QLineEdit) -> None:
+        table = self.parent()
+        if not isinstance(table, QTableWidget):
+            return
+        row = editor.property(self._ROW_PROPERTY)
+        if not isinstance(row, int):
+            return
+        header = table.verticalHeader()
+        if header is None:
+            return
+        base_height = compact_row_base_height(table)
+        original_height = self._original_heights.pop(row, base_height)
+        header.resizeSection(row, original_height)
+        table.setRowHeight(row, original_height)
