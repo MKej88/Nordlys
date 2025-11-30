@@ -10,6 +10,7 @@ try:  # pragma: no cover - miljøavhengig
 except (ImportError, OSError) as exc:  # pragma: no cover - miljøavhengig
     pytest.skip(f"PySide6 er ikke tilgjengelig: {exc}", allow_module_level=True)
 
+from nordlys.industry_groups import IndustryClassification
 from nordlys.ui.pages.summary_page import SummaryPage
 
 
@@ -26,7 +27,7 @@ def test_summary_page_populates_metrics_table(qapp: QApplication) -> None:
     summary = {
         "sum_inntekter": 1000.0,
         "varekostnad": 200.0,
-        "arsresultat": 100.0,
+        "resultat_for_skatt": 100.0,
         "eiendeler_UB": 500.0,
         "egenkapital_UB": 250.0,
     }
@@ -38,6 +39,51 @@ def test_summary_page_populates_metrics_table(qapp: QApplication) -> None:
     assert page.metrics_table.item(0, 1).text() == "1 000"
     assert page.metrics_table.item(0, 3).text() == "5"
     assert page.metrics_table.item(1, 1).text() == "800"
+
+
+def test_percent_columns_are_editable_and_centered(qapp: QApplication) -> None:
+    page = SummaryPage("Vesentlighet", "Test")
+    page.update_summary({"sum_inntekter": 1000.0})
+
+    percent_item = page.metrics_table.item(0, 2)
+    assert percent_item is not None
+    assert percent_item.flags() & Qt.ItemIsEditable
+    assert percent_item.textAlignment() == Qt.AlignHCenter | Qt.AlignVCenter
+
+    amount_item = page.metrics_table.item(0, 1)
+    assert amount_item is not None
+    assert not (amount_item.flags() & Qt.ItemIsEditable)
+
+
+def test_negative_values_are_hidden(qapp: QApplication) -> None:
+    page = SummaryPage("Vesentlighet", "Test")
+    page.update_summary({"sum_inntekter": -500.0, "egenkapital_UB": -10.0})
+
+    amount_item = page.metrics_table.item(0, 1)
+    equity_item = page.metrics_table.item(5, 1)
+
+    assert amount_item is not None
+    assert amount_item.text() == "—"
+
+    assert equity_item is not None
+    assert equity_item.text() == "—"
+
+
+def test_industry_label_updates(qapp: QApplication) -> None:
+    page = SummaryPage("Vesentlighet", "Test")
+    classification = IndustryClassification(
+        orgnr="123456789",
+        name="Test AS",
+        naringskode="62.01",
+        description="Programmering",
+        sn2="62",
+        group="IT-tjenester",
+        source="Brreg",
+    )
+
+    page.update_summary({"sum_inntekter": 100.0}, industry=classification)
+
+    assert page.industry_label.text() == "Bransje: IT-tjenester"
 
 
 def test_threshold_table_allows_manual_values(qapp: QApplication) -> None:

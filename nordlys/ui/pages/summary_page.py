@@ -2,13 +2,22 @@
 
 from __future__ import annotations
 
-from typing import Iterable, Mapping, Optional, Sequence, Tuple
+from typing import Iterable, Mapping, Optional, Sequence, Tuple, TYPE_CHECKING
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QAbstractItemView, QTableWidgetItem, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QLabel,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
 
 from ..tables import create_table_widget, populate_table
 from ..widgets import CardFrame
+
+if TYPE_CHECKING:
+    from ...industry_groups import IndustryClassification
 
 __all__ = ["SummaryPage"]
 
@@ -23,11 +32,16 @@ class SummaryPage(QWidget):
         layout.setSpacing(24)
 
         self.card = CardFrame(title, subtitle)
+        self.industry_label = QLabel("Bransje: —")
+        self.industry_label.setObjectName("statusLabel")
+        self.industry_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+
         self.metrics_table = create_table_widget()
         self.metrics_table.setColumnCount(6)
         self.metrics_table.setHorizontalHeaderLabels(
             ["Type", "Beløp", "% fra", "Minimum", "% til", "Maksimum"]
         )
+        self.metrics_table.setEditTriggers(QAbstractItemView.AllEditTriggers)
 
         self.threshold_table = create_table_widget()
         self.threshold_table.setColumnCount(5)
@@ -45,13 +59,21 @@ class SummaryPage(QWidget):
         self.threshold_table.setAlternatingRowColors(True)
         self._populate_threshold_rows(["Ordinær", "Skatter og avgifter"])
 
+        self.card.add_widget(self.industry_label)
         self.card.add_widget(self.metrics_table)
         self.card.add_widget(self.threshold_table)
 
         layout.addWidget(self.card)
         layout.addStretch(1)
 
-    def update_summary(self, summary: Optional[Mapping[str, float]]) -> None:
+    def update_summary(
+        self,
+        summary: Optional[Mapping[str, float]],
+        *,
+        industry: Optional["IndustryClassification"] = None,
+        industry_error: Optional[str] = None,
+    ) -> None:
+        self._update_industry_label(industry, industry_error)
         rows = self._build_metric_rows(summary or {})
         populate_table(
             self.metrics_table,
@@ -59,6 +81,7 @@ class SummaryPage(QWidget):
             rows,
             money_cols={1, 3, 5},
         )
+        self._lock_metric_columns()
 
     def _build_metric_rows(
         self, summary: Mapping[str, float]
@@ -80,22 +103,60 @@ class SummaryPage(QWidget):
                 self._get_number(summary, "driftsinntekter_fjor")
                 or self._get_number(summary, "sum_inntekter_fjor"),
             ),
-            ("Overskudd", 5.0, 10.0, self._get_number(summary, "arsresultat")),
+            (
+                "Overskudd",
+                5.0,
+                10.0,
+                self._get_number(summary, "resultat_for_skatt")
+                or self._get_number(summary, "arsresultat"),
+            ),
             ("Sum eiendeler", 1.0, 3.0, self._get_number(summary, "eiendeler_UB")),
             ("Egenkapital", 5.0, 10.0, self._get_number(summary, "egenkapital_UB")),
         ]
 
         for label, min_pct, max_pct, amount in metric_settings:
-            minimum = self._percentage_of(amount, min_pct)
-            maximum = self._percentage_of(amount, max_pct)
+            sanitized = self._sanitize_amount(amount)
+            minimum = self._percentage_of(sanitized, min_pct)
+            maximum = self._percentage_of(sanitized, max_pct)
             yield (
                 label,
-                amount,
+                sanitized,
                 f"{min_pct:.2f} %" if min_pct % 1 else f"{int(min_pct)}.00 %",
                 minimum,
                 f"{max_pct:.2f} %" if max_pct % 1 else f"{int(max_pct)}.00 %",
                 maximum,
             )
+
+    def _lock_metric_columns(self) -> None:
+        percent_columns = {2, 4}
+        row_count = self.metrics_table.rowCount()
+        col_count = self.metrics_table.columnCount()
+        for row in range(row_count):
+            for col in range(col_count):
+                item = self.metrics_table.item(row, col)
+                if item is None:
+                    continue
+                if col in percent_columns:
+                    item.setFlags(item.flags() | Qt.ItemIsEditable)
+                    item.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
+                else:
+                    item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+
+    def _update_industry_label(
+        self,
+        industry: Optional["IndustryClassification"],
+        error: Optional[str],
+    ) -> None:
+        if error:
+            self.industry_label.setText(f"Bransje: ikke tilgjengelig ({error})")
+            return
+        if industry and industry.group:
+            self.industry_label.setText(f"Bransje: {industry.group}")
+            return
+        if industry:
+            self.industry_label.setText("Bransje: Ukjent bransje")
+            return
+        self.industry_label.setText("Bransje: —")
 
     def _populate_threshold_rows(self, labels: Sequence[str]) -> None:
         self.threshold_table.setRowCount(len(labels))
@@ -119,6 +180,11 @@ class SummaryPage(QWidget):
         if inntekter is None or varekostnad is None:
             return None
         return inntekter - varekostnad
+
+    def _sanitize_amount(self, amount: Optional[float]) -> Optional[float]:
+        if amount is None:
+            return None
+        return amount if amount >= 0 else None
 
     def _get_number(self, summary: Mapping[str, float], key: str) -> Optional[float]:
         value = summary.get(key)

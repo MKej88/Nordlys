@@ -98,7 +98,11 @@ class PageStateHandler:
             widget.update_comparison(self._latest_comparison_rows)
         elif key == "plan.vesentlighet" and isinstance(widget, SummaryPage):
             self.vesentlig_page = widget
-            widget.update_summary(self._dataset_store.saft_summary)
+            widget.update_summary(
+                self._dataset_store.saft_summary,
+                industry=self._dataset_store.industry,
+                industry_error=self._dataset_store.industry_error,
+            )
         elif key == "plan.sammenstilling" and isinstance(
             widget, SammenstillingsanalysePage
         ):

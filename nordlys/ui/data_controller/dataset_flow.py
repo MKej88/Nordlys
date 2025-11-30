@@ -207,7 +207,11 @@ class DatasetFlowController:
             pages.fixed_assets_page.update_data(store.saft_df, store.cost_vouchers)
 
         if pages.vesentlig_page:
-            pages.vesentlig_page.update_summary(store.saft_summary)
+            pages.vesentlig_page.update_summary(
+                store.saft_summary,
+                industry=store.industry,
+                industry_error=store.industry_error,
+            )
         fiscal_year = store.current_year_text
         if pages.regnskap_page:
             pages.regnskap_page.set_dataframe(saft_df, fiscal_year)
@@ -259,7 +263,11 @@ class DatasetFlowController:
             pages.regnskap_page.set_dataframe(None, None)
             pages.regnskap_page.set_summary_history([])
         if pages.vesentlig_page:
-            pages.vesentlig_page.update_summary(None)
+            pages.vesentlig_page.update_summary(
+                None,
+                industry=store.industry,
+                industry_error=store.industry_error,
+            )
         if pages.sammenstilling_page:
             pages.sammenstilling_page.set_dataframe(None, None)
         if pages.sales_ar_page:
