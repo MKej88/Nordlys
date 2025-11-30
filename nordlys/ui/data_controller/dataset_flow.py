@@ -234,6 +234,7 @@ class DatasetFlowController:
     def _reset_ui_state(self) -> None:
         pages = self._context.pages
         header_bar = self._context.header_bar
+        store = self._context.dataset_store
 
         header_bar.set_export_enabled(False)
         header_bar.set_dataset_enabled(False)
