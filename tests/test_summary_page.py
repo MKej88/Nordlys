@@ -134,3 +134,16 @@ def test_threshold_table_allows_manual_values(qapp: QApplication) -> None:
     type_cell = page.threshold_table.item(0, 0)
     assert type_cell is not None
     assert not (type_cell.flags() & Qt.ItemIsEditable)
+
+
+def test_row_height_is_increased_for_visibility(qapp: QApplication) -> None:
+    page = SummaryPage("Vesentlighet", "Test")
+    page.update_summary({"sum_inntekter": 1000.0})
+
+    metrics_header = page.metrics_table.verticalHeader()
+    threshold_header = page.threshold_table.verticalHeader()
+
+    assert metrics_header.defaultSectionSize() >= 32
+    assert threshold_header.defaultSectionSize() >= 32
+    assert page.metrics_table.rowHeight(0) >= 32
+    assert page.threshold_table.rowHeight(0) >= 32

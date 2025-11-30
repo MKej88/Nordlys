@@ -10,6 +10,8 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QLabel,
     QLineEdit,
+    QHeaderView,
+    QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
@@ -67,6 +69,7 @@ class SummaryPage(QWidget):
             _ReadableItemDelegate(self.threshold_table)
         )
         self._populate_threshold_rows(["Ordinær", "Skatter og avgifter"])
+        self._set_row_heights(self.threshold_table, 32)
 
         self.metrics_table.itemChanged.connect(self._on_metrics_item_changed)
 
@@ -96,6 +99,7 @@ class SummaryPage(QWidget):
             )
             self._metrics_populating = False
         self._lock_metric_columns()
+        self._set_row_heights(self.metrics_table, 32)
 
     def _build_metric_rows(
         self, summary: Mapping[str, float]
@@ -268,6 +272,14 @@ class SummaryPage(QWidget):
         target.setData(Qt.UserRole, value if value is not None else None)
         display = format_money_norwegian(value) if value is not None else "—"
         target.setText(display)
+
+    def _set_row_heights(self, table: QTableWidget, height: int) -> None:
+        header: QHeaderView = table.verticalHeader()
+        header.setMinimumSectionSize(height)
+        header.setDefaultSectionSize(height)
+        header.setSectionResizeMode(QHeaderView.Fixed)
+        for row in range(table.rowCount()):
+            table.setRowHeight(row, height)
 
 
 class _ReadableItemDelegate(CompactRowDelegate):
