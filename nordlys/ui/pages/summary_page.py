@@ -120,9 +120,7 @@ class SummaryPage(QWidget):
             return None
         return inntekter - varekostnad
 
-    def _get_number(
-        self, summary: Mapping[str, float], key: str
-    ) -> Optional[float]:
+    def _get_number(self, summary: Mapping[str, float], key: str) -> Optional[float]:
         value = summary.get(key)
         if value is None:
             return None
@@ -131,7 +129,9 @@ class SummaryPage(QWidget):
         except (TypeError, ValueError):
             return None
 
-    def _percentage_of(self, amount: Optional[float], percent: float) -> Optional[float]:
+    def _percentage_of(
+        self, amount: Optional[float], percent: float
+    ) -> Optional[float]:
         if amount is None:
             return None
         return amount * percent / 100
