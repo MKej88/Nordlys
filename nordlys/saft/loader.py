@@ -236,7 +236,8 @@ def load_saft_files(
                     if clean_message:
                         last_messages[index] = clean_message
                     weighted_sum = sum(
-                        value * weight for value, weight in zip(progress_values, weights)
+                        value * weight
+                        for value, weight in zip(progress_values, weights)
                     )
                     overall = int(round(weighted_sum / total_weight))
                     if overall < overall_progress:
