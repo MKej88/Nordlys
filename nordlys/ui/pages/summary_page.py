@@ -141,15 +141,19 @@ class SummaryPage(QWidget):
                 "Driftsinntekter i fjor",
                 0.5,
                 1.5,
-                self._get_number(summary, "driftsinntekter_fjor")
-                or self._get_number(summary, "sum_inntekter_fjor"),
+                self._first_number(
+                    self._get_number(summary, "driftsinntekter_fjor"),
+                    self._get_number(summary, "sum_inntekter_fjor"),
+                ),
             ),
             (
                 "Overskudd",
                 5.0,
                 10.0,
-                self._get_number(summary, "resultat_for_skatt")
-                or self._get_number(summary, "arsresultat"),
+                self._first_number(
+                    self._get_number(summary, "resultat_for_skatt"),
+                    self._get_number(summary, "arsresultat"),
+                ),
             ),
             ("Sum eiendeler", 1.0, 3.0, self._get_number(summary, "eiendeler_UB")),
             ("Egenkapital", 5.0, 10.0, self._get_number(summary, "egenkapital_UB")),
@@ -242,9 +246,16 @@ class SummaryPage(QWidget):
             return None
 
     def _sum_inntekter(self, summary: Mapping[str, float]) -> Optional[float]:
-        return self._get_number(summary, "sum_inntekter") or self._get_number(
-            summary, "driftsinntekter"
+        return self._first_number(
+            self._get_number(summary, "sum_inntekter"),
+            self._get_number(summary, "driftsinntekter"),
         )
+
+    def _first_number(self, *values: Optional[float]) -> Optional[float]:
+        for value in values:
+            if value is not None:
+                return value
+        return None
 
     def _bruttofortjeneste(self, summary: Mapping[str, float]) -> Optional[float]:
         inntekter = self._sum_inntekter(summary)
