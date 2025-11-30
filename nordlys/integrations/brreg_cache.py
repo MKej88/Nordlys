@@ -159,6 +159,7 @@ def _should_cache_result(result: BrregServiceResult) -> bool:
         "server_error",
         "http_error",
         "request_error",
+        "invalid_json",
     }:
         return False
     return True
