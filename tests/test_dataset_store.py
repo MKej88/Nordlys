@@ -210,7 +210,7 @@ def test_apply_batch_blocks_multiple_companies_in_same_batch() -> None:
         store.apply_batch([first, other])
 
 
-def test_prepare_supplier_purchases_fills_missing_names() -> None:
+def test_prepare_supplier_purchases_fills_missing_names_from_number_lookup() -> None:
     store = SaftDatasetStore()
     store._sup_name_by_nr = {"77": "Leverandør AS"}  # type: ignore[attr-defined]
 
@@ -275,7 +275,7 @@ def test_prepare_dataframe_with_previous_fills_missing_history() -> None:
     assert history[1] == pytest.approx(0.0)
 
 
-def test_prepare_supplier_purchases_fills_missing_names() -> None:
+def test_prepare_supplier_purchases_fills_missing_names_from_supplier_ids() -> None:
     store = SaftDatasetStore()
     supplier = SupplierInfo(
         supplier_id="SUP-1",
