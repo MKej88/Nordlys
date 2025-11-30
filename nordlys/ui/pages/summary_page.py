@@ -274,12 +274,23 @@ class _ReadableItemDelegate(CompactRowDelegate):
     def createEditor(self, parent, option, index):  # type: ignore[override]
         editor = super().createEditor(parent, option, index)
         if isinstance(editor, QLineEdit):
-            palette = QPalette()
+            palette = editor.palette()
             palette.setColor(QPalette.Text, QColor("#0f172a"))
             palette.setColor(QPalette.PlaceholderText, QColor("#94a3b8"))
             palette.setColor(QPalette.Base, QColor("#ffffff"))
             palette.setColor(QPalette.Highlight, QColor("#bfdbfe"))
             palette.setColor(QPalette.HighlightedText, QColor("#0f172a"))
             editor.setPalette(palette)
+            editor.setAttribute(Qt.WA_StyledBackground, True)
+            editor.setAutoFillBackground(True)
             editor.setAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
+            editor.setTextMargins(6, 0, 6, 0)
         return editor
+
+    def setEditorData(self, editor, index):  # type: ignore[override]
+        if isinstance(editor, QLineEdit):
+            text = index.data(Qt.DisplayRole)
+            editor.setText(str(text) if text is not None else "")
+            editor.selectAll()
+            return
+        super().setEditorData(editor, index)

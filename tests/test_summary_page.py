@@ -5,7 +5,7 @@ from typing import Generator
 import pytest
 
 try:  # pragma: no cover - miljøavhengig
-    from PySide6.QtWidgets import QApplication
+    from PySide6.QtWidgets import QApplication, QLineEdit
     from PySide6.QtCore import Qt
 except (ImportError, OSError) as exc:  # pragma: no cover - miljøavhengig
     pytest.skip(f"PySide6 er ikke tilgjengelig: {exc}", allow_module_level=True)
@@ -75,6 +75,21 @@ def test_percent_edit_recalculates_amounts(qapp: QApplication) -> None:
     minimum_item = page.metrics_table.item(0, 3)
     assert minimum_item is not None
     assert minimum_item.text() == "30"
+
+
+def test_editor_prefills_existing_value(qapp: QApplication) -> None:
+    page = SummaryPage("Vesentlighet", "Test")
+    page.update_summary({"sum_inntekter": 1000.0})
+
+    delegate = page.metrics_table.itemDelegate()
+    model_index = page.metrics_table.model().index(0, 2)
+    editor = delegate.createEditor(
+        page.metrics_table, page.metrics_table.viewOptions(), model_index
+    )
+    delegate.setEditorData(editor, model_index)
+
+    assert isinstance(editor, QLineEdit)
+    assert editor.text() == "0.50%"
 
 
 def test_negative_values_are_hidden(qapp: QApplication) -> None:
