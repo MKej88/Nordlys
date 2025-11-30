@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Iterable, Mapping, Optional, Sequence, Tuple, TYPE_CHECKING
+from dataclasses import dataclass
+from typing import Iterable, Mapping, Optional, Sequence, TYPE_CHECKING
 
 from PySide6.QtCore import QEvent, Qt
 from PySide6.QtGui import QColor, QMouseEvent, QPalette
@@ -35,12 +36,281 @@ if TYPE_CHECKING:
 __all__ = ["SummaryPage"]
 
 
+@dataclass(frozen=True)
+class _MetricSetting:
+    label: str
+    min_percent: float
+    max_percent: float
+    amount: Optional[float]
+
+
+def _format_percent(value: float) -> str:
+    return f"{value:.2f}%"
+
+
+def _parse_percent(text: str) -> Optional[float]:
+    sanitized = (text or "").replace("%", "").replace(" ", "").replace(",", ".")
+    if not sanitized:
+        return None
+    try:
+        return float(sanitized)
+    except ValueError:
+        return None
+
+
+def _percentage_of(amount: Optional[float], percent: float) -> Optional[float]:
+    if amount is None:
+        return None
+    return amount * percent / 100
+
+
+def _sanitize_amount(amount: Optional[float]) -> Optional[float]:
+    if amount is None:
+        return None
+    return amount if amount >= 0 else None
+
+
+def _set_row_heights(table: QTableWidget, height: int) -> None:
+    header: QHeaderView = table.verticalHeader()
+    header.setMinimumSectionSize(height)
+    header.setDefaultSectionSize(height)
+    header.setSectionResizeMode(QHeaderView.Fixed)
+    for row in range(table.rowCount()):
+        table.setRowHeight(row, height)
+
+
+def _fit_table_height(table: QTableWidget) -> None:
+    header = table.horizontalHeader()
+    header_height = header.height() if header is not None else 0
+    margins = table.contentsMargins()
+    frame_height = table.frameWidth() * 2
+    row_heights = sum(table.rowHeight(row) for row in range(table.rowCount()))
+    total_height = header_height + row_heights + frame_height
+    total_height += margins.top() + margins.bottom()
+    table.setMinimumHeight(total_height)
+
+
+class _MetricRowBuilder:
+    def __init__(self, summary: Mapping[str, float]):
+        self._summary = summary
+
+    def build_rows(self) -> list[tuple[object, ...]]:
+        rows: list[tuple[object, ...]] = []
+        for setting in self._metric_settings():
+            sanitized = _sanitize_amount(setting.amount)
+            rows.append(
+                (
+                    setting.label,
+                    sanitized,
+                    _format_percent(setting.min_percent),
+                    _percentage_of(sanitized, setting.min_percent),
+                    _format_percent(setting.max_percent),
+                    _percentage_of(sanitized, setting.max_percent),
+                )
+            )
+        return rows
+
+    def _metric_settings(self) -> Iterable[_MetricSetting]:
+        return [
+            _MetricSetting("Driftsinntekter i år", 0.5, 2.0, self._sum_inntekter()),
+            _MetricSetting(
+                "Bruttofortjeneste",
+                1.0,
+                1.5,
+                self._bruttofortjeneste(),
+            ),
+            _MetricSetting(
+                "Driftsinntekter i fjor",
+                0.5,
+                1.5,
+                self._first_number(
+                    self._get_number("driftsinntekter_fjor"),
+                    self._get_number("sum_inntekter_fjor"),
+                ),
+            ),
+            _MetricSetting(
+                "Overskudd",
+                5.0,
+                10.0,
+                self._first_number(
+                    self._get_number("resultat_for_skatt"),
+                    self._get_number("arsresultat"),
+                ),
+            ),
+            _MetricSetting("Sum eiendeler", 1.0, 3.0, self._get_number("eiendeler_UB")),
+            _MetricSetting(
+                "Egenkapital",
+                5.0,
+                10.0,
+                self._get_number("egenkapital_UB"),
+            ),
+        ]
+
+    def _sum_inntekter(self) -> Optional[float]:
+        return self._first_number(
+            self._get_number("sum_inntekter"),
+            self._get_number("driftsinntekter"),
+        )
+
+    def _bruttofortjeneste(self) -> Optional[float]:
+        inntekter = self._sum_inntekter()
+        varekostnad = self._get_number("varekostnad")
+        if inntekter is None or varekostnad is None:
+            return None
+        return inntekter - varekostnad
+
+    def _get_number(self, key: str) -> Optional[float]:
+        value = self._summary.get(key)
+        if value is None:
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _first_number(*values: Optional[float]) -> Optional[float]:
+        for value in values:
+            if value is not None:
+                return value
+        return None
+
+
+class _SummaryMetricsTable:
+    def __init__(self) -> None:
+        self.table = create_table_widget()
+        self.table.setColumnCount(6)
+        self.table.setHorizontalHeaderLabels(
+            ["Type", "Beløp", "% fra", "Minimum", "% til", "Maksimum"]
+        )
+        self.table.setEditTriggers(QAbstractItemView.AllEditTriggers)
+        self.delegate = _ExpandingReadableDelegate(self.table)
+        self.table.setItemDelegate(self.delegate)
+        self.table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.table.setFocusPolicy(Qt.StrongFocus)
+        self._populating = False
+        self.table.itemChanged.connect(self._on_item_changed)
+
+    def populate(self, summary: Mapping[str, float]) -> None:
+        rows = _MetricRowBuilder(summary).build_rows()
+        with SignalBlocker(self.table):
+            self._populating = True
+            populate_table(
+                self.table,
+                ["Type", "Beløp", "% fra", "Minimum", "% til", "Maksimum"],
+                rows,
+                money_cols={1, 3, 5},
+            )
+            self._populating = False
+        self._lock_percent_columns()
+        _set_row_heights(self.table, 32)
+        _fit_table_height(self.table)
+
+    def fit_height(self) -> None:
+        _fit_table_height(self.table)
+
+    def _on_item_changed(self, item: QTableWidgetItem) -> None:
+        if self._populating or item.column() not in {2, 4}:
+            return
+
+        percent = _parse_percent(item.text())
+        if percent is None:
+            return
+
+        self._populating = True
+        try:
+            item.setText(_format_percent(percent))
+            amount = self._metric_amount(item.row())
+            target_col = 3 if item.column() == 2 else 5
+            updated_value = _percentage_of(amount, percent)
+            self._update_money_cell(item.row(), target_col, updated_value)
+        finally:
+            self._populating = False
+
+    def _metric_amount(self, row: int) -> Optional[float]:
+        amount_item = self.table.item(row, 1)
+        if amount_item is None:
+            return None
+        data = amount_item.data(Qt.UserRole)
+        try:
+            return float(data) if data is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    def _lock_percent_columns(self) -> None:
+        percent_columns = {2, 4}
+        row_count = self.table.rowCount()
+        col_count = self.table.columnCount()
+        for row in range(row_count):
+            for col in range(col_count):
+                item = self.table.item(row, col)
+                if item is None:
+                    continue
+                if col in percent_columns:
+                    item.setFlags(item.flags() | Qt.ItemIsEditable)
+                    item.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
+                else:
+                    item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+
+    def _update_money_cell(self, row: int, column: int, value: Optional[float]) -> None:
+        target = self.table.item(row, column)
+        if target is None:
+            target = QTableWidgetItem()
+            target.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
+            self.table.setItem(row, column, target)
+        target.setData(Qt.UserRole, value if value is not None else None)
+        display = format_money_norwegian(value) if value is not None else "—"
+        target.setText(display)
+
+
+class _SummaryThresholdTable:
+    def __init__(self) -> None:
+        self.table = create_table_widget()
+        self.table.setColumnCount(5)
+        self.table.setHorizontalHeaderLabels(
+            [
+                "Type",
+                "Vesentlighet",
+                "Arb.ves",
+                "Ubetydelig feilinfo",
+                "Utført av",
+            ]
+        )
+        self.table.setSelectionBehavior(QAbstractItemView.SelectItems)
+        self.table.setEditTriggers(QAbstractItemView.AllEditTriggers)
+        self.table.setAlternatingRowColors(True)
+        self.delegate = _ExpandingReadableDelegate(self.table)
+        self.table.setItemDelegate(self.delegate)
+        self.table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.table.setFocusPolicy(Qt.StrongFocus)
+        self._populate_rows(["Ordinær", "Skatter og avgifter"])
+        _set_row_heights(self.table, 32)
+        _fit_table_height(self.table)
+
+    def fit_height(self) -> None:
+        _fit_table_height(self.table)
+
+    def _populate_rows(self, labels: Sequence[str]) -> None:
+        self.table.setRowCount(len(labels))
+        for row, label in enumerate(labels):
+            label_item = QTableWidgetItem(label)
+            label_item.setFlags(label_item.flags() & ~Qt.ItemIsEditable)
+            self.table.setItem(row, 0, label_item)
+            for col in range(1, self.table.columnCount()):
+                item = QTableWidgetItem("")
+                item.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
+                self.table.setItem(row, col, item)
+
+
 class SummaryPage(QWidget):
     """Side for vesentlighetsvurdering med tabell og forklaring."""
 
     def __init__(self, title: str, subtitle: str) -> None:
         super().__init__()
-        self._metrics_populating = False
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(24)
@@ -52,44 +322,13 @@ class SummaryPage(QWidget):
         self.industry_label.setObjectName("statusLabel")
         self.industry_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
 
-        self.metrics_table = create_table_widget()
-        self.metrics_table.setColumnCount(6)
-        self.metrics_table.setHorizontalHeaderLabels(
-            ["Type", "Beløp", "% fra", "Minimum", "% til", "Maksimum"]
-        )
-        self.metrics_table.setEditTriggers(QAbstractItemView.AllEditTriggers)
-        self._metrics_delegate = _ExpandingReadableDelegate(self.metrics_table)
-        self.metrics_table.setItemDelegate(self._metrics_delegate)
-        self.metrics_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.metrics_table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.metrics_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.metrics_table.setFocusPolicy(Qt.StrongFocus)
+        self._metrics_section = _SummaryMetricsTable()
+        self.metrics_table = self._metrics_section.table
+        self._metrics_delegate = self._metrics_section.delegate
 
-        self.threshold_table = create_table_widget()
-        self.threshold_table.setColumnCount(5)
-        self.threshold_table.setHorizontalHeaderLabels(
-            [
-                "Type",
-                "Vesentlighet",
-                "Arb.ves",
-                "Ubetydelig feilinfo",
-                "Utført av",
-            ]
-        )
-        self.threshold_table.setSelectionBehavior(QAbstractItemView.SelectItems)
-        self.threshold_table.setEditTriggers(QAbstractItemView.AllEditTriggers)
-        self.threshold_table.setAlternatingRowColors(True)
-        self._threshold_delegate = _ExpandingReadableDelegate(self.threshold_table)
-        self.threshold_table.setItemDelegate(self._threshold_delegate)
-        self.threshold_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.threshold_table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.threshold_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.threshold_table.setFocusPolicy(Qt.StrongFocus)
-        self._populate_threshold_rows(["Ordinær", "Skatter og avgifter"])
-        self._set_row_heights(self.threshold_table, 32)
-        self._fit_table_height(self.threshold_table)
-
-        self.metrics_table.itemChanged.connect(self._on_metrics_item_changed)
+        self._threshold_section = _SummaryThresholdTable()
+        self.threshold_table = self._threshold_section.table
+        self._threshold_delegate = self._threshold_section.delegate
 
         self.card.add_widget(self.industry_label)
         self.card.add_widget(self.metrics_table)
@@ -109,104 +348,8 @@ class SummaryPage(QWidget):
         industry_error: Optional[str] = None,
     ) -> None:
         self._update_industry_label(industry, industry_error)
-        rows = self._build_metric_rows(summary or {})
-        with SignalBlocker(self.metrics_table):
-            self._metrics_populating = True
-            populate_table(
-                self.metrics_table,
-                ["Type", "Beløp", "% fra", "Minimum", "% til", "Maksimum"],
-                rows,
-                money_cols={1, 3, 5},
-            )
-            self._metrics_populating = False
-        self._lock_metric_columns()
-        self._set_row_heights(self.metrics_table, 32)
-        self._fit_table_height(self.metrics_table)
-        self._fit_table_height(self.threshold_table)
-
-    def _build_metric_rows(
-        self, summary: Mapping[str, float]
-    ) -> Iterable[
-        Tuple[str, Optional[float], str, Optional[float], str, Optional[float]]
-    ]:
-        metric_settings: Sequence[Tuple[str, float, float, Optional[float]]] = [
-            ("Driftsinntekter i år", 0.5, 2.0, self._sum_inntekter(summary)),
-            (
-                "Bruttofortjeneste",
-                1.0,
-                1.5,
-                self._bruttofortjeneste(summary),
-            ),
-            (
-                "Driftsinntekter i fjor",
-                0.5,
-                1.5,
-                self._first_number(
-                    self._get_number(summary, "driftsinntekter_fjor"),
-                    self._get_number(summary, "sum_inntekter_fjor"),
-                ),
-            ),
-            (
-                "Overskudd",
-                5.0,
-                10.0,
-                self._first_number(
-                    self._get_number(summary, "resultat_for_skatt"),
-                    self._get_number(summary, "arsresultat"),
-                ),
-            ),
-            ("Sum eiendeler", 1.0, 3.0, self._get_number(summary, "eiendeler_UB")),
-            ("Egenkapital", 5.0, 10.0, self._get_number(summary, "egenkapital_UB")),
-        ]
-
-        for label, min_pct, max_pct, amount in metric_settings:
-            sanitized = self._sanitize_amount(amount)
-            minimum = self._percentage_of(sanitized, min_pct)
-            maximum = self._percentage_of(sanitized, max_pct)
-            yield (
-                label,
-                sanitized,
-                self._format_percent(min_pct),
-                minimum,
-                self._format_percent(max_pct),
-                maximum,
-            )
-
-    def _lock_metric_columns(self) -> None:
-        percent_columns = {2, 4}
-        row_count = self.metrics_table.rowCount()
-        col_count = self.metrics_table.columnCount()
-        for row in range(row_count):
-            for col in range(col_count):
-                item = self.metrics_table.item(row, col)
-                if item is None:
-                    continue
-                if col in percent_columns:
-                    item.setFlags(item.flags() | Qt.ItemIsEditable)
-                    item.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
-                else:
-                    item.setFlags(item.flags() & ~Qt.ItemIsEditable)
-
-    def _on_metrics_item_changed(self, item: QTableWidgetItem) -> None:
-        if self._metrics_populating or item.column() not in {2, 4}:
-            return
-
-        percent = self._parse_percent(item.text())
-        if percent is None:
-            return
-
-        self._metrics_populating = True
-        try:
-            item.setText(self._format_percent(percent))
-            amount = self._metric_amount(item.row())
-            if item.column() == 2:
-                target_col = 3
-            else:
-                target_col = 5
-            updated_value = self._percentage_of(amount, percent)
-            self._update_money_cell(item.row(), target_col, updated_value)
-        finally:
-            self._metrics_populating = False
+        self._metrics_section.populate(summary or {})
+        self._threshold_section.fit_height()
 
     def _update_industry_label(
         self,
@@ -224,90 +367,9 @@ class SummaryPage(QWidget):
             return
         self.industry_label.setText("Bransje: —")
 
-    def _populate_threshold_rows(self, labels: Sequence[str]) -> None:
-        self.threshold_table.setRowCount(len(labels))
-        for row, label in enumerate(labels):
-            label_item = QTableWidgetItem(label)
-            label_item.setFlags(label_item.flags() & ~Qt.ItemIsEditable)
-            self.threshold_table.setItem(row, 0, label_item)
-            for col in range(1, self.threshold_table.columnCount()):
-                item = QTableWidgetItem("")
-                item.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
-                self.threshold_table.setItem(row, col, item)
-
-    def _metric_amount(self, row: int) -> Optional[float]:
-        amount_item = self.metrics_table.item(row, 1)
-        if amount_item is None:
-            return None
-        data = amount_item.data(Qt.UserRole)
-        try:
-            return float(data) if data is not None else None
-        except (TypeError, ValueError):
-            return None
-
-    def _sum_inntekter(self, summary: Mapping[str, float]) -> Optional[float]:
-        return self._first_number(
-            self._get_number(summary, "sum_inntekter"),
-            self._get_number(summary, "driftsinntekter"),
-        )
-
-    def _first_number(self, *values: Optional[float]) -> Optional[float]:
-        for value in values:
-            if value is not None:
-                return value
-        return None
-
-    def _bruttofortjeneste(self, summary: Mapping[str, float]) -> Optional[float]:
-        inntekter = self._sum_inntekter(summary)
-        varekostnad = self._get_number(summary, "varekostnad")
-        if inntekter is None or varekostnad is None:
-            return None
-        return inntekter - varekostnad
-
-    def _sanitize_amount(self, amount: Optional[float]) -> Optional[float]:
-        if amount is None:
-            return None
-        return amount if amount >= 0 else None
-
-    def _format_percent(self, value: float) -> str:
-        return f"{value:.2f}%"
-
-    def _get_number(self, summary: Mapping[str, float], key: str) -> Optional[float]:
-        value = summary.get(key)
-        if value is None:
-            return None
-        try:
-            return float(value)
-        except (TypeError, ValueError):
-            return None
-
-    def _percentage_of(
-        self, amount: Optional[float], percent: float
-    ) -> Optional[float]:
-        if amount is None:
-            return None
-        return amount * percent / 100
-
-    def _parse_percent(self, text: str) -> Optional[float]:
-        sanitized = (text or "").replace("%", "").replace(" ", "").replace(",", ".")
-        if not sanitized:
-            return None
-        try:
-            return float(sanitized)
-        except ValueError:
-            return None
-
-    def _update_money_cell(self, row: int, column: int, value: Optional[float]) -> None:
-        target = self.metrics_table.item(row, column)
-        if target is None:
-            target = QTableWidgetItem()
-            target.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
-            self.metrics_table.setItem(row, column, target)
-        target.setData(Qt.UserRole, value if value is not None else None)
-        display = format_money_norwegian(value) if value is not None else "—"
-        target.setText(display)
-
-    def eventFilter(self, watched, event):  # type: ignore[override]
+    def eventFilter(
+        self, watched: object, event: QEvent | None
+    ) -> bool:  # type: ignore[override]
         if event is not None and event.type() == QEvent.MouseButtonPress:
             self._close_editor_on_click(watched, event)
         return super().eventFilter(watched, event)
@@ -338,24 +400,6 @@ class SummaryPage(QWidget):
                 if current_item is not None:
                     table.closePersistentEditor(current_item)
             delegate.active_editor = None
-
-    def _set_row_heights(self, table: QTableWidget, height: int) -> None:
-        header: QHeaderView = table.verticalHeader()
-        header.setMinimumSectionSize(height)
-        header.setDefaultSectionSize(height)
-        header.setSectionResizeMode(QHeaderView.Fixed)
-        for row in range(table.rowCount()):
-            table.setRowHeight(row, height)
-
-    def _fit_table_height(self, table: QTableWidget) -> None:
-        header = table.horizontalHeader()
-        header_height = header.height() if header is not None else 0
-        margins = table.contentsMargins()
-        frame_height = table.frameWidth() * 2
-        row_heights = sum(table.rowHeight(row) for row in range(table.rowCount()))
-        total_height = header_height + row_heights + frame_height
-        total_height += margins.top() + margins.bottom()
-        table.setMinimumHeight(total_height)
 
 
 class _ExpandingReadableDelegate(CompactRowDelegate):
