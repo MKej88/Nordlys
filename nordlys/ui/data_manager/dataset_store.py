@@ -592,7 +592,11 @@ class SaftDatasetStore:
             return dataframe
         work = dataframe.copy()
         if "Kundenavn" in work.columns:
-            mask = work["Kundenavn"].astype(str).str.strip() == ""
+            name_series = work["Kundenavn"].astype(object).where(
+                lambda s: ~pd.isna(s), ""
+            )
+            work["Kundenavn"] = name_series
+            mask = name_series.astype(str).str.strip() == ""
             if mask.any():
                 work.loc[mask, "Kundenavn"] = work.loc[mask, "Kundenr"].apply(
                     lambda value: self.lookup_customer_name(value, value) or value
@@ -613,7 +617,11 @@ class SaftDatasetStore:
             return dataframe
         work = dataframe.copy()
         if "Leverandørnavn" in work.columns:
-            mask = work["Leverandørnavn"].astype(str).str.strip() == ""
+            name_series = work["Leverandørnavn"].astype(object).where(
+                lambda s: ~pd.isna(s), ""
+            )
+            work["Leverandørnavn"] = name_series
+            mask = name_series.astype(str).str.strip() == ""
             if mask.any():
                 work.loc[mask, "Leverandørnavn"] = work.loc[mask, "Leverandørnr"].apply(
                     lambda value: self.lookup_supplier_name(value, value) or value
