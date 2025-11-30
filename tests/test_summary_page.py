@@ -40,6 +40,10 @@ def test_summary_page_populates_metrics_table(qapp: QApplication) -> None:
     assert page.metrics_table.item(0, 3).text() == "5"
     assert page.metrics_table.item(1, 1).text() == "800"
 
+    percent_item = page.metrics_table.item(0, 2)
+    assert percent_item is not None
+    assert percent_item.text() == "0.50%"
+
 
 def test_percent_columns_are_editable_and_centered(qapp: QApplication) -> None:
     page = SummaryPage("Vesentlighet", "Test")
@@ -53,6 +57,24 @@ def test_percent_columns_are_editable_and_centered(qapp: QApplication) -> None:
     amount_item = page.metrics_table.item(0, 1)
     assert amount_item is not None
     assert not (amount_item.flags() & Qt.ItemIsEditable)
+
+
+def test_percent_edit_recalculates_amounts(qapp: QApplication) -> None:
+    page = SummaryPage("Vesentlighet", "Test")
+    page.update_summary({"sum_inntekter": 1000.0})
+
+    percent_item = page.metrics_table.item(0, 2)
+    assert percent_item is not None
+
+    percent_item.setText("3")
+
+    updated_percent = page.metrics_table.item(0, 2)
+    assert updated_percent is not None
+    assert updated_percent.text() == "3.00%"
+
+    minimum_item = page.metrics_table.item(0, 3)
+    assert minimum_item is not None
+    assert minimum_item.text() == "30"
 
 
 def test_negative_values_are_hidden(qapp: QApplication) -> None:
