@@ -8,6 +8,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QHeaderView,
+    QStyleOptionViewItem,
     QTableView,
     QTableWidget,
     QTableWidgetItem,
@@ -29,8 +30,20 @@ __all__ = [
 pd = lazy_pandas()
 
 
+class _CompatibleTableWidget(QTableWidget):
+    """Tabell som skjuler forskjeller mellom Qt-plattformer."""
+
+    def viewOptions(self) -> QStyleOptionViewItem:  # pragma: no cover - Qt-spesifikt
+        try:
+            return super().viewOptions()
+        except AttributeError:
+            option = QStyleOptionViewItem()
+            option.initFrom(self)
+            return option
+
+
 def create_table_widget() -> QTableWidget:
-    table = QTableWidget()
+    table = _CompatibleTableWidget()
     table.setAlternatingRowColors(True)
     table.setEditTriggers(QAbstractItemView.NoEditTriggers)
     table.setSelectionBehavior(QAbstractItemView.SelectRows)

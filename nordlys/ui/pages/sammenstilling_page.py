@@ -5,9 +5,10 @@ from __future__ import annotations
 from typing import Dict, List, Optional, Tuple
 
 from PySide6.QtCore import QEvent, Qt
-from PySide6.QtGui import QBrush, QColor, QPalette
+from PySide6.QtGui import QBrush, QColor, QMouseEvent, QPalette
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QApplication,
     QDoubleSpinBox,
     QHeaderView,
     QHBoxLayout,
@@ -78,6 +79,7 @@ class _CommentItemDelegate(CompactRowDelegate):
     def __init__(self, parent: QTableWidget) -> None:
         super().__init__(parent)
         self._expanded_rows: dict[int, int] = {}
+        self.active_editor: QLineEdit | None = None
 
     def createEditor(self, parent, option, index):  # type: ignore[override]
         editor = super().createEditor(parent, option, index)
@@ -96,11 +98,14 @@ class _CommentItemDelegate(CompactRowDelegate):
             editor.setContentsMargins(0, 0, 0, 0)
             editor.setProperty(self._ROW_PROPERTY, index.row())
             editor.installEventFilter(self)
+            self.active_editor = editor
         return editor
 
     def destroyEditor(self, editor, index):  # type: ignore[override]
         if isinstance(editor, QLineEdit):
             self._restore_row_height(editor)
+            if self.active_editor is editor:
+                self.active_editor = None
         super().destroyEditor(editor, index)
 
     def eventFilter(self, obj, event):  # type: ignore[override]
@@ -212,6 +217,7 @@ class SammenstillingsanalysePage(QWidget):
             | QAbstractItemView.SelectedClicked
             | QAbstractItemView.EditKeyPressed
         )
+        self.cost_table.setFocusPolicy(Qt.StrongFocus)
         self.cost_table.itemChanged.connect(self._on_cost_item_changed)
         header = self.cost_table.horizontalHeader()
         header.setMinimumSectionSize(0)
@@ -233,6 +239,10 @@ class SammenstillingsanalysePage(QWidget):
         self._fiscal_year: Optional[str] = None
         self._cost_comments: Dict[str, str] = {}
         self._updating_cost_table = False
+
+        app = QApplication.instance()
+        if app:
+            app.installEventFilter(self)
 
     def set_dataframe(
         self, df: Optional[pd.DataFrame], fiscal_year: Optional[str] = None
@@ -543,6 +553,35 @@ class SammenstillingsanalysePage(QWidget):
         else:
             self._cost_comments.pop(str(key), None)
         self._refresh_cost_row_heights()
+
+    def eventFilter(self, watched, event):  # type: ignore[override]
+        if event is not None and event.type() == QEvent.MouseButtonPress:
+            self._close_editor_on_click(watched, event)
+        return super().eventFilter(watched, event)
+
+    def _close_editor_on_click(self, target: object, event: QEvent) -> None:
+        if not isinstance(event, QMouseEvent):
+            return
+
+        editor = self._comment_delegate.active_editor
+        if editor is None:
+            return
+
+        if isinstance(target, QWidget) and (
+            target is editor or editor.isAncestorOf(target)
+        ):
+            return
+
+        editor.clearFocus()
+        self.setFocus(Qt.MouseFocusReason)
+        QApplication.sendEvent(editor, QEvent(QEvent.FocusOut))
+
+        if self.cost_table.state() == QAbstractItemView.EditingState:
+            current_item = self.cost_table.currentItem()
+            if current_item is not None:
+                self.cost_table.closePersistentEditor(current_item)
+
+        self._comment_delegate.active_editor = None
 
     def _auto_resize_cost_columns(self) -> None:
         """Tilpasser kolonnebreddene til innholdet uten å fjerne stretching."""
