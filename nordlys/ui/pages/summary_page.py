@@ -5,9 +5,10 @@ from __future__ import annotations
 from typing import Iterable, Mapping, Optional, Sequence, Tuple, TYPE_CHECKING
 
 from PySide6.QtCore import QEvent, Qt
-from PySide6.QtGui import QColor, QPalette
+from PySide6.QtGui import QColor, QMouseEvent, QPalette
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QApplication,
     QLabel,
     QLineEdit,
     QSizePolicy,
@@ -46,6 +47,7 @@ class SummaryPage(QWidget):
 
         self.card = CardFrame(title, subtitle)
         self.card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.setFocusPolicy(Qt.StrongFocus)
         self.industry_label = QLabel("Bransje: —")
         self.industry_label.setObjectName("statusLabel")
         self.industry_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
@@ -56,12 +58,12 @@ class SummaryPage(QWidget):
             ["Type", "Beløp", "% fra", "Minimum", "% til", "Maksimum"]
         )
         self.metrics_table.setEditTriggers(QAbstractItemView.AllEditTriggers)
-        self.metrics_table.setItemDelegate(
-            _ExpandingReadableDelegate(self.metrics_table)
-        )
+        self._metrics_delegate = _ExpandingReadableDelegate(self.metrics_table)
+        self.metrics_table.setItemDelegate(self._metrics_delegate)
         self.metrics_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.metrics_table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.metrics_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.metrics_table.setFocusPolicy(Qt.StrongFocus)
 
         self.threshold_table = create_table_widget()
         self.threshold_table.setColumnCount(5)
@@ -77,12 +79,12 @@ class SummaryPage(QWidget):
         self.threshold_table.setSelectionBehavior(QAbstractItemView.SelectItems)
         self.threshold_table.setEditTriggers(QAbstractItemView.AllEditTriggers)
         self.threshold_table.setAlternatingRowColors(True)
-        self.threshold_table.setItemDelegate(
-            _ExpandingReadableDelegate(self.threshold_table)
-        )
+        self._threshold_delegate = _ExpandingReadableDelegate(self.threshold_table)
+        self.threshold_table.setItemDelegate(self._threshold_delegate)
         self.threshold_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.threshold_table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.threshold_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.threshold_table.setFocusPolicy(Qt.StrongFocus)
         self._populate_threshold_rows(["Ordinær", "Skatter og avgifter"])
         self._set_row_heights(self.threshold_table, 32)
         self._fit_table_height(self.threshold_table)
@@ -94,6 +96,10 @@ class SummaryPage(QWidget):
         self.card.add_widget(self.threshold_table)
 
         layout.addWidget(self.card, 1)
+
+        app = QApplication.instance()
+        if app:
+            app.installEventFilter(self)
 
     def update_summary(
         self,
@@ -290,6 +296,38 @@ class SummaryPage(QWidget):
         display = format_money_norwegian(value) if value is not None else "—"
         target.setText(display)
 
+    def eventFilter(self, watched, event):  # type: ignore[override]
+        if event is not None and event.type() == QEvent.MouseButtonPress:
+            self._close_editor_on_click(watched, event)
+        return super().eventFilter(watched, event)
+
+    def _close_editor_on_click(self, target: object, event: QEvent) -> None:
+        if not isinstance(event, QMouseEvent):
+            return
+
+        for table, delegate in (
+            (self.metrics_table, self._metrics_delegate),
+            (self.threshold_table, self._threshold_delegate),
+        ):
+            editor = delegate.active_editor
+            if editor is None:
+                continue
+
+            if isinstance(target, QWidget) and (
+                target is editor or editor.isAncestorOf(target)
+            ):
+                continue
+
+            editor.clearFocus()
+            self.setFocus(Qt.MouseFocusReason)
+            QApplication.sendEvent(editor, QEvent(QEvent.FocusOut))
+
+            if table.state() == QAbstractItemView.EditingState:
+                current_item = table.currentItem()
+                if current_item is not None:
+                    table.closePersistentEditor(current_item)
+            delegate.active_editor = None
+
     def _set_row_heights(self, table: QTableWidget, height: int) -> None:
         header: QHeaderView = table.verticalHeader()
         header.setMinimumSectionSize(height)
@@ -315,6 +353,7 @@ class _ExpandingReadableDelegate(CompactRowDelegate):
     def __init__(self, parent: QTableWidget) -> None:
         super().__init__(parent)
         self._original_heights: dict[int, int] = {}
+        self.active_editor: QLineEdit | None = None
 
     def createEditor(self, parent, option, index):  # type: ignore[override]
         editor = QLineEdit(parent)
@@ -332,6 +371,7 @@ class _ExpandingReadableDelegate(CompactRowDelegate):
         editor.setContentsMargins(0, 0, 0, 0)
         editor.setProperty(self._ROW_PROPERTY, index.row())
         editor.installEventFilter(self)
+        self.active_editor = editor
         return editor
 
     def setEditorData(self, editor, index):  # type: ignore[override]
@@ -345,6 +385,8 @@ class _ExpandingReadableDelegate(CompactRowDelegate):
     def destroyEditor(self, editor, index):  # type: ignore[override]
         if isinstance(editor, QLineEdit):
             self._restore_row_height(editor)
+            if self.active_editor is editor:
+                self.active_editor = None
         super().destroyEditor(editor, index)
 
     def eventFilter(self, obj, event):  # type: ignore[override]

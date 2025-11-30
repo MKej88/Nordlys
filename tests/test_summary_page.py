@@ -5,8 +5,9 @@ from typing import Generator
 import pytest
 
 try:  # pragma: no cover - miljøavhengig
-    from PySide6.QtWidgets import QApplication, QLineEdit
-    from PySide6.QtCore import QEvent, Qt
+    from PySide6.QtWidgets import QApplication, QLineEdit, QAbstractItemView
+    from PySide6.QtCore import QEvent, Qt, QPointF
+    from PySide6.QtGui import QMouseEvent
 except (ImportError, OSError) as exc:  # pragma: no cover - miljøavhengig
     pytest.skip(f"PySide6 er ikke tilgjengelig: {exc}", allow_module_level=True)
 
@@ -177,3 +178,31 @@ def test_editor_expands_and_restores_row_height(qapp: QApplication) -> None:
     restored_height = page.metrics_table.rowHeight(0)
     assert restored_height == base_height
     delegate.destroyEditor(editor, model_index)
+
+
+def test_click_outside_closes_editor(qapp: QApplication) -> None:
+    page = SummaryPage("Vesentlighet", "Test")
+    page.update_summary({"sum_inntekter": 1000.0})
+
+    percent_item = page.metrics_table.item(0, 2)
+    assert percent_item is not None
+
+    page.metrics_table.editItem(percent_item)
+    delegate = page.metrics_table.itemDelegate()
+    editor = getattr(delegate, "active_editor", None)
+
+    assert isinstance(editor, QLineEdit)
+    assert page.metrics_table.state() == QAbstractItemView.EditingState
+
+    click_event = QMouseEvent(
+        QEvent.MouseButtonPress,
+        QPointF(1, 1),
+        Qt.LeftButton,
+        Qt.LeftButton,
+        Qt.NoModifier,
+    )
+    QApplication.sendEvent(page.industry_label, click_event)
+    qapp.processEvents()
+
+    assert getattr(delegate, "active_editor", None) is None
+    assert page.metrics_table.state() != QAbstractItemView.EditingState
