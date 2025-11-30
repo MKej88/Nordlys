@@ -317,22 +317,21 @@ class _ExpandingReadableDelegate(CompactRowDelegate):
         self._original_heights: dict[int, int] = {}
 
     def createEditor(self, parent, option, index):  # type: ignore[override]
-        editor = super().createEditor(parent, option, index)
-        if isinstance(editor, QLineEdit):
-            palette = editor.palette()
-            palette.setColor(QPalette.Text, QColor("#0f172a"))
-            palette.setColor(QPalette.PlaceholderText, QColor("#94a3b8"))
-            palette.setColor(QPalette.Base, QColor("#ffffff"))
-            palette.setColor(QPalette.Highlight, QColor("#bfdbfe"))
-            palette.setColor(QPalette.HighlightedText, QColor("#0f172a"))
-            editor.setPalette(palette)
-            editor.setAttribute(Qt.WA_StyledBackground, True)
-            editor.setAutoFillBackground(True)
-            editor.setAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
-            editor.setTextMargins(6, 0, 6, 0)
-            editor.setContentsMargins(0, 0, 0, 0)
-            editor.setProperty(self._ROW_PROPERTY, index.row())
-            editor.installEventFilter(self)
+        editor = QLineEdit(parent)
+        palette = editor.palette()
+        palette.setColor(QPalette.Text, QColor("#0f172a"))
+        palette.setColor(QPalette.PlaceholderText, QColor("#94a3b8"))
+        palette.setColor(QPalette.Base, QColor("#ffffff"))
+        palette.setColor(QPalette.Highlight, QColor("#bfdbfe"))
+        palette.setColor(QPalette.HighlightedText, QColor("#0f172a"))
+        editor.setPalette(palette)
+        editor.setAttribute(Qt.WA_StyledBackground, True)
+        editor.setAutoFillBackground(True)
+        editor.setAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
+        editor.setTextMargins(6, 0, 6, 0)
+        editor.setContentsMargins(0, 0, 0, 0)
+        editor.setProperty(self._ROW_PROPERTY, index.row())
+        editor.installEventFilter(self)
         return editor
 
     def setEditorData(self, editor, index):  # type: ignore[override]
