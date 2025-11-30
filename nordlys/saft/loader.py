@@ -213,20 +213,33 @@ def load_saft_files(
 
     if progress_callback is not None:
         progress_lock = Lock()
-        progress_values: List[int] = [0] * total
+        progress_values: List[float] = [0.0] * total
+        weights: List[float] = []
+        for size in file_sizes:
+            if size is None or size <= 0:
+                weights.append(1.0)
+            else:
+                weights.append(float(size))
+        total_weight = sum(weights) if weights else float(total)
+        if total_weight == 0:
+            total_weight = float(total)
         last_messages: List[str] = [f"Laster {Path(path).name} …" for path in paths]
         overall_progress = 0
 
         def _progress_factory(index: int) -> Callable[[int, str], None]:
             def _inner(percent: int, message: str) -> None:
                 nonlocal overall_progress
-                normalized = max(0, min(100, int(percent)))
+                normalized = max(0.0, min(100.0, float(percent)))
                 clean_message = message.strip()
                 with progress_lock:
                     progress_values[index] = normalized
                     if clean_message:
                         last_messages[index] = clean_message
-                    overall = int(round(sum(progress_values) / total))
+                    weighted_sum = sum(
+                        value * weight
+                        for value, weight in zip(progress_values, weights)
+                    )
+                    overall = int(round(weighted_sum / total_weight))
                     if overall < overall_progress:
                         overall = overall_progress
                     else:
@@ -278,9 +291,13 @@ def load_saft_files(
                 if progress_callback is not None:
                     error_message = f"Feil ved import av {file_label}: {exc}"
                     with progress_lock:
-                        progress_values[index] = 100
+                        progress_values[index] = 100.0
                         last_messages[index] = error_message
-                        overall = int(round(sum(progress_values) / total))
+                        weighted_sum = sum(
+                            value * weight
+                            for value, weight in zip(progress_values, weights)
+                        )
+                        overall = int(round(weighted_sum / total_weight))
                         if overall < overall_progress:
                             overall = overall_progress
                         else:

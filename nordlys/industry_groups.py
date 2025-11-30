@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
+from threading import Lock
 from typing import Dict, Optional
 
 from .integrations.brreg_service import fetch_enhetsregister
@@ -26,6 +27,7 @@ class IndustryClassification:
 
 
 CACHE_PATH: Path = Path(__file__).resolve().parent / "brreg_cache.json"
+_CACHE_LOCK = Lock()
 
 
 def _normalize_orgnr(orgnr: str) -> str:
@@ -38,23 +40,25 @@ def _normalize_orgnr(orgnr: str) -> str:
 def _load_cache() -> Dict[str, Dict[str, object]]:
     if not CACHE_PATH.exists():
         return {}
-    try:
-        with CACHE_PATH.open("r", encoding="utf-8") as fh:
-            data = json.load(fh)
-    except (OSError, json.JSONDecodeError):
-        return {}
+    with _CACHE_LOCK:
+        try:
+            with CACHE_PATH.open("r", encoding="utf-8") as fh:
+                data = json.load(fh)
+        except (OSError, json.JSONDecodeError):
+            return {}
     if isinstance(data, dict):
         return data  # type: ignore[return-value]
     return {}
 
 
 def _save_cache(cache: Dict[str, Dict[str, object]]) -> None:
-    try:
-        with CACHE_PATH.open("w", encoding="utf-8") as fh:
-            json.dump(cache, fh, ensure_ascii=False, indent=2)
-    except OSError:
-        # Manglende skrive-tilgang skal ikke stoppe applikasjonen.
-        pass
+    with _CACHE_LOCK:
+        try:
+            with CACHE_PATH.open("w", encoding="utf-8") as fh:
+                json.dump(cache, fh, ensure_ascii=False, indent=2)
+        except OSError:
+            # Manglende skrive-tilgang skal ikke stoppe applikasjonen.
+            pass
 
 
 def _extract_sn2(naringskode: Optional[str]) -> Optional[str]:
