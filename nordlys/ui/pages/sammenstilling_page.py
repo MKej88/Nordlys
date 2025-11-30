@@ -567,7 +567,9 @@ class SammenstillingsanalysePage(QWidget):
         if editor is None:
             return
 
-        if isinstance(target, QWidget) and (target is editor or editor.isAncestorOf(target)):
+        if isinstance(target, QWidget) and (
+            target is editor or editor.isAncestorOf(target)
+        ):
             return
 
         editor.clearFocus()
