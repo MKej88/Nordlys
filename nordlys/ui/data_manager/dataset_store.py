@@ -592,8 +592,8 @@ class SaftDatasetStore:
             return dataframe
         work = dataframe.copy()
         if "Kundenavn" in work.columns:
-            name_series = work["Kundenavn"].astype(object).where(
-                lambda s: ~pd.isna(s), ""
+            name_series = (
+                work["Kundenavn"].astype(object).where(lambda s: ~pd.isna(s), "")
             )
             work["Kundenavn"] = name_series
             mask = name_series.astype(str).str.strip() == ""
@@ -617,8 +617,8 @@ class SaftDatasetStore:
             return dataframe
         work = dataframe.copy()
         if "Leverandørnavn" in work.columns:
-            name_series = work["Leverandørnavn"].astype(object).where(
-                lambda s: ~pd.isna(s), ""
+            name_series = (
+                work["Leverandørnavn"].astype(object).where(lambda s: ~pd.isna(s), "")
             )
             work["Leverandørnavn"] = name_series
             mask = name_series.astype(str).str.strip() == ""
