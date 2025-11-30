@@ -7,6 +7,8 @@ import sys
 
 from pytest import MonkeyPatch
 
+from nordlys.integrations.brreg_models import BrregServiceResult
+
 
 def test_brreg_cache_importer_definerer_logger() -> None:
     """Modulen skal kunne importeres uten NameError og ha en logger."""
@@ -32,3 +34,17 @@ def test_fallback_session_har_retry(monkeypatch: MonkeyPatch) -> None:
 
     assert https_adapter.max_retries.total == 3
     assert http_adapter.max_retries.status_forcelist == (429, 500, 502, 503, 504)
+
+
+def test_fallback_cache_skipper_invalid_json() -> None:
+    """Ugyldig JSON skal ikke mellomlagres, slik at nye forsøk kan lykkes."""
+
+    module = importlib.import_module("nordlys.integrations.brreg_cache")
+    module.clear_fallback_cache()
+
+    cache_key = module.make_cache_key("http://example.test", "disallow")
+    invalid_json_result = BrregServiceResult(None, "invalid_json", "feil", False)
+
+    module.fallback_cache_set(cache_key, invalid_json_result)
+
+    assert module.fallback_cache_get(cache_key) is None
