@@ -369,9 +369,9 @@ class SummaryPage(QWidget):
             return
         self.industry_label.setText("Bransje: —")
 
-    def eventFilter(  # type: ignore[override]
+    def eventFilter(
         self, watched: object, event: QEvent | None
-    ) -> bool:
+    ) -> bool:  # type: ignore[override]
         if event is not None and event.type() == QEvent.MouseButtonPress:
             self._close_editor_on_click(watched, event)
         return super().eventFilter(watched, event)
