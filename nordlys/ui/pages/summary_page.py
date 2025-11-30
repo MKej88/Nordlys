@@ -367,6 +367,8 @@ class _ExpandingReadableDelegate(CompactRowDelegate):
         if header is None:
             return
         base_height = header.sectionSize(row)
+        if row not in self._original_heights:
+            self._original_heights[row] = base_height
         desired_height = max(
             base_height,
             editor.sizeHint().height() + 4,
@@ -374,7 +376,6 @@ class _ExpandingReadableDelegate(CompactRowDelegate):
         )
         if desired_height <= base_height:
             return
-        self._original_heights[row] = base_height
         header.resizeSection(row, desired_height)
         table.setRowHeight(row, desired_height)
 
@@ -388,7 +389,7 @@ class _ExpandingReadableDelegate(CompactRowDelegate):
         header = table.verticalHeader()
         if header is None:
             return
-        base_height = compact_row_base_height(table)
-        original_height = self._original_heights.pop(row, base_height)
+        current_height = header.sectionSize(row)
+        original_height = self._original_heights.pop(row, current_height)
         header.resizeSection(row, original_height)
         table.setRowHeight(row, original_height)
