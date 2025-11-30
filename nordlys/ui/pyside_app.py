@@ -11,7 +11,6 @@ from PySide6.QtCore import QTimer, Qt, QtMsgType, qInstallMessageHandler
 from PySide6.QtWidgets import QApplication, QMainWindow, QTreeWidgetItem
 
 from ..saft.periods import format_header_period
-from .import_export import ImportExportController
 from .styles import build_stylesheet
 from .window_layout import WindowComponents
 from .window_initializers import (
@@ -30,6 +29,7 @@ if TYPE_CHECKING:  # pragma: no cover - kun for typekontroll
     from ..core.task_runner import TaskRunner
     from .data_controller import SaftDataController
     from .data_manager import SaftAnalytics, SaftDatasetStore
+    from .import_export import ImportExportController
     from .page_manager import PageManager
     from .page_registry import PageRegistry
 
@@ -58,7 +58,7 @@ class NordlysWindow(QMainWindow):
             self.nav_panel,
             scale_factor=self._screen_profile.scale_factor,
         )
-        self._import_controller: Optional[ImportExportController] = None
+        self._import_controller: Optional["ImportExportController"] = None
         self.header_bar.open_requested.connect(self._handle_open_requested)
         self.header_bar.export_requested.connect(self._handle_export_requested)
         self.header_bar.export_pdf_requested.connect(self._handle_export_pdf_requested)

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Optional, Tuple
+from typing import Callable, Optional, Tuple, TYPE_CHECKING
 
 from PySide6.QtWidgets import QApplication, QMainWindow, QStatusBar, QTreeWidgetItem
 
@@ -11,12 +11,14 @@ from ..constants import APP_TITLE
 from ..core.task_runner import TaskRunner
 from .data_controller import SaftDataController
 from .data_manager import SaftAnalytics, SaftDatasetStore
-from .import_export import ImportExportController
 from .navigation_builder import NavigationBuilder
 from .page_manager import PageManager
 from .page_registry import PageRegistry
 from .responsive import ResponsiveLayoutController
 from .window_layout import WindowComponents, setup_main_window
+
+if TYPE_CHECKING:
+    from .import_export import ImportExportController
 
 
 @dataclass(frozen=True)
@@ -148,6 +150,8 @@ def create_import_controller(
     data_controller: SaftDataController,
 ) -> ImportExportController:
     """Lag en import/eksport-kontroller for hovedvinduet."""
+
+    from .import_export import ImportExportController
 
     controller = ImportExportController(
         parent=window,
