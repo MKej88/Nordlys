@@ -141,8 +141,6 @@ class NordlysWindow(QMainWindow):
     def _ensure_import_controller(self) -> ImportExportController:
         self._ensure_startup_completed()
         if self._import_controller is None:
-            from .import_export import ImportExportController
-
             if (
                 self._dataset_store is None
                 or self._task_runner is None
