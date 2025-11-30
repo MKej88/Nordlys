@@ -254,9 +254,7 @@ class _SummaryMetricsTable:
                 else:
                     item.setFlags(item.flags() & ~Qt.ItemIsEditable)
 
-    def _update_money_cell(
-        self, row: int, column: int, value: Optional[float]
-    ) -> None:
+    def _update_money_cell(self, row: int, column: int, value: Optional[float]) -> None:
         target = self.table.item(row, column)
         if target is None:
             target = QTableWidgetItem()
