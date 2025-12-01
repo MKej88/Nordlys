@@ -24,8 +24,7 @@ class AnalysisRow:
 
 
 class SumFunction(Protocol):
-    def __call__(self, *prefixes: str) -> float:
-        ...
+    def __call__(self, *prefixes: str) -> float: ...
 
 
 def _clean_value(value: float) -> float:
@@ -121,9 +120,7 @@ def _calculate_asset_rows(
     korts_fordr_total_py = sum_py("15")
     korts_fordr_ovrige = korts_fordr_total - kundefordr
     korts_fordr_ovrige_py = korts_fordr_total_py - kundefordr_py
-    _add_row(
-        "Andre kortsiktige fordringer", korts_fordr_ovrige, korts_fordr_ovrige_py
-    )
+    _add_row("Andre kortsiktige fordringer", korts_fordr_ovrige, korts_fordr_ovrige_py)
 
     mva = sum_ub("16")
     mva_py = sum_py("16")
@@ -131,15 +128,11 @@ def _calculate_asset_rows(
 
     forskudd = sum_ub("17")
     forskudd_py = sum_py("17")
-    _add_row(
-        "Forskuddsbetalte kostnader og påløpte inntekter", forskudd, forskudd_py
-    )
+    _add_row("Forskuddsbetalte kostnader og påløpte inntekter", forskudd, forskudd_py)
 
     finans_kortsiktig = sum_ub("18")
     finans_kortsiktig_py = sum_py("18")
-    _add_row(
-        "Kortsiktige finansinvesteringer", finans_kortsiktig, finans_kortsiktig_py
-    )
+    _add_row("Kortsiktige finansinvesteringer", finans_kortsiktig, finans_kortsiktig_py)
 
     bank = sum_ub("19")
     bank_py = sum_py("19")
@@ -240,9 +233,7 @@ def compute_balance_analysis(prepared: "pd.DataFrame") -> List[AnalysisRow]:
     """Beregner balanseaggregater basert på kontonummer-prefikser."""
 
     sum_ub, sum_py = _create_sum_functions(prepared)
-    assets_rows, sum_eiendeler, sum_eiendeler_py = _calculate_asset_rows(
-        sum_ub, sum_py
-    )
+    assets_rows, sum_eiendeler, sum_eiendeler_py = _calculate_asset_rows(sum_ub, sum_py)
     ek_rows, sum_ek_gjeld, sum_ek_gjeld_py = _calculate_equity_and_liabilities_rows(
         sum_ub, sum_py
     )
