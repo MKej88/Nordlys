@@ -82,6 +82,20 @@ def test_customer_sales_balance_requires_both_sources() -> None:
     assert store.customer_sales_total is None
 
 
+def test_prepare_customer_sales_fills_missing_names() -> None:
+    store = SaftDatasetStore()
+    store._cust_name_by_nr = {"1": "Kari Kunde"}  # type: ignore[attr-defined]
+
+    df = pd.DataFrame(
+        {"Kundenr": ["1"], "Kundenavn": [float("nan")], "Omsetning eks mva": [10.0]}
+    )
+
+    prepared = store._prepare_customer_sales(df)  # type: ignore[attr-defined]
+
+    assert prepared is not None
+    assert prepared.loc[0, "Kundenavn"] == "Kari Kunde"
+
+
 def test_dataset_label_includes_company_name_first() -> None:
     store = SaftDatasetStore()
     result = _make_result(
@@ -196,6 +210,24 @@ def test_apply_batch_blocks_multiple_companies_in_same_batch() -> None:
         store.apply_batch([first, other])
 
 
+def test_prepare_supplier_purchases_fills_missing_names_from_number_lookup() -> None:
+    store = SaftDatasetStore()
+    store._sup_name_by_nr = {"77": "Leverandør AS"}  # type: ignore[attr-defined]
+
+    df = pd.DataFrame(
+        {
+            "Leverandørnr": ["77"],
+            "Leverandørnavn": [float("nan")],
+            "Innkjøp eks mva": [20.0],
+        }
+    )
+
+    prepared = store._prepare_supplier_purchases(df)  # type: ignore[attr-defined]
+
+    assert prepared is not None
+    assert prepared.loc[0, "Leverandørnavn"] == "Leverandør AS"
+
+
 def test_recent_summaries_limits_and_marks_current() -> None:
     store = SaftDatasetStore()
     results: List[SaftLoadResult] = []
@@ -243,7 +275,7 @@ def test_prepare_dataframe_with_previous_fills_missing_history() -> None:
     assert history[1] == pytest.approx(0.0)
 
 
-def test_prepare_supplier_purchases_fills_missing_names() -> None:
+def test_prepare_supplier_purchases_fills_missing_names_from_supplier_ids() -> None:
     store = SaftDatasetStore()
     supplier = SupplierInfo(
         supplier_id="SUP-1",
