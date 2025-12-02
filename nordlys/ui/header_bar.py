@@ -42,6 +42,14 @@ class HeaderBar(QWidget):
         self.title_label.setFont(title_font)
         layout.addWidget(self.title_label, 1)
 
+        self.dataset_label = QLabel("Datasett")
+        self.dataset_label.setObjectName("datasetLabel")
+        self.dataset_label.setToolTip(
+            "Bytt mellom importerte SAF-T-filer uten å lukke vinduet."
+        )
+        self.dataset_label.setVisible(False)
+        layout.addWidget(self.dataset_label)
+
         self.dataset_combo = QComboBox()
         self.dataset_combo.setObjectName("datasetCombo")
         self.dataset_combo.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
@@ -90,7 +98,9 @@ class HeaderBar(QWidget):
         combo.clear()
         for key, label in entries:
             combo.addItem(label, userData=key)
-        combo.setVisible(bool(entries))
+        has_entries = bool(entries)
+        combo.setVisible(has_entries)
+        self.dataset_label.setVisible(has_entries)
         if current_key is not None:
             self.select_dataset(current_key)
         combo.blockSignals(False)
@@ -116,6 +126,7 @@ class HeaderBar(QWidget):
         combo.blockSignals(True)
         combo.clear()
         combo.setVisible(False)
+        self.dataset_label.setVisible(False)
         combo.blockSignals(False)
 
     # endregion
