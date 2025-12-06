@@ -21,6 +21,7 @@ from .customer_analysis import (
     build_customer_supplier_analysis,
 )
 from .trial_balance import compute_trial_balance
+from .xml_helpers import NamespaceMap
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -72,7 +73,7 @@ class _ParsedSaftContent:
     tree: ElementTree
     root: Element
     header: Optional["saft.SaftHeader"]
-    namespaces: Dict[str, str]
+    namespaces: NamespaceMap
 
 
 @dataclass
