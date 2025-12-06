@@ -240,9 +240,9 @@ def test_recent_summaries_limits_and_marks_current() -> None:
             f"fil{idx}.xml",
             analysis_year=2020 + idx,
             fiscal_year=str(2020 + idx),
-            summary=summary,
-        )
-        results.append(result)
+        summary=summary,
+    )
+    results.append(result)
 
     store.apply_batch(results)
     assert store.activate("fil5.xml")
@@ -256,6 +256,31 @@ def test_recent_summaries_limits_and_marks_current() -> None:
     assert snapshots[0].label == store.dataset_label(results[1])
     margins = [snap.summary.get("arsresultat") for snap in snapshots]
     assert margins[0] == pytest.approx(20.0)
+
+
+def test_activate_merges_previous_year_revenue() -> None:
+    store = SaftDatasetStore()
+    previous = _make_result(
+        "2023.xml",
+        analysis_year=2023,
+        fiscal_year="2023",
+        summary={"driftsinntekter": 500.0, "sum_inntekter": 500.0},
+    )
+    current = _make_result(
+        "2024.xml",
+        analysis_year=2024,
+        fiscal_year="2024",
+        summary={"driftsinntekter": 600.0},
+    )
+
+    store.apply_batch([previous, current])
+
+    assert store.activate("2024.xml")
+    summary = store.saft_summary
+    assert summary is not None
+    assert summary["driftsinntekter"] == pytest.approx(600.0)
+    assert summary["driftsinntekter_fjor"] == pytest.approx(500.0)
+    assert summary["sum_inntekter_fjor"] == pytest.approx(500.0)
 
 
 def test_prepare_dataframe_with_previous_fills_missing_history() -> None:
