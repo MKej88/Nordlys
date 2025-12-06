@@ -180,7 +180,9 @@ def _extract_line_customer_id(line: ET.Element, ns: NamespaceMap) -> Optional[st
     return None
 
 
-def _build_transaction_scope(transaction: ET.Element, ns: NamespaceMap) -> TransactionScope:
+def _build_transaction_scope(
+    transaction: ET.Element, ns: NamespaceMap
+) -> TransactionScope:
     """Henter de mest brukte feltene fra et bilag."""
 
     date_element = _find(transaction, "n1:TransactionDate", ns)
@@ -249,7 +251,9 @@ def _resolve_transaction_customer(
     if transaction_customer_id:
         return transaction_customer_id
     return _lookup_description_customer(
-        scope.voucher_description, scope.transaction_description, description_customer_map
+        scope.voucher_description,
+        scope.transaction_description,
+        description_customer_map,
     )
 
 
@@ -278,7 +282,9 @@ def _aggregate_transaction_lines(
 
     for line in lines:
         account_element = _find(line, "n1:AccountID", ns)
-        account_text = _clean_text(account_element.text if account_element is not None else None)
+        account_text = _clean_text(
+            account_element.text if account_element is not None else None
+        )
         if not account_text:
             continue
 
@@ -293,7 +299,9 @@ def _aggregate_transaction_lines(
             revenue_total += credit - debit
 
         customer_id = _extract_line_customer_id(line, ns)
-        is_receivable_account = bool(normalized_digits and normalized_digits.startswith("15"))
+        is_receivable_account = bool(
+            normalized_digits and normalized_digits.startswith("15")
+        )
         should_include_line = is_receivable_account or customer_id is not None
 
         if should_include_line:
@@ -309,7 +317,9 @@ def _aggregate_transaction_lines(
                             description_customer_map,
                         )
                 if fallback_customer_id is None:
-                    fallback_customer_id = get_tx_customer_id(transaction, ns, lines=lines)
+                    fallback_customer_id = get_tx_customer_id(
+                        transaction, ns, lines=lines
+                    )
                 customer_id = fallback_customer_id
             if not customer_id:
                 continue
@@ -503,9 +513,7 @@ def _compute_customer_sales_map(
         if not aggregation.vat_found and not aggregation.has_revenue_account:
             continue
 
-        gross_per_customer, vat_share_per_customer = _prepare_gross_amounts(
-            aggregation
-        )
+        gross_per_customer, vat_share_per_customer = _prepare_gross_amounts(aggregation)
         if not gross_per_customer:
             continue
 
