@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import xml.etree.ElementTree as ET
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
@@ -35,6 +36,33 @@ __all__ = [
 ]
 
 _DESCRIPTION_BUCKET_NAMES: set[str] = set(DESCRIPTION_BUCKET_MAP)
+
+
+@dataclass
+class TransactionScope:
+    """Innsamlingsdata for ett bilag."""
+
+    date: Optional[date]
+    voucher_description: Optional[str]
+    transaction_description: Optional[str]
+    period_year: Optional[int]
+    period_number: Optional[int]
+
+
+@dataclass
+class TransactionLineAggregation:
+    """Aggregerte verdier for linjer i ett bilag."""
+
+    gross_per_customer: Dict[str, Decimal]
+    vat_share_per_customer: Dict[str, Decimal]
+    vat_total: Decimal
+    vat_found: bool
+    has_revenue_account: bool
+    revenue_total: Decimal
+    purchase_total: Decimal
+    has_purchase: bool
+    transaction_customer_id: Optional[str]
+    line_summaries: List[Tuple[str, Optional[str], Decimal, Decimal]]
 
 
 def _build_description_customer_map(
@@ -152,6 +180,266 @@ def _extract_line_customer_id(line: ET.Element, ns: NamespaceMap) -> Optional[st
     return None
 
 
+def _build_transaction_scope(transaction: ET.Element, ns: NamespaceMap) -> TransactionScope:
+    """Henter de mest brukte feltene fra et bilag."""
+
+    date_element = _find(transaction, "n1:TransactionDate", ns)
+    tx_date = _ensure_date(date_element.text if date_element is not None else None)
+    voucher_description, transaction_description = _extract_transaction_descriptions(
+        transaction, ns
+    )
+    period_year, period_number = _extract_transaction_period(transaction, ns)
+    return TransactionScope(
+        date=tx_date,
+        voucher_description=voucher_description,
+        transaction_description=transaction_description,
+        period_year=period_year,
+        period_number=period_number,
+    )
+
+
+def _transaction_in_scope(
+    scope: TransactionScope,
+    *,
+    start_date: Optional[date],
+    end_date: Optional[date],
+    year: Optional[int],
+    last_period: Optional[int],
+    use_range: bool,
+) -> bool:
+    """Avgjør om bilaget skal være med i analysen."""
+
+    if use_range:
+        if scope.date is None:
+            return False
+        if start_date and scope.date < start_date:
+            return False
+        if end_date and scope.date > end_date:
+            return False
+        return True
+
+    if year is None:
+        return False
+
+    period_year = scope.period_year if scope.period_year is not None else None
+    if period_year is None and scope.date is not None:
+        period_year = scope.date.year
+    if period_year is None or period_year != year:
+        return False
+
+    if last_period is None:
+        return True
+
+    period_number = scope.period_number if scope.period_number is not None else None
+    if period_number is None and scope.date is not None:
+        period_number = scope.date.month
+    return period_number is not None and period_number <= last_period
+
+
+def _resolve_transaction_customer(
+    transaction: ET.Element,
+    ns: NamespaceMap,
+    lines: List[ET.Element],
+    scope: TransactionScope,
+    description_customer_map: Dict[str, str],
+) -> Optional[str]:
+    """Finn best mulig CustomerID for bilaget."""
+
+    transaction_customer_id = get_tx_customer_id(transaction, ns, lines=lines)
+    if transaction_customer_id:
+        return transaction_customer_id
+    return _lookup_description_customer(
+        scope.voucher_description, scope.transaction_description, description_customer_map
+    )
+
+
+def _aggregate_transaction_lines(
+    transaction: ET.Element,
+    lines: List[ET.Element],
+    ns: NamespaceMap,
+    *,
+    include_suppliers: bool,
+    description_customer_map: Dict[str, str],
+    scope: TransactionScope,
+    transaction_customer_id: Optional[str],
+) -> TransactionLineAggregation:
+    """Samler opp summer per bilag før fordeling av mva."""
+
+    gross_per_customer: Dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
+    vat_share_per_customer: Dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
+    vat_total = Decimal("0")
+    vat_found = False
+    has_revenue_account = False
+    revenue_total = Decimal("0")
+    purchase_total = Decimal("0")
+    has_purchase = False
+    line_summaries: List[Tuple[str, Optional[str], Decimal, Decimal]] = []
+    fallback_customer_id: Optional[str] = transaction_customer_id
+
+    for line in lines:
+        account_element = _find(line, "n1:AccountID", ns)
+        account_text = _clean_text(account_element.text if account_element is not None else None)
+        if not account_text:
+            continue
+
+        normalized_digits = _normalize_account_key(account_text)
+        normalized = normalized_digits or account_text
+
+        debit = get_amount(line, "DebitAmount", ns)
+        credit = get_amount(line, "CreditAmount", ns)
+        line_summaries.append((normalized, normalized_digits, debit, credit))
+        if _is_revenue_account(normalized):
+            has_revenue_account = True
+            revenue_total += credit - debit
+
+        customer_id = _extract_line_customer_id(line, ns)
+        is_receivable_account = bool(normalized_digits and normalized_digits.startswith("15"))
+        should_include_line = is_receivable_account or customer_id is not None
+
+        if should_include_line:
+            if not customer_id:
+                if not is_receivable_account:
+                    continue
+                if fallback_customer_id is None:
+                    fallback_customer_id = transaction_customer_id
+                    if fallback_customer_id is None:
+                        fallback_customer_id = _lookup_description_customer(
+                            scope.voucher_description,
+                            scope.transaction_description,
+                            description_customer_map,
+                        )
+                if fallback_customer_id is None:
+                    fallback_customer_id = get_tx_customer_id(transaction, ns, lines=lines)
+                customer_id = fallback_customer_id
+            if not customer_id:
+                continue
+            amount = debit - credit
+            if amount == 0:
+                continue
+            gross_per_customer[customer_id] += amount
+            if debit > 0:
+                vat_share_per_customer[customer_id] += debit
+        elif normalized.startswith("27"):
+            vat_found = True
+            vat_total += credit - debit
+
+        if include_suppliers and normalized and _is_cost_account(normalized):
+            has_purchase = True
+            purchase_total += debit - credit
+
+    return TransactionLineAggregation(
+        gross_per_customer=gross_per_customer,
+        vat_share_per_customer=vat_share_per_customer,
+        vat_total=vat_total,
+        vat_found=vat_found,
+        has_revenue_account=has_revenue_account,
+        revenue_total=revenue_total,
+        purchase_total=purchase_total,
+        has_purchase=has_purchase,
+        transaction_customer_id=transaction_customer_id,
+        line_summaries=line_summaries,
+    )
+
+
+def _apply_revenue_diff(
+    gross_per_customer: Dict[str, Decimal],
+    aggregation: TransactionLineAggregation,
+) -> Dict[str, Decimal]:
+    expected_gross_total = aggregation.revenue_total + aggregation.vat_total
+    gross_sum = sum(gross_per_customer.values(), Decimal("0"))
+    if aggregation.has_revenue_account and expected_gross_total != gross_sum:
+        diff = expected_gross_total - gross_sum
+        if diff != 0:
+            target_customer: Optional[str] = aggregation.transaction_customer_id
+            if not target_customer:
+                if len(gross_per_customer) == 1:
+                    target_customer = next(iter(gross_per_customer))
+                else:
+                    target_customer = max(
+                        gross_per_customer.items(), key=lambda item: abs(item[1])
+                    )[0]
+            if target_customer:
+                gross_per_customer[target_customer] = (
+                    gross_per_customer.get(target_customer, Decimal("0")) + diff
+                )
+    return gross_per_customer
+
+
+def _prepare_gross_amounts(
+    aggregation: TransactionLineAggregation,
+) -> Tuple[Dict[str, Decimal], Dict[str, Decimal]]:
+    gross_per_customer = {
+        customer_id: amount
+        for customer_id, amount in aggregation.gross_per_customer.items()
+        if amount != 0
+    }
+    if not gross_per_customer and aggregation.transaction_customer_id:
+        fallback_gross = Decimal("0")
+        used_revenue_basis = False
+        for normalized, normalized_digits, debit, credit in aggregation.line_summaries:
+            if normalized and _is_revenue_account(normalized):
+                fallback_gross += credit - debit
+                used_revenue_basis = True
+                continue
+            if normalized_digits and normalized_digits.startswith("27"):
+                fallback_gross += credit - debit
+                used_revenue_basis = True
+        if used_revenue_basis and fallback_gross != 0:
+            gross_per_customer[aggregation.transaction_customer_id] = fallback_gross
+    if not gross_per_customer:
+        return {}, {}
+
+    gross_per_customer = _apply_revenue_diff(gross_per_customer, aggregation)
+    vat_share_per_customer = {
+        customer_id: share
+        for customer_id, share in aggregation.vat_share_per_customer.items()
+        if share > 0 and customer_id in gross_per_customer
+    }
+    return gross_per_customer, vat_share_per_customer
+
+
+def _build_share_basis(
+    gross_per_customer: Dict[str, Decimal],
+    vat_share_per_customer: Dict[str, Decimal],
+) -> Tuple[Dict[str, Decimal], Decimal]:
+    vat_share_total = sum(vat_share_per_customer.values(), Decimal("0"))
+    if vat_share_total > 0:
+        share_basis_per_customer = dict(vat_share_per_customer)
+        share_total = vat_share_total
+        for customer_id, gross_amount in gross_per_customer.items():
+            if customer_id in share_basis_per_customer:
+                continue
+            fallback_share = abs(gross_amount)
+            if fallback_share == 0:
+                continue
+            share_basis_per_customer[customer_id] = fallback_share
+            share_total += fallback_share
+    else:
+        share_basis_per_customer = gross_per_customer
+        share_total = sum(gross_per_customer.values(), Decimal("0"))
+    return share_basis_per_customer, share_total
+
+
+def _update_customer_totals(
+    gross_per_customer: Dict[str, Decimal],
+    share_basis_per_customer: Dict[str, Decimal],
+    share_total: Decimal,
+    vat_total: Decimal,
+    customer_totals: Dict[str, Decimal],
+    customer_counts: Dict[str, int],
+) -> None:
+    for customer_id, gross_amount in gross_per_customer.items():
+        share_basis = share_basis_per_customer.get(customer_id, Decimal("0"))
+        if share_basis == 0 or share_total == 0:
+            continue
+        share = share_basis / share_total
+        net_amount = gross_amount - (vat_total * share)
+        if net_amount == 0:
+            continue
+        customer_totals[customer_id] += net_amount
+        customer_counts[customer_id] += 1
+
+
 def _compute_customer_sales_map(
     root: ET.Element,
     ns: NamespaceMap,
@@ -178,191 +466,63 @@ def _compute_customer_sales_map(
         if not lines_list:
             continue
 
-        date_element = _find(transaction, "n1:TransactionDate", ns)
-        tx_date = _ensure_date(date_element.text if date_element is not None else None)
-        voucher_description, transaction_description = (
-            _extract_transaction_descriptions(transaction, ns)
-        )
-
-        if use_range:
-            if tx_date is None:
-                continue
-            if start_date and tx_date < start_date:
-                continue
-            if end_date and tx_date > end_date:
-                continue
-        else:
-            if year is None:
-                continue
-            period_year, period_number = _extract_transaction_period(transaction, ns)
-            if period_year is None and tx_date is not None:
-                period_year = tx_date.year
-            if period_year is None or period_year != year:
-                continue
-            if last_period is not None:
-                if period_number is None and tx_date is not None:
-                    period_number = tx_date.month
-                if period_number is None or period_number > last_period:
-                    continue
-
-        gross_per_customer: Dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
-        vat_total = Decimal("0")
-        vat_found = False
-        has_revenue_account = False
-        vat_share_per_customer: Dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
-        revenue_total = Decimal("0")
-        purchase_total = Decimal("0")
-        has_purchase = False
-        transaction_customer_id = get_tx_customer_id(transaction, ns, lines=lines_list)
-        if not transaction_customer_id:
-            transaction_customer_id = _lookup_description_customer(
-                voucher_description, transaction_description, description_customer_map
-            )
-        fallback_customer_id: Optional[str] = transaction_customer_id
-        line_summaries: List[Tuple[str, Optional[str], Decimal, Decimal]] = []
-
-        for line in lines_list:
-            account_element = _find(line, "n1:AccountID", ns)
-            account_text = _clean_text(
-                account_element.text if account_element is not None else None
-            )
-            if not account_text:
-                continue
-
-            normalized_digits = _normalize_account_key(account_text)
-            normalized = normalized_digits or account_text
-
-            debit = get_amount(line, "DebitAmount", ns)
-            credit = get_amount(line, "CreditAmount", ns)
-            line_summaries.append((normalized, normalized_digits, debit, credit))
-            if _is_revenue_account(normalized):
-                has_revenue_account = True
-                revenue_total += credit - debit
-
-            customer_id = _extract_line_customer_id(line, ns)
-            is_receivable_account = bool(
-                normalized_digits and normalized_digits.startswith("15")
-            )
-            should_include_line = is_receivable_account or customer_id is not None
-
-            if should_include_line:
-                if not customer_id:
-                    if not is_receivable_account:
-                        continue
-                    if fallback_customer_id is None:
-                        fallback_customer_id = transaction_customer_id
-                        if fallback_customer_id is None:
-                            fallback_customer_id = _lookup_description_customer(
-                                voucher_description,
-                                transaction_description,
-                                description_customer_map,
-                            )
-                    if fallback_customer_id is None:
-                        fallback_customer_id = get_tx_customer_id(
-                            transaction, ns, lines=lines_list
-                        )
-                    customer_id = fallback_customer_id
-                if not customer_id:
-                    continue
-                amount = debit - credit
-                if amount == 0:
-                    continue
-                gross_per_customer[customer_id] += amount
-                if debit > 0:
-                    vat_share_per_customer[customer_id] += debit
-            elif normalized.startswith("27"):
-                vat_found = True
-                vat_total += credit - debit
-
-            if include_suppliers and normalized and _is_cost_account(normalized):
-                has_purchase = True
-                purchase_total += debit - credit
-
-        if include_suppliers and has_purchase:
-            supplier_id = get_tx_supplier_id(transaction, ns, lines=lines_list)
-            if supplier_id:
-                supplier_totals[supplier_id] += purchase_total
-                supplier_counts[supplier_id] += 1
-
-        if not vat_found and not has_revenue_account:
+        scope = _build_transaction_scope(transaction, ns)
+        if not _transaction_in_scope(
+            scope,
+            start_date=start_date,
+            end_date=end_date,
+            year=year,
+            last_period=last_period,
+            use_range=use_range,
+        ):
             continue
 
-        gross_per_customer = {
-            customer_id: amount
-            for customer_id, amount in gross_per_customer.items()
-            if amount != 0
-        }
-        if not gross_per_customer and transaction_customer_id:
-            fallback_gross = Decimal("0")
-            used_revenue_basis = False
-            for normalized, normalized_digits, debit, credit in line_summaries:
-                if normalized and _is_revenue_account(normalized):
-                    fallback_gross += credit - debit
-                    used_revenue_basis = True
-                    continue
-                if normalized_digits and normalized_digits.startswith("27"):
-                    fallback_gross += credit - debit
-                    used_revenue_basis = True
-            if used_revenue_basis and fallback_gross != 0:
-                gross_per_customer[transaction_customer_id] = fallback_gross
+        transaction_customer_id = _resolve_transaction_customer(
+            transaction,
+            ns,
+            lines_list,
+            scope,
+            description_customer_map,
+        )
+        aggregation = _aggregate_transaction_lines(
+            transaction,
+            lines_list,
+            ns,
+            include_suppliers=include_suppliers,
+            description_customer_map=description_customer_map,
+            scope=scope,
+            transaction_customer_id=transaction_customer_id,
+        )
+
+        if include_suppliers and aggregation.has_purchase:
+            supplier_id = get_tx_supplier_id(transaction, ns, lines=lines_list)
+            if supplier_id:
+                supplier_totals[supplier_id] += aggregation.purchase_total
+                supplier_counts[supplier_id] += 1
+
+        if not aggregation.vat_found and not aggregation.has_revenue_account:
+            continue
+
+        gross_per_customer, vat_share_per_customer = _prepare_gross_amounts(
+            aggregation
+        )
         if not gross_per_customer:
             continue
 
-        expected_gross_total = revenue_total + vat_total
-        gross_sum = sum(gross_per_customer.values(), Decimal("0"))
-        if has_revenue_account and expected_gross_total != gross_sum:
-            diff = expected_gross_total - gross_sum
-            if diff != 0:
-                target_customer: Optional[str] = transaction_customer_id
-                if not target_customer:
-                    if len(gross_per_customer) == 1:
-                        target_customer = next(iter(gross_per_customer))
-                    else:
-                        target_customer = max(
-                            gross_per_customer.items(), key=lambda item: abs(item[1])
-                        )[0]
-                if target_customer:
-                    gross_per_customer[target_customer] = (
-                        gross_per_customer.get(target_customer, Decimal("0")) + diff
-                    )
-
-        vat_share_per_customer = {
-            customer_id: share
-            for customer_id, share in vat_share_per_customer.items()
-            if share > 0 and customer_id in gross_per_customer
-        }
-
-        vat_share_total = sum(vat_share_per_customer.values(), Decimal("0"))
-        share_basis_per_customer: Dict[str, Decimal]
-        share_total: Decimal
-        if vat_share_total > 0:
-            share_basis_per_customer = dict(vat_share_per_customer)
-            share_total = vat_share_total
-            for customer_id, gross_amount in gross_per_customer.items():
-                if customer_id in share_basis_per_customer:
-                    continue
-                fallback_share = abs(gross_amount)
-                if fallback_share == 0:
-                    continue
-                share_basis_per_customer[customer_id] = fallback_share
-                share_total += fallback_share
-        else:
-            share_basis_per_customer = gross_per_customer
-            share_total = sum(gross_per_customer.values(), Decimal("0"))
-
+        share_basis_per_customer, share_total = _build_share_basis(
+            gross_per_customer, vat_share_per_customer
+        )
         if share_total == 0:
             continue
 
-        for customer_id, gross_amount in gross_per_customer.items():
-            share_basis = share_basis_per_customer.get(customer_id, Decimal("0"))
-            if share_basis == 0:
-                continue
-            share = share_basis / share_total
-            net_amount = gross_amount - (vat_total * share)
-            if net_amount == 0:
-                continue
-            customer_totals[customer_id] += net_amount
-            customer_counts[customer_id] += 1
+        _update_customer_totals(
+            gross_per_customer,
+            share_basis_per_customer,
+            share_total,
+            aggregation.vat_total,
+            customer_totals,
+            customer_counts,
+        )
 
     return customer_totals, customer_counts, supplier_totals, supplier_counts
 
