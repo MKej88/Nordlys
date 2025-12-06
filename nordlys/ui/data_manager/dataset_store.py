@@ -146,7 +146,9 @@ class SaftDatasetStore:
         self._current_key = key
         self._current_result = result
         self._header = result.header
-        self._saft_summary = result.summary
+        self._saft_summary = self._build_augmented_summary(
+            result.summary, previous_result.summary if previous_result else None
+        )
         self._validation_result = result.validation
         self._current_file = result.file_path
         self._industry = result.industry
@@ -753,5 +755,47 @@ class SaftDatasetStore:
                     if norm_key:
                         self._sup_name_by_nr[norm_key] = name
                     self._sup_name_by_nr[key] = name
+
+    def _build_augmented_summary(
+        self,
+        summary: Optional[Dict[str, float]],
+        previous_summary: Optional[Dict[str, float]],
+    ) -> Dict[str, float]:
+        base = dict(summary or {})
+        if not previous_summary:
+            return base
+
+        prev_revenue = self._first_numeric(
+            previous_summary, "driftsinntekter", "sum_inntekter"
+        )
+        prev_income = self._first_numeric(
+            previous_summary, "sum_inntekter", "driftsinntekter"
+        )
+
+        if prev_revenue is not None:
+            base["driftsinntekter_fjor"] = prev_revenue
+        if prev_income is not None:
+            base["sum_inntekter_fjor"] = prev_income
+        return base
+
+    def _first_numeric(self, mapping: Dict[str, object], *keys: str) -> Optional[float]:
+        for key in keys:
+            if key not in mapping:
+                continue
+            value = self._float_or_none(mapping[key])
+            if value is not None:
+                return value
+        return None
+
+    def _float_or_none(self, value: object) -> Optional[float]:
+        try:
+            if pd.isna(value):  # type: ignore[arg-type]
+                return None
+        except Exception:
+            pass
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
 
     # endregion
