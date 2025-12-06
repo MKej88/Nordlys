@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import os
 import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 from threading import Lock
 from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Sequence
+from xml.etree.ElementTree import Element, ElementTree
 
 from ..helpers.lazy_imports import lazy_import, lazy_pandas
 from ..industry_groups import IndustryClassification
@@ -20,6 +21,7 @@ from .customer_analysis import (
     build_customer_supplier_analysis,
 )
 from .trial_balance import compute_trial_balance
+from .xml_helpers import NamespaceMap
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -33,6 +35,7 @@ if TYPE_CHECKING:
 
     from .. import saft
     from .. import saft_customers
+    from .trial_balance import TrialBalanceResult
 else:
     pd = lazy_pandas()
     saft = lazy_import("nordlys.saft")
@@ -63,6 +66,105 @@ class SaftLoadResult:
     industry_error: Optional[str] = None
 
 
+@dataclass
+class _ParsedSaftContent:
+    """Holder på parsingresultater for en SAF-T-fil."""
+
+    tree: ElementTree
+    root: Element
+    header: Optional["saft.SaftHeader"]
+    namespaces: NamespaceMap
+
+
+@dataclass
+class _SaftFutures:
+    """Samler futures slik at de er lette å håndtere samlet."""
+
+    validation: Future["saft.SaftValidationResult"]
+    enrichment: Future[BrregEnrichment]
+    dataframe: Future["pd.DataFrame"]
+    customers: Future[Dict[str, "saft.CustomerInfo"]]
+    suppliers: Future[Dict[str, "saft.SupplierInfo"]]
+    analysis: Future[CustomerSupplierAnalysis]
+    trial_balance: Optional[Future["TrialBalanceResult"]]
+
+
+def _parse_saft_content(file_path: str) -> _ParsedSaftContent:
+    """Parser SAF-T-filen og returnerer nødvendige elementer."""
+
+    tree, ns = saft_customers.parse_saft(file_path)
+    root = tree.getroot()
+    if root is None:  # pragma: no cover - guard mot korrupt XML
+        raise ValueError("SAF-T-filen mangler et rot-element.")
+    header = saft.parse_saft_header(root)
+    return _ParsedSaftContent(tree=tree, root=root, header=header, namespaces=ns)
+
+
+def _submit_background_tasks(
+    executor: ThreadPoolExecutor,
+    *,
+    file_path: str,
+    file_name: str,
+    use_streaming: bool,
+    parsed: _ParsedSaftContent,
+    report_progress: Callable[[int, str], None],
+) -> _SaftFutures:
+    """Starter de mest tunge oppgavene i bakgrunnen."""
+
+    trial_balance_future: Optional[Future["TrialBalanceResult"]] = None
+    if use_streaming:
+        report_progress(5, f"Leser hovedbok (streaming) for {file_name}")
+        trial_balance_future = executor.submit(
+            compute_trial_balance, file_path, streaming_enabled=True
+        )
+
+    validation_future = executor.submit(
+        saft.validate_saft_against_xsd,
+        parsed.tree,
+        parsed.header.file_version if parsed.header else None,
+    )
+    enrichment_future = executor.submit(enrich_from_header, parsed.header)
+    dataframe_future = executor.submit(saft.parse_saldobalanse, parsed.root)
+    customers_future = executor.submit(saft.parse_customers, parsed.root)
+    suppliers_future = executor.submit(saft.parse_suppliers, parsed.root)
+    analysis_future = executor.submit(
+        build_customer_supplier_analysis,
+        parsed.header,
+        parsed.root,
+        parsed.namespaces,
+    )
+
+    return _SaftFutures(
+        validation=validation_future,
+        enrichment=enrichment_future,
+        dataframe=dataframe_future,
+        customers=customers_future,
+        suppliers=suppliers_future,
+        analysis=analysis_future,
+        trial_balance=trial_balance_future,
+    )
+
+
+def _collect_validation_and_enrichment(
+    futures: _SaftFutures,
+) -> tuple["saft.SaftValidationResult", BrregEnrichment]:
+    """Henter resultater for validering og beriking."""
+
+    return futures.validation.result(), futures.enrichment.result()
+
+
+def _resolve_trial_balance(
+    trial_balance_future: Optional[Future["TrialBalanceResult"]],
+) -> tuple[Optional[Dict[str, Decimal]], Optional[str]]:
+    """Pakker ut resultatet fra prøvebalanseberegningen."""
+
+    if trial_balance_future is None:
+        return None, None
+
+    trial_balance_result = trial_balance_future.result()
+    return trial_balance_result.balance, trial_balance_result.error
+
+
 def load_saft_file(
     file_path: str,
     *,
@@ -84,6 +186,7 @@ def load_saft_file(
     trial_balance: Optional[Dict[str, Decimal]] = None
     trial_balance_error: Optional[str] = None
 
+    header: Optional["saft.SaftHeader"] = None
     validation: Optional["saft.SaftValidationResult"] = None
     enrichment: Optional[BrregEnrichment] = None
 
@@ -91,39 +194,23 @@ def load_saft_file(
     use_streaming = _should_stream_trial_balance(file_path, file_size=file_size)
 
     with ThreadPoolExecutor(max_workers=background_workers) as executor:
-        trial_balance_future = None
-        if use_streaming:
-            _report_progress(5, f"Leser hovedbok (streaming) for {file_name}")
-            trial_balance_future = executor.submit(
-                compute_trial_balance, file_path, streaming_enabled=True
-            )
-
-        tree, ns = saft_customers.parse_saft(file_path)
-        root = tree.getroot()
-        if root is None:  # pragma: no cover - guard mot korrupt XML
-            raise ValueError("SAF-T-filen mangler et rot-element.")
-        header = saft.parse_saft_header(root)
-
-        validation_future = executor.submit(
-            saft.validate_saft_against_xsd,
-            tree,
-            header.file_version if header else None,
-        )
-        enrichment_future = executor.submit(enrich_from_header, header)
-
-        dataframe_future = executor.submit(saft.parse_saldobalanse, root)
-        customers_future = executor.submit(saft.parse_customers, root)
-        suppliers_future = executor.submit(saft.parse_suppliers, root)
-        analysis_future = executor.submit(
-            build_customer_supplier_analysis, header, root, ns
+        parsed = _parse_saft_content(file_path)
+        header = parsed.header
+        futures = _submit_background_tasks(
+            executor,
+            file_path=file_path,
+            file_name=file_name,
+            use_streaming=use_streaming,
+            parsed=parsed,
+            report_progress=_report_progress,
         )
 
-        dataframe = dataframe_future.result()
-        customers = customers_future.result()
-        suppliers = suppliers_future.result()
+        dataframe = futures.dataframe.result()
+        customers = futures.customers.result()
+        suppliers = futures.suppliers.result()
         _report_progress(25, f"Tolker saldobalanse for {file_name}")
 
-        analysis: CustomerSupplierAnalysis = analysis_future.result()
+        analysis: CustomerSupplierAnalysis = futures.analysis.result()
         analysis_year = analysis.analysis_year
         customer_sales = analysis.customer_sales
         supplier_purchases = analysis.supplier_purchases
@@ -135,15 +222,10 @@ def load_saft_file(
 
         _report_progress(75, f"Validerer og beriker data for {file_name}")
 
-        validation = validation_future.result()
-        enrichment = enrichment_future.result()
-        trial_balance_result = (
-            trial_balance_future.result() if trial_balance_future is not None else None
+        validation, enrichment = _collect_validation_and_enrichment(futures)
+        trial_balance, trial_balance_error = _resolve_trial_balance(
+            futures.trial_balance
         )
-
-        if trial_balance_result is not None:
-            trial_balance = trial_balance_result.balance
-            trial_balance_error = trial_balance_result.error
 
     if validation is None:
         raise RuntimeError("Validering av SAF-T kunne ikke fullføres.")

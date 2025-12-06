@@ -1,14 +1,46 @@
 import threading
+from concurrent.futures import Future
 from pathlib import Path
 from threading import Event
 from types import SimpleNamespace
 
+import pytest
 import pandas as pd
 
 from nordlys.saft import loader
 from nordlys.saft.brreg_enrichment import BrregEnrichment
 from nordlys.saft.customer_analysis import CustomerSupplierAnalysis
 from nordlys.saft.validation import SaftValidationResult
+
+
+def test_parse_saft_content_requires_root(monkeypatch):
+    class DummyTree:
+        def getroot(self):
+            return None
+
+    monkeypatch.setattr(
+        loader.saft_customers, "parse_saft", lambda path: (DummyTree(), {})
+    )
+
+    with pytest.raises(ValueError):
+        loader._parse_saft_content("missing.xml")
+
+
+def test_resolve_trial_balance_handles_absent_future():
+    balance, error = loader._resolve_trial_balance(None)
+
+    assert balance is None
+    assert error is None
+
+
+def test_resolve_trial_balance_unpacks_result():
+    future: Future = Future()
+    future.set_result(SimpleNamespace(balance={"diff": "0"}, error=None))
+
+    balance, error = loader._resolve_trial_balance(future)
+
+    assert balance == {"diff": "0"}
+    assert error is None
 
 
 def test_suggest_max_workers_caps_for_heavy_dummy_paths(monkeypatch):
@@ -18,7 +50,7 @@ def test_suggest_max_workers_caps_for_heavy_dummy_paths(monkeypatch):
         "heavy_c": loader.HEAVY_SAFT_FILE_BYTES * 2,
     }
 
-    def fake_stat(self: Path) -> SimpleNamespace:
+    def fake_stat(self: Path, follow_symlinks: bool = True) -> SimpleNamespace:
         return SimpleNamespace(st_size=size_map.get(str(self), 0))
 
     monkeypatch.setattr(Path, "stat", fake_stat)
@@ -143,7 +175,7 @@ def test_loader_streams_trial_balance_for_heavy_files(tmp_path, monkeypatch):
 
     monkeypatch.setattr(loader, "SAFT_STREAMING_ENABLED", False)
 
-    def fake_stat(self: Path) -> SimpleNamespace:
+    def fake_stat(self: Path, follow_symlinks: bool = True) -> SimpleNamespace:
         return SimpleNamespace(st_size=loader.HEAVY_SAFT_STREAMING_BYTES + 1)
 
     monkeypatch.setattr(Path, "stat", fake_stat)
@@ -207,7 +239,7 @@ def test_suggest_max_workers_caps_for_two_heavy_files(monkeypatch):
         "small": loader.HEAVY_SAFT_FILE_BYTES - 1,
     }
 
-    def fake_stat(self: Path) -> SimpleNamespace:
+    def fake_stat(self: Path, follow_symlinks: bool = True) -> SimpleNamespace:
         return SimpleNamespace(st_size=size_map.get(str(self), 0))
 
     monkeypatch.setattr(Path, "stat", fake_stat)
