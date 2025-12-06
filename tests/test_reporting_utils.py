@@ -70,5 +70,7 @@ def test_iter_transactions_empty(tmp_path_factory: pytest.TempPathFactory) -> No
         ("ikke en dato", None),
     ],
 )
-def test_ensure_date_handles_common_inputs(value: object, expected: date | None) -> None:
+def test_ensure_date_handles_common_inputs(
+    value: object, expected: date | None
+) -> None:
     assert _ensure_date(value) == expected
