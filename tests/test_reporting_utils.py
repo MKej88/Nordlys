@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import xml.etree.ElementTree as ET
+from datetime import date, datetime
 from pathlib import Path
 from types import GeneratorType
 
 import pytest
 
-from nordlys.saft.reporting_utils import _iter_transactions
+from nordlys.saft.reporting_utils import _ensure_date, _iter_transactions
 from nordlys.saft.xml_helpers import parse_saft
 
 
@@ -58,3 +59,16 @@ def test_iter_transactions_empty(tmp_path_factory: pytest.TempPathFactory) -> No
     transactions = list(_iter_transactions(root, ns_map))
 
     assert transactions == []
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (datetime(2023, 1, 2, 12, 30), date(2023, 1, 2)),
+        (date(2024, 2, 3), date(2024, 2, 3)),
+        ("2025-03-04", date(2025, 3, 4)),
+        ("ikke en dato", None),
+    ],
+)
+def test_ensure_date_handles_common_inputs(value: object, expected: date | None) -> None:
+    assert _ensure_date(value) == expected
