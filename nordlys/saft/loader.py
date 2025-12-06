@@ -63,7 +63,7 @@ class SaftLoadResult:
     brreg_error: Optional[str] = None
     industry: Optional[IndustryClassification] = None
     industry_error: Optional[str] = None
-    
+
 
 @dataclass
 class _ParsedSaftContent:
