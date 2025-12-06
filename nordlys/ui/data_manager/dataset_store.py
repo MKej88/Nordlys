@@ -778,9 +778,7 @@ class SaftDatasetStore:
             base["sum_inntekter_fjor"] = prev_income
         return base
 
-    def _first_numeric(
-        self, mapping: Dict[str, object], *keys: str
-    ) -> Optional[float]:
+    def _first_numeric(self, mapping: Dict[str, object], *keys: str) -> Optional[float]:
         for key in keys:
             if key not in mapping:
                 continue

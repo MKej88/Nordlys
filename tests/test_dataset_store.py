@@ -240,8 +240,8 @@ def test_recent_summaries_limits_and_marks_current() -> None:
             f"fil{idx}.xml",
             analysis_year=2020 + idx,
             fiscal_year=str(2020 + idx),
-        summary=summary,
-    )
+            summary=summary,
+        )
     results.append(result)
 
     store.apply_batch(results)
