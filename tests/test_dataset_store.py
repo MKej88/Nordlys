@@ -242,7 +242,7 @@ def test_recent_summaries_limits_and_marks_current() -> None:
             fiscal_year=str(2020 + idx),
             summary=summary,
         )
-    results.append(result)
+        results.append(result)
 
     store.apply_batch(results)
     assert store.activate("fil5.xml")
