@@ -230,6 +230,50 @@ def test_loader_streams_trial_balance_for_heavy_files(tmp_path, monkeypatch):
     assert trial_balance_calls == [str(xml_path)]
 
 
+def test_compute_trial_balance_handles_amount_errors(tmp_path, monkeypatch):
+    xml_content = """
+    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <Header>
+        <Company>
+          <Name>Test</Name>
+          <RegistrationNumber>999999999</RegistrationNumber>
+        </Company>
+        <AuditFileVersion>1.3</AuditFileVersion>
+      </Header>
+      <SourceDocuments>
+        <GeneralLedgerEntries>
+          <Journals>
+            <Journal>
+              <Transaction>
+                <Line>
+                  <AccountID>1000</AccountID>
+                  <DebitAmount>abc</DebitAmount>
+                  <CreditAmount>0</CreditAmount>
+                </Line>
+              </Transaction>
+            </Journal>
+          </Journals>
+        </GeneralLedgerEntries>
+      </SourceDocuments>
+    </AuditFile>
+    """
+
+    xml_path = tmp_path / "invalid_amount.xml"
+    xml_path.write_text(xml_content)
+
+    parsed = loader._parse_saft_content(str(xml_path))
+
+    def raising_get_amount(*args, **kwargs):
+        raise ValueError("ugyldig beløp")
+
+    monkeypatch.setattr(loader, "get_amount", raising_get_amount)
+
+    result = loader._compute_trial_balance_from_root(parsed, str(xml_path))
+
+    assert result.balance is None
+    assert "ugyldig beløp" in (result.error or "")
+
+
 def test_suggest_max_workers_caps_for_two_heavy_files(monkeypatch):
     size_map = {
         "heavy_a": loader.HEAVY_SAFT_FILE_BYTES + 5,

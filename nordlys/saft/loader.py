@@ -180,11 +180,21 @@ def _compute_trial_balance_from_root(
     total_kredit = Decimal("0")
     journals_path = "n1:SourceDocuments/n1:GeneralLedgerEntries/n1:Journals/n1:Journal"
 
-    for journal in _findall(parsed.root, journals_path, parsed.namespaces):
-        for transaction in _findall(journal, "n1:Transaction", parsed.namespaces):
-            for line in _findall(transaction, "n1:Line", parsed.namespaces):
-                total_debet += get_amount(line, "DebitAmount", parsed.namespaces)
-                total_kredit += get_amount(line, "CreditAmount", parsed.namespaces)
+    try:
+        for journal in _findall(parsed.root, journals_path, parsed.namespaces):
+            for transaction in _findall(journal, "n1:Transaction", parsed.namespaces):
+                for line in _findall(transaction, "n1:Line", parsed.namespaces):
+                    total_debet += get_amount(line, "DebitAmount", parsed.namespaces)
+                    total_kredit += get_amount(line, "CreditAmount", parsed.namespaces)
+    except Exception as exc:  # pragma: no cover - robusthet mot defekte data
+        return TrialBalanceResult(
+            balance=None,
+            error=(
+                "Kunne ikke beregne prøvebalanse for {file}: {exc}".format(
+                    file=Path(file_path).name, exc=exc
+                )
+            ),
+        )
 
     diff = total_debet - total_kredit
     error: Optional[str] = None
