@@ -178,9 +178,7 @@ def _compute_trial_balance_from_root(
 
     total_debet = Decimal("0")
     total_kredit = Decimal("0")
-    journals_path = (
-        "n1:SourceDocuments/n1:GeneralLedgerEntries/n1:Journals/n1:Journal"
-    )
+    journals_path = "n1:SourceDocuments/n1:GeneralLedgerEntries/n1:Journals/n1:Journal"
 
     for journal in _findall(parsed.root, journals_path, parsed.namespaces):
         for transaction in _findall(journal, "n1:Transaction", parsed.namespaces):
