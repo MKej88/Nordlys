@@ -1124,7 +1124,6 @@ class RegnskapsanalysePage(QWidget):
             idx
             for idx in range(1, len(share_columns))
             if idx not in {assessment_col, spacer_col}
-            and share_columns[idx] != "Normal variasjon"
         }
         populate_table(
             self.multi_year_share_table,
@@ -1191,7 +1190,8 @@ class RegnskapsanalysePage(QWidget):
                         item.setBackground(highlight_brush)
                         font.setBold(True)
                     else:
-                        item.setBackground(default_brush)
+                        if item.background() == highlight_brush:
+                            item.setBackground(default_brush)
                         font.setBold(False)
                     item.setFont(font)
         table.viewport().update()
