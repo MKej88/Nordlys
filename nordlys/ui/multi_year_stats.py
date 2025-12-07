@@ -10,6 +10,7 @@ __all__ = [
     "standard_deviation_without_current",
     "normal_variation_text",
     "deviation_assessment",
+    "assessment_level",
 ]
 
 
@@ -65,3 +66,13 @@ def deviation_assessment(
         "Uvanlig avvik som normalt bør forklares (endret drift, "
         "klassifisering, feil mv.)."
     )
+
+
+def assessment_level(text: str) -> Optional[str]:
+    if text.startswith("Helt normal"):
+        return "normal"
+    if text.startswith("Moderat avvik"):
+        return "moderate"
+    if text.startswith("Uvanlig avvik"):
+        return "unusual"
+    return None

@@ -1,6 +1,7 @@
 """Tester for beregning av variasjon i flerårsvisningen."""
 
 from nordlys.ui.multi_year_stats import (
+    assessment_level,
     deviation_assessment,
     normal_variation_text,
     standard_deviation,
@@ -30,3 +31,21 @@ def test_deviation_assessment_categories() -> None:
     assert normal.startswith("Helt normal variasjon")
     assert moderate == "Moderat avvik – vurderes sammen med øvrig informasjon."
     assert unusual.startswith("Uvanlig avvik")
+
+
+def test_assessment_level_mapping() -> None:
+    assert assessment_level(
+        "Helt normal variasjon, som oftest ingen grunn til særskilt oppfølging alene."
+    ) == "normal"
+    assert (
+        assessment_level("Moderat avvik – vurderes sammen med øvrig informasjon.")
+        == "moderate"
+    )
+    assert (
+        assessment_level(
+            "Uvanlig avvik som normalt bør forklares (endret drift, "
+            "klassifisering, feil mv.)"
+        )
+        == "unusual"
+    )
+    assert assessment_level("Ikke vurdert") is None

@@ -40,6 +40,7 @@ from ..tables import (
 )
 from ..widgets import CardFrame
 from ..multi_year_stats import (
+    assessment_level,
     deviation_assessment,
     normal_variation_text,
     standard_deviation_without_current,
@@ -1117,13 +1118,22 @@ class RegnskapsanalysePage(QWidget):
         _percent_row("Annen kostnad", "annen_kost")
         _percent_row("Finanskostnader", "finanskostnader")
 
-        money_cols = set(range(1, len(share_columns)))
+        assessment_col = share_columns.index("Vurdering") if include_average else None
+        spacer_col = spacer_insert_at - 1 if spacer_insert_at is not None else None
+        money_cols = {
+            idx
+            for idx in range(1, len(share_columns))
+            if idx not in {assessment_col, spacer_col}
+            and share_columns[idx] != "Normal variasjon"
+        }
         populate_table(
             self.multi_year_share_table,
             share_columns,
             percent_rows,
             money_cols=money_cols,
         )
+        if assessment_col is not None:
+            self._apply_assessment_styles(self.multi_year_share_table, assessment_col)
         self.multi_year_share_table.show()
         self.multi_year_share_container.show()
         self._schedule_table_height_adjustment(
@@ -1131,6 +1141,25 @@ class RegnskapsanalysePage(QWidget):
         )
         return share_highlight_column
 
+    def _apply_assessment_styles(
+        self, table: QTableWidget, assessment_col: int
+    ) -> None:
+        colors = {
+            "normal": QColor(187, 247, 208),
+            "moderate": QColor(254, 249, 195),
+            "unusual": QColor(254, 226, 226),
+        }
+        with suspend_table_updates(table):
+            for row in range(table.rowCount()):
+                item = table.item(row, assessment_col)
+                if item is None:
+                    continue
+                item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+                level = assessment_level(item.text())
+                if level is None:
+                    continue
+                item.setBackground(QBrush(colors[level]))
+        
     def _multi_year_active_column(self) -> Optional[int]:
         if not self._summary_history:
             return None
