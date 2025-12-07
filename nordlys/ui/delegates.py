@@ -45,23 +45,30 @@ class AnalysisTableDelegate(CompactRowDelegate):
     def paint(self, painter, option, index) -> None:  # type: ignore[override]
         if painter is None or not painter.isActive():
             return
-        display_option = option
+
+        display_option = QStyleOptionViewItem(option)
+        self.initStyleOption(display_option, index)
+
         background = index.data(Qt.BackgroundRole)
         foreground = index.data(Qt.ForegroundRole)
+
         if isinstance(background, QBrush):
-            display_option = QStyleOptionViewItem(option)
+            painter.save()
+            painter.fillRect(display_option.rect, background)
+            painter.restore()
             display_option.backgroundBrush = background
             palette = QPalette(display_option.palette)
             palette.setBrush(QPalette.Base, background)
             palette.setBrush(QPalette.AlternateBase, background)
             display_option.palette = palette
+
         if isinstance(foreground, QBrush):
-            if display_option is option:
-                display_option = QStyleOptionViewItem(option)
             palette = QPalette(display_option.palette)
             palette.setBrush(QPalette.Text, foreground)
             display_option.palette = palette
+
         super().paint(painter, display_option, index)
+
         if not painter.isActive():
             return
         if index.data(TOP_BORDER_ROLE):
