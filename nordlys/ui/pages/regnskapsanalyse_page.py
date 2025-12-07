@@ -1145,11 +1145,11 @@ class RegnskapsanalysePage(QWidget):
         self, table: QTableWidget, assessment_col: int
     ) -> None:
         colors = {
-            "normal": QColor(187, 247, 208),
-            "moderate": QColor(254, 240, 138),
-            "unusual": QColor(254, 202, 202),
+            "normal": QColor(52, 211, 153),
+            "moderate": QColor(251, 191, 36),
+            "unusual": QColor(248, 113, 113),
         }
-        text_color = QBrush(QColor(30, 41, 59))
+        text_color = QBrush(QColor(15, 23, 42))
         with suspend_table_updates(table):
             for row in range(table.rowCount()):
                 item = table.item(row, assessment_col)
@@ -1551,14 +1551,14 @@ class RegnskapsanalysePage(QWidget):
         header_brush = QBrush(QColor(226, 232, 240))
         default_brush = QBrush()
         verdict_colors = {
-            "GOD": QBrush(QColor(34, 197, 94, 160)),
-            "SVAK": QBrush(QColor(250, 204, 21, 160)),
-            "SUNN": QBrush(QColor(74, 222, 128, 160)),
-            "IKKE SUNN": QBrush(QColor(248, 113, 113, 160)),
-            "UNDERSKUDD": QBrush(QColor(239, 68, 68, 160)),
-            "OBS": QBrush(QColor(251, 146, 60, 160)),
-            "SKJØNN": QBrush(QColor(168, 85, 247, 160)),
-            "Mangler grunnlag": QBrush(QColor(203, 213, 225, 160)),
+            "GOD": QBrush(QColor(34, 197, 94)),
+            "SVAK": QBrush(QColor(250, 204, 21)),
+            "SUNN": QBrush(QColor(74, 222, 128)),
+            "IKKE SUNN": QBrush(QColor(248, 113, 113)),
+            "UNDERSKUDD": QBrush(QColor(239, 68, 68)),
+            "OBS": QBrush(QColor(251, 146, 60)),
+            "SKJØNN": QBrush(QColor(168, 85, 247)),
+            "Mangler grunnlag": QBrush(QColor(203, 213, 225)),
         }
         with suspend_table_updates(table):
             for row_idx in range(table.rowCount()):
@@ -1577,6 +1577,7 @@ class RegnskapsanalysePage(QWidget):
                     if not is_header and col_idx == 3:
                         brush = verdict_colors.get(item.text().strip(), default_brush)
                         item.setBackground(brush)
+                        item.setForeground(QBrush(QColor(15, 23, 42)))
                     item.setData(BOTTOM_BORDER_ROLE, False)
                     item.setData(TOP_BORDER_ROLE, False)
         table.viewport().update()
