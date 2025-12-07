@@ -1145,9 +1145,9 @@ class RegnskapsanalysePage(QWidget):
         self, table: QTableWidget, assessment_col: int
     ) -> None:
         colors = {
-            "normal": QColor(52, 211, 153),
-            "moderate": QColor(251, 191, 36),
-            "unusual": QColor(248, 113, 113),
+            "normal": QColor(16, 185, 129),
+            "moderate": QColor(234, 179, 8),
+            "unusual": QColor(239, 68, 68),
         }
         text_color = QBrush(QColor(15, 23, 42))
         with suspend_table_updates(table):
@@ -1159,8 +1159,11 @@ class RegnskapsanalysePage(QWidget):
                 level = assessment_level(item.text())
                 if level is None:
                     continue
-                item.setBackground(QBrush(colors[level]))
+                background = QBrush(colors[level])
+                item.setBackground(background)
+                item.setData(Qt.BackgroundRole, background)
                 item.setForeground(text_color)
+                item.setData(Qt.ForegroundRole, text_color)
 
     def _center_column_text(self, table: QTableWidget, column_name: str) -> None:
         """Midtstiller innholdet i en navngitt kolonne hvis den finnes."""
@@ -1577,7 +1580,10 @@ class RegnskapsanalysePage(QWidget):
                     if not is_header and col_idx == 3:
                         brush = verdict_colors.get(item.text().strip(), default_brush)
                         item.setBackground(brush)
-                        item.setForeground(QBrush(QColor(15, 23, 42)))
+                        item.setData(Qt.BackgroundRole, brush)
+                        text_brush = QBrush(QColor(15, 23, 42))
+                        item.setForeground(text_brush)
+                        item.setData(Qt.ForegroundRole, text_brush)
                     item.setData(BOTTOM_BORDER_ROLE, False)
                     item.setData(TOP_BORDER_ROLE, False)
         table.viewport().update()
