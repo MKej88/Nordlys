@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QPen
-from PySide6.QtWidgets import QStyledItemDelegate
+from PySide6.QtGui import QColor, QPalette, QPen, QBrush
+from PySide6.QtWidgets import QStyleOptionViewItem, QStyledItemDelegate
 
 __all__ = [
     "TOP_BORDER_ROLE",
@@ -45,7 +45,30 @@ class AnalysisTableDelegate(CompactRowDelegate):
     def paint(self, painter, option, index) -> None:  # type: ignore[override]
         if painter is None or not painter.isActive():
             return
-        super().paint(painter, option, index)
+
+        display_option = QStyleOptionViewItem(option)
+        self.initStyleOption(display_option, index)
+
+        background = index.data(Qt.BackgroundRole)
+        foreground = index.data(Qt.ForegroundRole)
+
+        if isinstance(background, QBrush):
+            painter.save()
+            painter.fillRect(display_option.rect, background)
+            painter.restore()
+            display_option.backgroundBrush = background
+            palette = QPalette(display_option.palette)
+            palette.setBrush(QPalette.Base, background)
+            palette.setBrush(QPalette.AlternateBase, background)
+            display_option.palette = palette
+
+        if isinstance(foreground, QBrush):
+            palette = QPalette(display_option.palette)
+            palette.setBrush(QPalette.Text, foreground)
+            display_option.palette = palette
+
+        super().paint(painter, display_option, index)
+
         if not painter.isActive():
             return
         if index.data(TOP_BORDER_ROLE):

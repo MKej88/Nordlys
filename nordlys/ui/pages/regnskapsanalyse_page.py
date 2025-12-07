@@ -39,6 +39,12 @@ from ..tables import (
     suspend_table_updates,
 )
 from ..widgets import CardFrame
+from ..multi_year_stats import (
+    assessment_level,
+    deviation_assessment,
+    normal_variation_text,
+    standard_deviation_without_current,
+)
 
 
 @dataclass(frozen=True)
@@ -203,6 +209,7 @@ class RegnskapsanalysePage(QWidget):
             QSizePolicy.Expanding, QSizePolicy.Fixed
         )
         self._configure_analysis_table(self.multi_year_share_table, font_point_size=8)
+        self.multi_year_share_table.setItemDelegate(self._table_delegate)
         share_layout.addWidget(self.multi_year_share_table)
 
         multi_layout.addWidget(self.multi_year_share_container)
@@ -226,6 +233,7 @@ class RegnskapsanalysePage(QWidget):
         self.key_metrics_table = create_table_widget()
         self.key_metrics_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self._configure_analysis_table(self.key_metrics_table, font_point_size=9)
+        self.key_metrics_table.setItemDelegate(self._table_delegate)
         key_layout.addWidget(self.key_metrics_table)
         self.key_metrics_table.hide()
         key_layout.addStretch(1)
@@ -1049,20 +1057,29 @@ class RegnskapsanalysePage(QWidget):
         average_insert_at: Optional[int] = None
         spacer_insert_at: Optional[int] = None
         share_highlight_column = highlight_column
+        summary_labels = ["Gjennomsnitt", "Normal variasjon"]
         if include_average and highlight_column is not None and highlight_column > 1:
             insertion_index = min(highlight_column, len(share_columns))
-            share_columns.insert(insertion_index, "Gjennomsnitt")
-            share_columns.insert(insertion_index + 1, "")
+            share_columns[insertion_index:insertion_index] = summary_labels
             average_insert_at = insertion_index
-            spacer_insert_at = insertion_index + 1
             if (
                 share_highlight_column is not None
                 and share_highlight_column >= insertion_index
             ):
-                share_highlight_column += 2
+                share_highlight_column += len(summary_labels)
+            spacer_insert_at = insertion_index + len(summary_labels)
+            share_columns.insert(spacer_insert_at, "")
+            if (
+                share_highlight_column is not None
+                and share_highlight_column >= spacer_insert_at
+            ):
+                share_highlight_column += 1
         elif include_average:
             average_insert_at = len(share_columns)
-            share_columns.append("Gjennomsnitt")
+            share_columns.extend(summary_labels)
+
+        if include_average:
+            share_columns.append("Vurdering")
         revenue_per_snapshot = [
             self._get_numeric(snapshot.summary, "salgsinntekter")
             or self._get_numeric(snapshot.summary, "sum_inntekter")
@@ -1081,10 +1098,19 @@ class RegnskapsanalysePage(QWidget):
             values: List[object] = list(formatted)
             if include_average and average_insert_at is not None:
                 avg_value = self._average_without_current(percentages)
+                std_dev = standard_deviation_without_current(percentages)
                 avg_text = self._format_percent(avg_value)
-                values.insert(average_insert_at - 1, avg_text)
+                normal_text = normal_variation_text(avg_value, std_dev)
+                assessment_text = deviation_assessment(
+                    percentages[-1] if percentages else None, avg_value, std_dev
+                )
+                values[average_insert_at - 1 : average_insert_at - 1] = [
+                    avg_text,
+                    normal_text,
+                ]
                 if spacer_insert_at is not None:
                     values.insert(spacer_insert_at - 1, "")
+                values.append(assessment_text)
             row.extend(values)
             percent_rows.append(row)
 
@@ -1094,19 +1120,72 @@ class RegnskapsanalysePage(QWidget):
         _percent_row("Annen kostnad", "annen_kost")
         _percent_row("Finanskostnader", "finanskostnader")
 
-        money_cols = set(range(1, len(share_columns)))
+        assessment_col = share_columns.index("Vurdering") if include_average else None
+        spacer_col = spacer_insert_at - 1 if spacer_insert_at is not None else None
+        money_cols = {
+            idx
+            for idx in range(1, len(share_columns))
+            if idx not in {assessment_col, spacer_col}
+        }
         populate_table(
             self.multi_year_share_table,
             share_columns,
             percent_rows,
             money_cols=money_cols,
         )
+        if assessment_col is not None:
+            self._apply_assessment_styles(self.multi_year_share_table, assessment_col)
+        self._center_column_text(self.multi_year_share_table, "Normal variasjon")
         self.multi_year_share_table.show()
         self.multi_year_share_container.show()
         self._schedule_table_height_adjustment(
             self.multi_year_share_table, extra_padding=0
         )
         return share_highlight_column
+
+    def _apply_assessment_styles(
+        self, table: QTableWidget, assessment_col: int
+    ) -> None:
+        colors = {
+            "normal": QColor(16, 185, 129),
+            "moderate": QColor(234, 179, 8),
+            "unusual": QColor(239, 68, 68),
+        }
+        text_color = QBrush(QColor(15, 23, 42))
+        with suspend_table_updates(table):
+            for row in range(table.rowCount()):
+                item = table.item(row, assessment_col)
+                if item is None:
+                    continue
+                item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+                level = assessment_level(item.text())
+                if level is None:
+                    continue
+                background = QBrush(colors[level])
+                item.setBackground(background)
+                item.setData(Qt.BackgroundRole, background)
+                item.setForeground(text_color)
+                item.setData(Qt.ForegroundRole, text_color)
+
+    def _center_column_text(self, table: QTableWidget, column_name: str) -> None:
+        """Midtstiller innholdet i en navngitt kolonne hvis den finnes."""
+
+        column_index: Optional[int] = None
+        for idx in range(table.columnCount()):
+            header_item = table.horizontalHeaderItem(idx)
+            if header_item is not None and header_item.text() == column_name:
+                column_index = idx
+                break
+
+        if column_index is None:
+            return
+
+        with suspend_table_updates(table):
+            for row in range(table.rowCount()):
+                item = table.item(row, column_index)
+                if item is None:
+                    continue
+                item.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
 
     def _multi_year_active_column(self) -> Optional[int]:
         if not self._summary_history:
@@ -1139,7 +1218,8 @@ class RegnskapsanalysePage(QWidget):
                         item.setBackground(highlight_brush)
                         font.setBold(True)
                     else:
-                        item.setBackground(default_brush)
+                        if item.background() == highlight_brush:
+                            item.setBackground(default_brush)
                         font.setBold(False)
                     item.setFont(font)
         table.viewport().update()
@@ -1326,7 +1406,9 @@ class RegnskapsanalysePage(QWidget):
         setter = getattr(table, "setUniformRowHeights", None)
         if callable(setter):
             setter(True)
-        table.setStyleSheet("QTableWidget::item { padding: 0px 6px; }")
+        table.setStyleSheet(
+            "QTableWidget::item { padding: 0px 6px; border-radius: 0px; }"
+        )
         apply_compact_row_heights(table)
 
     def _lock_analysis_column_widths(self, table: QTableWidget) -> None:
@@ -1476,14 +1558,14 @@ class RegnskapsanalysePage(QWidget):
         header_brush = QBrush(QColor(226, 232, 240))
         default_brush = QBrush()
         verdict_colors = {
-            "GOD": QBrush(QColor(34, 197, 94, 160)),
-            "SVAK": QBrush(QColor(250, 204, 21, 160)),
-            "SUNN": QBrush(QColor(74, 222, 128, 160)),
-            "IKKE SUNN": QBrush(QColor(248, 113, 113, 160)),
-            "UNDERSKUDD": QBrush(QColor(239, 68, 68, 160)),
-            "OBS": QBrush(QColor(251, 146, 60, 160)),
-            "SKJØNN": QBrush(QColor(168, 85, 247, 160)),
-            "Mangler grunnlag": QBrush(QColor(203, 213, 225, 160)),
+            "GOD": QBrush(QColor(34, 197, 94)),
+            "SVAK": QBrush(QColor(250, 204, 21)),
+            "SUNN": QBrush(QColor(74, 222, 128)),
+            "IKKE SUNN": QBrush(QColor(248, 113, 113)),
+            "UNDERSKUDD": QBrush(QColor(239, 68, 68)),
+            "OBS": QBrush(QColor(251, 146, 60)),
+            "SKJØNN": QBrush(QColor(168, 85, 247)),
+            "Mangler grunnlag": QBrush(QColor(203, 213, 225)),
         }
         with suspend_table_updates(table):
             for row_idx in range(table.rowCount()):
@@ -1502,6 +1584,10 @@ class RegnskapsanalysePage(QWidget):
                     if not is_header and col_idx == 3:
                         brush = verdict_colors.get(item.text().strip(), default_brush)
                         item.setBackground(brush)
+                        item.setData(Qt.BackgroundRole, brush)
+                        text_brush = QBrush(QColor(15, 23, 42))
+                        item.setForeground(text_brush)
+                        item.setData(Qt.ForegroundRole, text_brush)
                     item.setData(BOTTOM_BORDER_ROLE, False)
                     item.setData(TOP_BORDER_ROLE, False)
         table.viewport().update()
