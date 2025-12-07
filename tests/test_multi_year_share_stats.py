@@ -34,9 +34,12 @@ def test_deviation_assessment_categories() -> None:
 
 
 def test_assessment_level_mapping() -> None:
-    assert assessment_level(
-        "Helt normal variasjon, som oftest ingen grunn til særskilt oppfølging alene."
-    ) == "normal"
+    assert (
+        assessment_level(
+            "Helt normal variasjon, som oftest ingen grunn til særskilt oppfølging alene."
+        )
+        == "normal"
+    )
     assert (
         assessment_level("Moderat avvik – vurderes sammen med øvrig informasjon.")
         == "moderate"

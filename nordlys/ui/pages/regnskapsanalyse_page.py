@@ -1186,7 +1186,7 @@ class RegnskapsanalysePage(QWidget):
                 if item is None:
                     continue
                 item.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
-        
+
     def _multi_year_active_column(self) -> Optional[int]:
         if not self._summary_history:
             return None
@@ -1406,7 +1406,9 @@ class RegnskapsanalysePage(QWidget):
         setter = getattr(table, "setUniformRowHeights", None)
         if callable(setter):
             setter(True)
-        table.setStyleSheet("QTableWidget::item { padding: 0px 6px; border-radius: 0px; }")
+        table.setStyleSheet(
+            "QTableWidget::item { padding: 0px 6px; border-radius: 0px; }"
+        )
         apply_compact_row_heights(table)
 
     def _lock_analysis_column_widths(self, table: QTableWidget) -> None:
