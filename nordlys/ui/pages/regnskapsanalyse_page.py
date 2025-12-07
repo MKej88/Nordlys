@@ -39,6 +39,11 @@ from ..tables import (
     suspend_table_updates,
 )
 from ..widgets import CardFrame
+from ..multi_year_stats import (
+    deviation_assessment,
+    normal_variation_text,
+    standard_deviation_without_current,
+)
 
 
 @dataclass(frozen=True)
@@ -1049,20 +1054,21 @@ class RegnskapsanalysePage(QWidget):
         average_insert_at: Optional[int] = None
         spacer_insert_at: Optional[int] = None
         share_highlight_column = highlight_column
+        summary_labels = ["Gjennomsnitt", "Normal variasjon", "Vurdering"]
         if include_average and highlight_column is not None and highlight_column > 1:
             insertion_index = min(highlight_column, len(share_columns))
-            share_columns.insert(insertion_index, "Gjennomsnitt")
-            share_columns.insert(insertion_index + 1, "")
+            share_columns[insertion_index:insertion_index] = summary_labels
+            share_columns.insert(insertion_index + len(summary_labels), "")
             average_insert_at = insertion_index
-            spacer_insert_at = insertion_index + 1
+            spacer_insert_at = insertion_index + len(summary_labels)
             if (
                 share_highlight_column is not None
                 and share_highlight_column >= insertion_index
             ):
-                share_highlight_column += 2
+                share_highlight_column += len(summary_labels) + 1
         elif include_average:
             average_insert_at = len(share_columns)
-            share_columns.append("Gjennomsnitt")
+            share_columns.extend(summary_labels)
         revenue_per_snapshot = [
             self._get_numeric(snapshot.summary, "salgsinntekter")
             or self._get_numeric(snapshot.summary, "sum_inntekter")
@@ -1081,8 +1087,17 @@ class RegnskapsanalysePage(QWidget):
             values: List[object] = list(formatted)
             if include_average and average_insert_at is not None:
                 avg_value = self._average_without_current(percentages)
+                std_dev = standard_deviation_without_current(percentages)
                 avg_text = self._format_percent(avg_value)
-                values.insert(average_insert_at - 1, avg_text)
+                normal_text = normal_variation_text(avg_value, std_dev)
+                assessment_text = deviation_assessment(
+                    percentages[-1] if percentages else None, avg_value, std_dev
+                )
+                values[average_insert_at - 1 : average_insert_at - 1] = [
+                    avg_text,
+                    normal_text,
+                    assessment_text,
+                ]
                 if spacer_insert_at is not None:
                     values.insert(spacer_insert_at - 1, "")
             row.extend(values)
