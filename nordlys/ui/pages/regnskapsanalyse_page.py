@@ -1133,6 +1133,7 @@ class RegnskapsanalysePage(QWidget):
         )
         if assessment_col is not None:
             self._apply_assessment_styles(self.multi_year_share_table, assessment_col)
+        self._center_column_text(self.multi_year_share_table, "Normal variasjon")
         self.multi_year_share_table.show()
         self.multi_year_share_container.show()
         self._schedule_table_height_adjustment(
@@ -1144,9 +1145,9 @@ class RegnskapsanalysePage(QWidget):
         self, table: QTableWidget, assessment_col: int
     ) -> None:
         colors = {
-            "normal": QColor(187, 247, 208),
-            "moderate": QColor(254, 249, 195),
-            "unusual": QColor(254, 226, 226),
+            "normal": QColor(22, 163, 74),
+            "moderate": QColor(234, 179, 8),
+            "unusual": QColor(220, 38, 38),
         }
         with suspend_table_updates(table):
             for row in range(table.rowCount()):
@@ -1158,6 +1159,26 @@ class RegnskapsanalysePage(QWidget):
                 if level is None:
                     continue
                 item.setBackground(QBrush(colors[level]))
+
+    def _center_column_text(self, table: QTableWidget, column_name: str) -> None:
+        """Midtstiller innholdet i en navngitt kolonne hvis den finnes."""
+
+        column_index: Optional[int] = None
+        for idx in range(table.columnCount()):
+            header_item = table.horizontalHeaderItem(idx)
+            if header_item is not None and header_item.text() == column_name:
+                column_index = idx
+                break
+
+        if column_index is None:
+            return
+
+        with suspend_table_updates(table):
+            for row in range(table.rowCount()):
+                item = table.item(row, column_index)
+                if item is None:
+                    continue
+                item.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
         
     def _multi_year_active_column(self) -> Optional[int]:
         if not self._summary_history:
