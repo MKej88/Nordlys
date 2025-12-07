@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import os
 import logging
+import os
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from decimal import Decimal
@@ -15,13 +15,14 @@ from xml.etree.ElementTree import Element, ElementTree
 from ..helpers.lazy_imports import lazy_import, lazy_pandas
 from ..industry_groups import IndustryClassification
 from ..settings import SAFT_STREAMING_ENABLED
+from .entry_helpers import get_amount
 from .brreg_enrichment import BrregEnrichment, enrich_from_header
 from .customer_analysis import (
     CustomerSupplierAnalysis,
     build_customer_supplier_analysis,
 )
-from .trial_balance import compute_trial_balance
-from .xml_helpers import NamespaceMap
+from .trial_balance import TrialBalanceResult
+from .xml_helpers import NamespaceMap, _findall
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -113,9 +114,9 @@ def _submit_background_tasks(
 
     trial_balance_future: Optional[Future["TrialBalanceResult"]] = None
     if use_streaming:
-        report_progress(5, f"Leser hovedbok (streaming) for {file_name}")
+        report_progress(5, f"Beregner prøvebalanse for {file_name}")
         trial_balance_future = executor.submit(
-            compute_trial_balance, file_path, streaming_enabled=True
+            _compute_trial_balance_from_root, parsed, file_path
         )
 
     validation_future = executor.submit(
@@ -163,6 +164,41 @@ def _resolve_trial_balance(
 
     trial_balance_result = trial_balance_future.result()
     return trial_balance_result.balance, trial_balance_result.error
+
+
+def _compute_trial_balance_from_root(
+    parsed: _ParsedSaftContent, file_path: str
+) -> TrialBalanceResult:
+    """Summerer debet og kredit fra et allerede parset XML-tre.
+
+    Denne varianten unngår en ny runde med fil-lesing når vi likevel har
+    hele ``ElementTree`` i minnet, noe som reduserer total importtid for
+    større filer.
+    """
+
+    total_debet = Decimal("0")
+    total_kredit = Decimal("0")
+    journals_path = (
+        "n1:SourceDocuments/n1:GeneralLedgerEntries/n1:Journals/n1:Journal"
+    )
+
+    for journal in _findall(parsed.root, journals_path, parsed.namespaces):
+        for transaction in _findall(journal, "n1:Transaction", parsed.namespaces):
+            for line in _findall(transaction, "n1:Line", parsed.namespaces):
+                total_debet += get_amount(line, "DebitAmount", parsed.namespaces)
+                total_kredit += get_amount(line, "CreditAmount", parsed.namespaces)
+
+    diff = total_debet - total_kredit
+    error: Optional[str] = None
+    if diff != Decimal("0"):
+        error = "Prøvebalansen går ikke opp (diff {diff}) for {file}.".format(
+            diff=diff, file=Path(file_path).name
+        )
+
+    return TrialBalanceResult(
+        balance={"debet": total_debet, "kredit": total_kredit, "diff": diff},
+        error=error,
+    )
 
 
 def load_saft_file(

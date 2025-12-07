@@ -180,15 +180,13 @@ def test_loader_streams_trial_balance_for_heavy_files(tmp_path, monkeypatch):
 
     monkeypatch.setattr(Path, "stat", fake_stat)
 
-    called_with_streaming: list[bool | None] = []
+    trial_balance_calls: list[str] = []
 
-    def fake_compute_trial_balance(
-        file_path: str, *, streaming_enabled: bool | None = None
-    ) -> SimpleNamespace:
-        called_with_streaming.append(streaming_enabled)
+    def fake_trial_balance(parsed, file_path: str):
+        trial_balance_calls.append(file_path)
         return SimpleNamespace(balance=None, error=None)
 
-    monkeypatch.setattr(loader, "compute_trial_balance", fake_compute_trial_balance)
+    monkeypatch.setattr(loader, "_compute_trial_balance_from_root", fake_trial_balance)
 
     monkeypatch.setattr(
         loader.saft,
@@ -229,7 +227,7 @@ def test_loader_streams_trial_balance_for_heavy_files(tmp_path, monkeypatch):
 
     loader.load_saft_file(str(xml_path))
 
-    assert called_with_streaming == [True]
+    assert trial_balance_calls == [str(xml_path)]
 
 
 def test_suggest_max_workers_caps_for_two_heavy_files(monkeypatch):
