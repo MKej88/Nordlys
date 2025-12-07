@@ -37,6 +37,11 @@ def test_to_float_invalid_returns_zero():
     assert to_float("not a number") == 0.0
 
 
+def test_to_float_rejects_inconsistent_thousands():
+    assert to_float("1.234.56") == 0.0
+    assert to_float("12,34,567") == 0.0
+
+
 def test_format_currency_invalid() -> None:
     assert format_currency(None) == "—"
     assert format_currency("hei") == "—"
