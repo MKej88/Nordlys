@@ -1145,10 +1145,11 @@ class RegnskapsanalysePage(QWidget):
         self, table: QTableWidget, assessment_col: int
     ) -> None:
         colors = {
-            "normal": QColor(22, 163, 74),
-            "moderate": QColor(234, 179, 8),
-            "unusual": QColor(220, 38, 38),
+            "normal": QColor(187, 247, 208),
+            "moderate": QColor(254, 240, 138),
+            "unusual": QColor(254, 202, 202),
         }
+        text_color = QBrush(QColor(30, 41, 59))
         with suspend_table_updates(table):
             for row in range(table.rowCount()):
                 item = table.item(row, assessment_col)
@@ -1159,6 +1160,7 @@ class RegnskapsanalysePage(QWidget):
                 if level is None:
                     continue
                 item.setBackground(QBrush(colors[level]))
+                item.setForeground(text_color)
 
     def _center_column_text(self, table: QTableWidget, column_name: str) -> None:
         """Midtstiller innholdet i en navngitt kolonne hvis den finnes."""
@@ -1399,7 +1401,7 @@ class RegnskapsanalysePage(QWidget):
         setter = getattr(table, "setUniformRowHeights", None)
         if callable(setter):
             setter(True)
-        table.setStyleSheet("QTableWidget::item { padding: 0px 6px; }")
+        table.setStyleSheet("QTableWidget::item { padding: 0px 6px; border-radius: 0px; }")
         apply_compact_row_heights(table)
 
     def _lock_analysis_column_widths(self, table: QTableWidget) -> None:
