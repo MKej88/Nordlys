@@ -1054,21 +1054,29 @@ class RegnskapsanalysePage(QWidget):
         average_insert_at: Optional[int] = None
         spacer_insert_at: Optional[int] = None
         share_highlight_column = highlight_column
-        summary_labels = ["Gjennomsnitt", "Normal variasjon", "Vurdering"]
+        summary_labels = ["Gjennomsnitt", "Normal variasjon"]
         if include_average and highlight_column is not None and highlight_column > 1:
             insertion_index = min(highlight_column, len(share_columns))
             share_columns[insertion_index:insertion_index] = summary_labels
-            share_columns.insert(insertion_index + len(summary_labels), "")
             average_insert_at = insertion_index
-            spacer_insert_at = insertion_index + len(summary_labels)
             if (
                 share_highlight_column is not None
                 and share_highlight_column >= insertion_index
             ):
-                share_highlight_column += len(summary_labels) + 1
+                share_highlight_column += len(summary_labels)
+            spacer_insert_at = insertion_index + len(summary_labels)
+            share_columns.insert(spacer_insert_at, "")
+            if (
+                share_highlight_column is not None
+                and share_highlight_column >= spacer_insert_at
+            ):
+                share_highlight_column += 1
         elif include_average:
             average_insert_at = len(share_columns)
             share_columns.extend(summary_labels)
+
+        if include_average:
+            share_columns.append("Vurdering")
         revenue_per_snapshot = [
             self._get_numeric(snapshot.summary, "salgsinntekter")
             or self._get_numeric(snapshot.summary, "sum_inntekter")
@@ -1096,10 +1104,10 @@ class RegnskapsanalysePage(QWidget):
                 values[average_insert_at - 1 : average_insert_at - 1] = [
                     avg_text,
                     normal_text,
-                    assessment_text,
                 ]
                 if spacer_insert_at is not None:
                     values.insert(spacer_insert_at - 1, "")
+                values.append(assessment_text)
             row.extend(values)
             percent_rows.append(row)
 
