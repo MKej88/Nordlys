@@ -51,8 +51,19 @@ def deviation_assessment(
     average: Optional[float],
     std_dev: Optional[float],
 ) -> str:
-    if last_value is None or average is None or std_dev is None or abs(std_dev) < 1e-6:
+    if last_value is None or average is None or std_dev is None:
         return "—"
+
+    if math.isclose(std_dev, 0.0, abs_tol=1e-6):
+        if math.isclose(last_value, average, abs_tol=1e-6):
+            return (
+                "Helt normal variasjon, som oftest ingen grunn til "
+                "særskilt oppfølging alene."
+            )
+        return (
+            "Uvanlig avvik som normalt bør forklares (endret drift, "
+            "klassifisering, feil mv.)."
+        )
 
     deviation = abs(last_value - average) / std_dev
     if deviation <= 1:

@@ -52,3 +52,11 @@ def test_assessment_level_mapping() -> None:
         == "unusual"
     )
     assert assessment_level("Ikke vurdert") is None
+
+
+def test_deviation_assessment_with_zero_std_dev() -> None:
+    unchanged = deviation_assessment(10.0, 10.0, 0.0)
+    changed = deviation_assessment(12.0, 10.0, 0.0)
+
+    assert unchanged.startswith("Helt normal variasjon")
+    assert changed.startswith("Uvanlig avvik")
