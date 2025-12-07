@@ -209,6 +209,7 @@ class RegnskapsanalysePage(QWidget):
             QSizePolicy.Expanding, QSizePolicy.Fixed
         )
         self._configure_analysis_table(self.multi_year_share_table, font_point_size=8)
+        self.multi_year_share_table.setItemDelegate(self._table_delegate)
         share_layout.addWidget(self.multi_year_share_table)
 
         multi_layout.addWidget(self.multi_year_share_container)
@@ -232,6 +233,7 @@ class RegnskapsanalysePage(QWidget):
         self.key_metrics_table = create_table_widget()
         self.key_metrics_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self._configure_analysis_table(self.key_metrics_table, font_point_size=9)
+        self.key_metrics_table.setItemDelegate(self._table_delegate)
         key_layout.addWidget(self.key_metrics_table)
         self.key_metrics_table.hide()
         key_layout.addStretch(1)
