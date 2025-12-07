@@ -35,6 +35,12 @@ def to_float(value: Optional[str]) -> float:
     if any(char not in allowed_chars for char in cleaned):
         return 0.0
 
+    sign_positions = [idx for idx, ch in enumerate(cleaned) if ch in "+-"]
+    if len(sign_positions) > 1:
+        return 0.0
+    if sign_positions and sign_positions[0] not in {0, len(cleaned) - 1}:
+        return 0.0
+
     if cleaned[0] in "+-":
         sign, cleaned = cleaned[0], cleaned[1:]
     elif cleaned[-1] in "+-":
@@ -58,10 +64,32 @@ def to_float(value: Optional[str]) -> float:
     elif dot_count == 1 and comma_count == 0:
         decimal_sep = "."
 
+    def _valid_thousands(text: str, separator: str) -> bool:
+        parts = text.split(separator)
+        if len(parts) == 1:
+            return True
+        if any(part == "" for part in parts):
+            return False
+        if len(parts[0]) not in {1, 2, 3}:
+            return False
+        return all(len(part) == 3 for part in parts[1:])
+
     if decimal_sep:
         integer_part, fractional_part = cleaned.rsplit(decimal_sep, 1)
+        thousand_sep = "," if decimal_sep == "." else "."
+        if thousand_sep in integer_part and not _valid_thousands(
+            integer_part, thousand_sep
+        ):
+            return 0.0
     else:
         integer_part, fractional_part = cleaned, ""
+        separators = {sep for sep in ",." if sep in integer_part}
+        if len(separators) > 1:
+            return 0.0
+        if separators:
+            separator = separators.pop()
+            if not _valid_thousands(integer_part, separator):
+                return 0.0
 
     integer_digits = integer_part.replace(",", "").replace(".", "")
     fractional_digits = fractional_part.replace(",", "").replace(".", "")
