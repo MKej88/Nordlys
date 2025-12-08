@@ -28,7 +28,7 @@ class CustomerSupplierAnalysis:
     customer_sales: Optional["pd.DataFrame"]
     supplier_purchases: Optional["pd.DataFrame"]
     cost_vouchers: List["saft_customers.CostVoucher"]
-    credit_notes: Optional["pd.DataFrame"]
+    credit_notes: Optional["pd.DataFrame"] = None
 
 
 def determine_analysis_year(
