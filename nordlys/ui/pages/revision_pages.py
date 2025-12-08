@@ -1511,13 +1511,11 @@ class SalesArPage(QWidget):
         page_layout.setContentsMargins(0, 0, 0, 0)
         page_layout.setSpacing(24)
 
-        self.credit_card = CardFrame(
-            "Kreditnotaer",
-            (
-                "Fang opp kreditnotaer ført mot salgskonti (3xxx) og se fordeling "
-                "per måned.",
-            ),
+        credit_subtitle = (
+            "Fang opp kreditnotaer ført mot salgskonti (3xxx) og se fordeling per "
+            "måned."
         )
+        self.credit_card = CardFrame("Kreditnotaer", credit_subtitle)
         self.credit_card.setSizePolicy(
             QSizePolicy.Expanding, QSizePolicy.Expanding
         )
