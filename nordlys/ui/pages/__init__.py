@@ -10,6 +10,7 @@ from .import_page import ImportPage
 from .revision_pages import (
     ChecklistPage,
     CostVoucherReviewPage,
+    CreditNotesPage,
     PurchasesApPage,
     SalesArPage,
     VoucherReviewResult,
@@ -26,6 +27,7 @@ __all__ = [
     "ImportPage",
     "ChecklistPage",
     "CostVoucherReviewPage",
+    "CreditNotesPage",
     "PurchasesApPage",
     "SalesArPage",
     "VoucherReviewResult",

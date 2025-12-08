@@ -482,6 +482,46 @@ class SaftDatasetStore:
             )
         return rows
 
+    def credit_note_monthly_summary(self) -> List[Tuple[str, int, float]]:
+        if self._credit_notes is None or self._credit_notes.empty:
+            return []
+
+        month_totals: Dict[int, Tuple[int, float]] = {}
+        for _, row in self._credit_notes.iterrows():
+            date_value = row.get("Dato")
+            if isinstance(date_value, (datetime, date)):
+                month = date_value.month
+            else:
+                continue
+
+            count, amount = month_totals.get(month, (0, 0.0))
+            month_totals[month] = (count + 1, amount + self.safe_float(row.get("Beløp")))
+
+        month_names = [
+            "Januar",
+            "Februar",
+            "Mars",
+            "April",
+            "Mai",
+            "Juni",
+            "Juli",
+            "August",
+            "September",
+            "Oktober",
+            "November",
+            "Desember",
+        ]
+
+        rows: List[Tuple[str, int, float]] = []
+        for month in range(1, 13):
+            totals = month_totals.get(month)
+            if totals:
+                name = month_names[month - 1]
+                count, amount = totals
+                rows.append((name, count, round(amount, 2)))
+
+        return rows
+
     # endregion
 
     # region Interne hjelpere

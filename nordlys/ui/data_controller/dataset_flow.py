@@ -198,7 +198,10 @@ class DatasetFlowController:
                 store.sales_account_total,
             )
             pages.sales_ar_page.clear_top_customers()
-            pages.sales_ar_page.set_credit_notes(store.credit_note_rows())
+        if pages.credit_notes_page:
+            pages.credit_notes_page.set_credit_notes(
+                store.credit_note_rows(), store.credit_note_monthly_summary()
+            )
         if pages.purchases_ap_page:
             pages.purchases_ap_page.set_controls_enabled(store.has_supplier_data)
             pages.purchases_ap_page.clear_top_suppliers()
@@ -276,7 +279,8 @@ class DatasetFlowController:
             pages.sales_ar_page.set_controls_enabled(False)
             pages.sales_ar_page.update_sales_reconciliation(None, None)
             pages.sales_ar_page.clear_top_customers()
-            pages.sales_ar_page.clear_credit_notes()
+        if pages.credit_notes_page:
+            pages.credit_notes_page.clear_credit_notes()
         if pages.purchases_ap_page:
             pages.purchases_ap_page.set_controls_enabled(False)
             pages.purchases_ap_page.clear_top_suppliers()

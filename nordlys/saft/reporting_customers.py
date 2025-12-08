@@ -801,15 +801,15 @@ def extract_credit_notes(
     root: ET.Element,
     ns: NamespaceMap,
     *,
-    months: Sequence[int] = (1, 2),
+    months: Sequence[int] = tuple(range(1, 13)),
     year: Optional[int] = None,
 ) -> "pd.DataFrame":
-    """Henter kreditnotaer i angitte måneder for 3xxx-konti."""
+    """Henter kreditnotaer i angitte måneder for 3xxx-konti gjennom året."""
 
     pandas = _require_pandas()
     month_filter = {month for month in months if isinstance(month, int)}
     if not month_filter:
-        month_filter = {1, 2}
+        month_filter = set(range(1, 13))
 
     rows: List[Dict[str, object]] = []
 
@@ -874,4 +874,5 @@ def extract_credit_notes(
 
     df = pandas.DataFrame(rows)
     df["Beløp"] = df["Beløp"].astype(float).round(2)
-    return df.sort_values("Beløp", ascending=False).reset_index(drop=True)
+    df.sort_values("Dato", inplace=True)
+    return df.reset_index(drop=True)

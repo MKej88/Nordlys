@@ -1236,17 +1236,17 @@ def test_extract_credit_notes_filters_months_and_year():
               <CreditAmount>500</CreditAmount>
             </Line>
           </Transaction>
-          <Transaction>
-            <TransactionDate>2023-03-01</TransactionDate>
-            <Line>
-              <AccountID>3000</AccountID>
-              <CreditAmount>800</CreditAmount>
-            </Line>
-            <Line>
-              <AccountID>1500</AccountID>
-              <DebitAmount>800</DebitAmount>
-            </Line>
-          </Transaction>
+            <Transaction>
+              <TransactionDate>2023-03-01</TransactionDate>
+              <Line>
+                <AccountID>3000</AccountID>
+                <DebitAmount>800</DebitAmount>
+              </Line>
+              <Line>
+                <AccountID>1500</AccountID>
+                <CreditAmount>800</CreditAmount>
+              </Line>
+            </Transaction>
         </Journal>
       </GeneralLedgerEntries>
     </AuditFile>
@@ -1255,11 +1255,14 @@ def test_extract_credit_notes_filters_months_and_year():
     ns = {"n1": root.tag.split("}")[0][1:]}
 
     df = extract_credit_notes(root, ns, year=2023)
-    assert len(df.index) == 1
-    row = df.iloc[0]
-    assert row["Dato"] == date(2023, 2, 15)
-    assert row["Beløp"] == pytest.approx(500.0)
-    assert "3000" in row["Kontoer"]
+    assert len(df.index) == 2
+    feb_row = df.iloc[0]
+    march_row = df.iloc[1]
+    assert feb_row["Dato"] == date(2023, 2, 15)
+    assert feb_row["Beløp"] == pytest.approx(500.0)
+    assert "3000" in feb_row["Kontoer"]
+    assert march_row["Dato"] == date(2023, 3, 1)
+    assert march_row["Beløp"] == pytest.approx(800.0)
 
 
 def test_compute_customer_supplier_totals_matches_individual():

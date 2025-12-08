@@ -192,6 +192,28 @@ def test_apply_batch_resets_on_new_company() -> None:
     assert not store.activate("2023.xml")
 
 
+def test_credit_note_monthly_summary_sorts_by_month() -> None:
+    store = SaftDatasetStore()
+    store._credit_notes = pd.DataFrame(  # type: ignore[attr-defined]
+        {
+            "Dato": [
+                pd.Timestamp(year=2023, month=12, day=1),
+                pd.Timestamp(year=2023, month=1, day=15),
+                pd.Timestamp(year=2023, month=3, day=10),
+            ],
+            "Beløp": [300.0, 100.0, 200.0],
+        }
+    )
+
+    summary = store.credit_note_monthly_summary()
+
+    assert summary == [
+        ("Januar", 1, 100.0),
+        ("Mars", 1, 200.0),
+        ("Desember", 1, 300.0),
+    ]
+
+
 def test_apply_batch_blocks_multiple_companies_in_same_batch() -> None:
     store = SaftDatasetStore()
     first = _make_result(
