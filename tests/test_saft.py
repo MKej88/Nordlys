@@ -36,6 +36,7 @@ from nordlys.saft_customers import (
     compute_customer_supplier_totals,
     compute_purchases_per_supplier,
     compute_sales_per_customer,
+    extract_credit_notes,
     get_amount,
     get_tx_customer_id,
     get_tx_supplier_id,
@@ -1215,6 +1216,52 @@ def test_compute_purchases_per_supplier_date_filter():
     assert df.empty
 
 
+def test_extract_credit_notes_filters_months_and_year():
+    xml = """
+    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <GeneralLedgerEntries>
+        <Journal>
+          <Transaction>
+            <Period>
+              <PeriodYear>2023</PeriodYear>
+              <PeriodNumber>2</PeriodNumber>
+            </Period>
+            <TransactionDate>2023-02-15</TransactionDate>
+            <Line>
+              <AccountID>3000</AccountID>
+              <DebitAmount>500</DebitAmount>
+            </Line>
+            <Line>
+              <AccountID>1500</AccountID>
+              <CreditAmount>500</CreditAmount>
+            </Line>
+          </Transaction>
+          <Transaction>
+            <TransactionDate>2023-03-01</TransactionDate>
+            <Line>
+              <AccountID>3000</AccountID>
+              <CreditAmount>800</CreditAmount>
+            </Line>
+            <Line>
+              <AccountID>1500</AccountID>
+              <DebitAmount>800</DebitAmount>
+            </Line>
+          </Transaction>
+        </Journal>
+      </GeneralLedgerEntries>
+    </AuditFile>
+    """
+    root = ET.fromstring(xml)
+    ns = {"n1": root.tag.split("}")[0][1:]}
+
+    df = extract_credit_notes(root, ns, year=2023)
+    assert len(df.index) == 1
+    row = df.iloc[0]
+    assert row["Dato"] == date(2023, 2, 15)
+    assert row["Beløp"] == pytest.approx(500.0)
+    assert "3000" in row["Kontoer"]
+
+
 def test_compute_customer_supplier_totals_matches_individual():
     root = build_sample_root()
     ns = {"n1": root.tag.split("}")[0][1:]}
@@ -1844,6 +1891,7 @@ def test_load_saft_files_parallel_progress(monkeypatch):
             customer_sales=None,
             suppliers={},
             supplier_purchases=None,
+            credit_notes=None,
             cost_vouchers=[],
             analysis_year=None,
             summary={},
@@ -1884,6 +1932,7 @@ def test_load_saft_files_keeps_successes_when_one_fails(monkeypatch):
             customer_sales=None,
             suppliers={},
             supplier_purchases=None,
+            credit_notes=None,
             cost_vouchers=[],
             analysis_year=None,
             summary={},
@@ -1922,6 +1971,7 @@ def test_load_saft_files_raises_on_partial_failure_without_progress(monkeypatch)
             customer_sales=None,
             suppliers={},
             supplier_purchases=None,
+            credit_notes=None,
             cost_vouchers=[],
             analysis_year=None,
             summary={},

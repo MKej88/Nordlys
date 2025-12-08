@@ -1485,6 +1485,32 @@ class SalesArPage(QWidget):
         self.top_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         layout.addWidget(self.top_card, 1)
 
+        self.credit_notes_card = CardFrame(
+            "Kreditnotaer",
+            "Kreditnotaer i januar og februar ført mot kontoklasse 3xxx.",
+        )
+        self.credit_notes_empty = EmptyStateWidget(
+            "Ingen kreditnotaer funnet",
+            "Importer SAF-T-data og aktiver datasettet for å se kreditnotaer.",
+            icon="📄",
+        )
+        self.credit_notes_empty.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.MinimumExpanding
+        )
+        self.credit_notes_table = create_table_widget()
+        self.credit_notes_table.setColumnCount(5)
+        self.credit_notes_table.setHorizontalHeaderLabels(
+            ["Dato", "Bilagsnr", "Beskrivelse", "Kontoer", "Beløp"]
+        )
+        self.credit_notes_table.setSortingEnabled(True)
+        self.credit_notes_table.hide()
+        self.credit_notes_card.add_widget(self.credit_notes_empty)
+        self.credit_notes_card.add_widget(self.credit_notes_table)
+        self.credit_notes_card.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Expanding
+        )
+        layout.addWidget(self.credit_notes_card, 1)
+
         self.set_controls_enabled(False)
         self.update_sales_reconciliation(None, None)
 
@@ -1511,6 +1537,24 @@ class SalesArPage(QWidget):
         self.top_table.setRowCount(0)
         self.top_table.hide()
         self.empty_state.show()
+
+    def set_credit_notes(self, rows: Iterable[Tuple[str, str, str, str, float]]) -> None:
+        row_buffer = list(rows)
+        populate_table(
+            self.credit_notes_table,
+            ["Dato", "Bilagsnr", "Beskrivelse", "Kontoer", "Beløp"],
+            row_buffer,
+            money_cols={4},
+        )
+        self._toggle_empty_state(
+            self.credit_notes_table, self.credit_notes_empty, bool(row_buffer)
+        )
+        self.credit_notes_table.setSortingEnabled(True)
+
+    def clear_credit_notes(self) -> None:
+        self.credit_notes_table.setRowCount(0)
+        self.credit_notes_table.hide()
+        self.credit_notes_empty.show()
 
     def set_controls_enabled(self, enabled: bool) -> None:
         self.calc_button.setEnabled(enabled)
