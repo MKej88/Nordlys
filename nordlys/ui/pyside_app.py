@@ -46,6 +46,7 @@ class NordlysWindow(QMainWindow):
         self._data_controller: Optional[SaftDataController] = None
         self._page_manager: Optional[PageManager] = None
         self._page_registry: Optional[PageRegistry] = None
+        self._startup_in_progress = False
         self._startup_done = False
         self._startup_timer: Optional[QTimer] = None
         components = setup_components(self)
@@ -175,11 +176,12 @@ class NordlysWindow(QMainWindow):
 
     # region Oppstart
     def _ensure_startup_completed(self) -> None:
-        if not self._startup_done:
-            self._finish_startup()
+        if self._startup_done or self._startup_in_progress:
+            return
+        self._finish_startup()
 
     def _schedule_startup(self) -> None:
-        if self._startup_done:
+        if self._startup_done or self._startup_in_progress:
             return
         if self._startup_timer is None:
             self._startup_timer = QTimer(self)
@@ -189,31 +191,35 @@ class NordlysWindow(QMainWindow):
             self._startup_timer.start(0)
 
     def _finish_startup(self) -> None:
-        if self._startup_done:
+        if self._startup_done or self._startup_in_progress:
             return
+        self._startup_in_progress = True
         if self._startup_timer is not None and self._startup_timer.isActive():
             self._startup_timer.stop()
-        (
-            self._dataset_store,
-            self._analytics,
-            self._task_runner,
-        ) = create_dataset_services(self)
-        self._data_controller = create_data_controller(
-            dataset_store=self._dataset_store,
-            analytics=self._analytics,
-            header_bar=self.header_bar,
-            status_bar=self.statusBar(),
-            parent=self,
-            schedule_responsive_update=self._responsive.schedule_update,
-            update_header_fields=self._update_header_fields,
-        )
-        self._page_manager, self._page_registry = initialize_pages(
-            self,
-            self.stack,
-            self._data_controller,
-        )
-        populate_navigation(self.nav_panel, self._on_navigation_changed)
-        self._startup_done = True
+        try:
+            (
+                self._dataset_store,
+                self._analytics,
+                self._task_runner,
+            ) = create_dataset_services(self)
+            self._data_controller = create_data_controller(
+                dataset_store=self._dataset_store,
+                analytics=self._analytics,
+                header_bar=self.header_bar,
+                status_bar=self.statusBar(),
+                parent=self,
+                schedule_responsive_update=self._responsive.schedule_update,
+                update_header_fields=self._update_header_fields,
+            )
+            self._page_manager, self._page_registry = initialize_pages(
+                self,
+                self.stack,
+                self._data_controller,
+            )
+            populate_navigation(self.nav_panel, self._on_navigation_changed)
+            self._startup_done = True
+        finally:
+            self._startup_in_progress = False
     # endregion
 
     # endregion
