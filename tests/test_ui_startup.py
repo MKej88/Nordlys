@@ -4,14 +4,18 @@ from __future__ import annotations
 
 import pytest
 
+pyside_app = pytest.importorskip(
+    "nordlys.ui.pyside_app",
+    reason="PySide6 er ikke tilgjengelig i testmiljøet",
+    exc_type=ImportError,
+)
 QtWidgets = pytest.importorskip(
     "PySide6.QtWidgets",
     reason="PySide6 er ikke tilgjengelig i testmiljøet",
     exc_type=ImportError,
 )
 QApplication = QtWidgets.QApplication
-
-from nordlys.ui.pyside_app import NordlysWindow
+NordlysWindow = pyside_app.NordlysWindow
 
 
 def _ensure_qt_app() -> QApplication:
