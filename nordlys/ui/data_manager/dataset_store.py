@@ -495,7 +495,10 @@ class SaftDatasetStore:
                 continue
 
             count, amount = month_totals.get(month, (0, 0.0))
-            month_totals[month] = (count + 1, amount + self.safe_float(row.get("Beløp")))
+            month_totals[month] = (
+                count + 1,
+                amount + self.safe_float(row.get("Beløp")),
+            )
 
         month_names = [
             "Januar",

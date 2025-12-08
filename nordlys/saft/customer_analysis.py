@@ -107,11 +107,11 @@ def build_customer_supplier_analysis(
                 parent_map = saft_customers.build_parent_map(root)
             customer_sales, supplier_purchases = (
                 saft_customers.compute_customer_supplier_totals(
-                root,
-                ns,
-                date_from=effective_start,
-                date_to=effective_end,
-                parent_map=parent_map,
+                    root,
+                    ns,
+                    date_from=effective_start,
+                    date_to=effective_end,
+                    parent_map=parent_map,
                 )
             )
             cost_vouchers = saft_customers.extract_cost_vouchers(
@@ -129,11 +129,11 @@ def build_customer_supplier_analysis(
                 parent_map = saft_customers.build_parent_map(root)
             customer_sales, supplier_purchases = (
                 saft_customers.compute_customer_supplier_totals(
-                root,
-                ns,
-                year=analysis_year,
-                parent_map=parent_map,
-            )
+                    root,
+                    ns,
+                    year=analysis_year,
+                    parent_map=parent_map,
+                )
             )
             cost_vouchers = saft_customers.extract_cost_vouchers(
                 root,

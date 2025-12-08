@@ -1516,9 +1516,7 @@ class SalesArPage(QWidget):
             "måned."
         )
         self.credit_card = CardFrame("Kreditnotaer", credit_subtitle)
-        self.credit_card.setSizePolicy(
-            QSizePolicy.Expanding, QSizePolicy.Expanding
-        )
+        self.credit_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         nav_layout = QHBoxLayout()
         nav_layout.setContentsMargins(0, 0, 0, 0)
