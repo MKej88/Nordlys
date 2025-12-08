@@ -1455,6 +1455,63 @@ def test_customer_supplier_analysis_includes_all_file_months():
     assert totals["FULL-YEAR"] == pytest.approx(2000.0)
 
 
+def test_build_customer_supplier_analysis_handles_missing_transaction_dates():
+    xml = """
+    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <Header>
+        <SelectionCriteria>
+          <PeriodEnd>2023-12-31</PeriodEnd>
+        </SelectionCriteria>
+        <FiscalYear>2023</FiscalYear>
+      </Header>
+      <MasterFiles>
+        <Customer>
+          <CustomerID>PERIOD-ONLY</CustomerID>
+          <Name>Period Customer</Name>
+        </Customer>
+      </MasterFiles>
+      <GeneralLedgerEntries>
+        <Journal>
+          <Transaction>
+            <Period>
+              <PeriodYear>2023</PeriodYear>
+              <PeriodNumber>2</PeriodNumber>
+            </Period>
+            <Line>
+              <AccountID>3000</AccountID>
+              <CreditAmount>500</CreditAmount>
+            </Line>
+            <Line>
+              <AccountID>2700</AccountID>
+              <CreditAmount>125</CreditAmount>
+            </Line>
+            <Line>
+              <AccountID>1500</AccountID>
+              <DebitAmount>625</DebitAmount>
+              <CustomerID>PERIOD-ONLY</CustomerID>
+            </Line>
+          </Transaction>
+        </Journal>
+      </GeneralLedgerEntries>
+    </AuditFile>
+    """
+    root = ET.fromstring(xml)
+    ns = {"n1": root.tag.split("}")[0][1:]}
+    header = parse_saft_header(root)
+
+    analysis = build_customer_supplier_analysis(header, root, ns)
+
+    assert analysis.customer_sales is not None
+    assert not analysis.customer_sales.empty
+    totals = dict(
+        zip(
+            analysis.customer_sales["Kundenr"],
+            analysis.customer_sales["Omsetning eks mva"],
+        )
+    )
+    assert totals["PERIOD-ONLY"] == pytest.approx(500.0)
+
+
 def test_compute_purchases_includes_all_cost_accounts():
     xml = """
     <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
