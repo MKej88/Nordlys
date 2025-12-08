@@ -55,10 +55,6 @@ REVISION_DEFINITIONS: Dict[str, Tuple[str, str]] = {
         "Salg og kundefordringer",
         "Omsetning, cut-off og reskontro.",
     ),
-    "rev.kreditnotaer": (
-        "Kreditnotaer",
-        "Egen oversikt over kreditnotaer på 3xxx-konti.",
-    ),
     "rev.mva": (
         "MVA",
         "Kontroll av avgiftsbehandling og rapportering.",
@@ -117,12 +113,6 @@ class PageRegistry:
                         title, subtitle
                     ),
                     attr="sales_ar_page",
-                )
-            elif key == "rev.kreditnotaer":
-                self._manager.register_lazy_page(
-                    key,
-                    self._build_credit_notes_page,
-                    attr="credit_notes_page",
                 )
             elif key == "rev.innkjop":
                 self._manager.register_lazy_page(
@@ -203,11 +193,6 @@ class PageRegistry:
         from .pages.revision_pages import SalesArPage
 
         return SalesArPage(title, subtitle, self._data_controller.on_calc_top_customers)
-
-    def _build_credit_notes_page(self) -> "CreditNotesPage":
-        from .pages.revision_pages import CreditNotesPage
-
-        return CreditNotesPage()
 
     def _build_purchases_page(self, title: str, subtitle: str) -> PurchasesApPage:
         from .pages.revision_pages import PurchasesApPage

@@ -68,7 +68,6 @@ __all__ = [
     "ChecklistPage",
     "VoucherReviewResult",
     "CostVoucherReviewPage",
-    "CreditNotesPage",
     "SalesArPage",
     "PurchasesApPage",
 ]
@@ -1398,7 +1397,7 @@ class FixedAssetsPage(QWidget):
 
 
 class SalesArPage(QWidget):
-    """Revisjonsside for salg og kundefordringer med topp kunder."""
+    """Revisjonsside for salg og kundefordringer med topp kunder og kreditnotaer."""
 
     def __init__(
         self,
@@ -1413,9 +1412,26 @@ class SalesArPage(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(24)
 
-        self.top_card = CardFrame(
-            "Topp kunder", "Identifiser kunder med høyest omsetning."
-        )
+        self.tab_widget = QTabWidget()
+        self.tab_widget.setObjectName("salesTabs")
+        layout.addWidget(self.tab_widget)
+
+        sales_tab = self._build_sales_tab(title, subtitle)
+        credit_note_tab = self._build_credit_note_tab()
+
+        self.tab_widget.addTab(sales_tab, "Salg per kunde")
+        self.tab_widget.addTab(credit_note_tab, "Kreditnotaer")
+
+        self.set_controls_enabled(False)
+        self.update_sales_reconciliation(None, None)
+
+    def _build_sales_tab(self, title: str, subtitle: str) -> QWidget:
+        page = QWidget()
+        page_layout = QVBoxLayout(page)
+        page_layout.setContentsMargins(0, 0, 0, 0)
+        page_layout.setSpacing(24)
+
+        self.top_card = CardFrame(title, subtitle)
         stats_layout = QHBoxLayout()
         stats_layout.setContentsMargins(0, 0, 0, 0)
         stats_layout.setSpacing(12)
@@ -1485,10 +1501,99 @@ class SalesArPage(QWidget):
         self.top_card.add_widget(self.empty_state)
         self.top_card.add_widget(self.top_table)
         self.top_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        layout.addWidget(self.top_card, 1)
+        page_layout.addWidget(self.top_card, 1)
 
-        self.set_controls_enabled(False)
-        self.update_sales_reconciliation(None, None)
+        return page
+
+    def _build_credit_note_tab(self) -> QWidget:
+        page = QWidget()
+        page_layout = QVBoxLayout(page)
+        page_layout.setContentsMargins(0, 0, 0, 0)
+        page_layout.setSpacing(24)
+
+        self.credit_card = CardFrame(
+            "Kreditnotaer",
+            (
+                "Fang opp kreditnotaer ført mot salgskonti (3xxx) og se fordeling "
+                "per måned.",
+            ),
+        )
+        self.credit_card.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Expanding
+        )
+
+        nav_layout = QHBoxLayout()
+        nav_layout.setContentsMargins(0, 0, 0, 0)
+        nav_layout.setSpacing(12)
+        self.credit_card.add_layout(nav_layout)
+
+        self._section_buttons: List[QPushButton] = []
+        self.section_stack = QStackedLayout()
+
+        section_titles = ["Liste", "Per måned"]
+        for index, title in enumerate(section_titles):
+            button = QPushButton(title)
+            button.setCheckable(True)
+            button.setAutoExclusive(True)
+            button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            button.setObjectName("analysisSectionButton")
+            button.clicked.connect(
+                lambda _checked, idx=index: self._set_active_section(idx)
+            )
+            nav_layout.addWidget(button)
+            self._section_buttons.append(button)
+        nav_layout.addStretch(1)
+
+        nav_container = QWidget()
+        nav_container.setLayout(self.section_stack)
+        self.credit_card.add_widget(nav_container)
+
+        list_section = QWidget()
+        list_layout = QVBoxLayout(list_section)
+        list_layout.setContentsMargins(0, 0, 0, 0)
+        list_layout.setSpacing(8)
+        self.list_empty = EmptyStateWidget(
+            "Ingen kreditnotaer", "Last inn og aktiver en SAF-T fil for å se data."
+        )
+        self.list_empty.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.MinimumExpanding
+        )
+        self.list_table = create_table_widget()
+        self.list_table.setColumnCount(5)
+        self.list_table.setHorizontalHeaderLabels(
+            ["Dato", "Bilagsnr", "Beskrivelse", "Kontoer", "Beløp"]
+        )
+        self.list_table.setSortingEnabled(True)
+        self.list_table.hide()
+        list_layout.addWidget(self.list_empty)
+        list_layout.addWidget(self.list_table)
+        self.section_stack.addWidget(list_section)
+
+        summary_section = QWidget()
+        summary_layout = QVBoxLayout(summary_section)
+        summary_layout.setContentsMargins(0, 0, 0, 0)
+        summary_layout.setSpacing(8)
+        self.summary_empty = EmptyStateWidget(
+            "Ingen fordeling", "Ingen kreditnotaer å vise per måned."
+        )
+        self.summary_empty.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.MinimumExpanding
+        )
+        self.summary_table = create_table_widget()
+        self.summary_table.setColumnCount(3)
+        self.summary_table.setHorizontalHeaderLabels(
+            ["Måned", "Antall", "Sum kreditnotaer"]
+        )
+        self.summary_table.setSortingEnabled(True)
+        self.summary_table.hide()
+        summary_layout.addWidget(self.summary_empty)
+        summary_layout.addWidget(self.summary_table)
+        self.section_stack.addWidget(summary_section)
+
+        page_layout.addWidget(self.credit_card)
+        self._set_active_section(0)
+
+        return page
 
     def _handle_calc_clicked(self) -> None:
         rows = self._on_calc_top("3xxx", _requested_top_count(self.top_spin))
@@ -1513,6 +1618,42 @@ class SalesArPage(QWidget):
         self.top_table.setRowCount(0)
         self.top_table.hide()
         self.empty_state.show()
+
+    def set_credit_notes(
+        self,
+        rows: Iterable[Tuple[str, str, str, str, float]],
+        monthly_summary: Iterable[Tuple[str, int, float]],
+    ) -> None:
+        row_buffer = list(rows)
+        populate_table(
+            self.list_table,
+            ["Dato", "Bilagsnr", "Beskrivelse", "Kontoer", "Beløp"],
+            row_buffer,
+            money_cols={4},
+        )
+        self._toggle_empty_state(self.list_table, self.list_empty, bool(row_buffer))
+        self.list_table.setSortingEnabled(True)
+
+        summary_buffer = list(monthly_summary)
+        populate_table(
+            self.summary_table,
+            ["Måned", "Antall", "Sum kreditnotaer"],
+            summary_buffer,
+            money_cols={2},
+        )
+        self._toggle_empty_state(
+            self.summary_table, self.summary_empty, bool(summary_buffer)
+        )
+        self.summary_table.setSortingEnabled(True)
+
+    def clear_credit_notes(self) -> None:
+        self.list_table.setRowCount(0)
+        self.summary_table.setRowCount(0)
+        self.list_table.hide()
+        self.summary_table.hide()
+        self.list_empty.show()
+        self.summary_empty.show()
+        self._set_active_section(0)
 
     def set_controls_enabled(self, enabled: bool) -> None:
         self.calc_button.setEnabled(enabled)
@@ -1560,134 +1701,6 @@ class SalesArPage(QWidget):
                 "Kontroll: Kundesalg ligger "
                 f"{format_currency(abs_diff)} under salgskonti."
             )
-
-
-class CreditNotesPage(QWidget):
-    """Egen side for kreditnotaer med liste og månedsoversikt."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(24)
-
-        self.card = CardFrame(
-            "Kreditnotaer",
-            (
-                "Fang opp kreditnotaer ført mot salgskonti (3xxx) og se fordeling "
-                "per måned."
-            ),
-        )
-        self.card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-
-        nav_layout = QHBoxLayout()
-        nav_layout.setContentsMargins(0, 0, 0, 0)
-        nav_layout.setSpacing(12)
-        self.card.add_layout(nav_layout)
-
-        self._section_buttons: List[QPushButton] = []
-        self.section_stack = QStackedLayout()
-
-        section_titles = ["Liste", "Per måned"]
-        for index, title in enumerate(section_titles):
-            button = QPushButton(title)
-            button.setCheckable(True)
-            button.setAutoExclusive(True)
-            button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-            button.setObjectName("analysisSectionButton")
-            button.clicked.connect(
-                lambda _checked, idx=index: self._set_active_section(idx)
-            )
-            nav_layout.addWidget(button)
-            self._section_buttons.append(button)
-        nav_layout.addStretch(1)
-
-        nav_container = QWidget()
-        nav_container.setLayout(self.section_stack)
-        self.card.add_widget(nav_container)
-
-        # Seksjon 1: full liste
-        list_section = QWidget()
-        list_layout = QVBoxLayout(list_section)
-        list_layout.setContentsMargins(0, 0, 0, 0)
-        list_layout.setSpacing(8)
-        self.list_empty = EmptyStateWidget(
-            "Ingen kreditnotaer", "Last inn og aktiver en SAF-T fil for å se data."
-        )
-        self.list_empty.setSizePolicy(
-            QSizePolicy.Expanding, QSizePolicy.MinimumExpanding
-        )
-        self.list_table = create_table_widget()
-        self.list_table.setColumnCount(5)
-        self.list_table.setHorizontalHeaderLabels(
-            ["Dato", "Bilagsnr", "Beskrivelse", "Kontoer", "Beløp"]
-        )
-        self.list_table.setSortingEnabled(True)
-        self.list_table.hide()
-        list_layout.addWidget(self.list_empty)
-        list_layout.addWidget(self.list_table)
-        self.section_stack.addWidget(list_section)
-
-        # Seksjon 2: oppsummering per måned
-        summary_section = QWidget()
-        summary_layout = QVBoxLayout(summary_section)
-        summary_layout.setContentsMargins(0, 0, 0, 0)
-        summary_layout.setSpacing(8)
-        self.summary_empty = EmptyStateWidget(
-            "Ingen fordeling", "Ingen kreditnotaer å vise per måned."
-        )
-        self.summary_empty.setSizePolicy(
-            QSizePolicy.Expanding, QSizePolicy.MinimumExpanding
-        )
-        self.summary_table = create_table_widget()
-        self.summary_table.setColumnCount(3)
-        self.summary_table.setHorizontalHeaderLabels(
-            ["Måned", "Antall", "Sum kreditnotaer"]
-        )
-        self.summary_table.setSortingEnabled(True)
-        self.summary_table.hide()
-        summary_layout.addWidget(self.summary_empty)
-        summary_layout.addWidget(self.summary_table)
-        self.section_stack.addWidget(summary_section)
-
-        layout.addWidget(self.card)
-        self._set_active_section(0)
-
-    def set_credit_notes(
-        self,
-        rows: Iterable[Tuple[str, str, str, str, float]],
-        monthly_summary: Iterable[Tuple[str, int, float]],
-    ) -> None:
-        row_buffer = list(rows)
-        populate_table(
-            self.list_table,
-            ["Dato", "Bilagsnr", "Beskrivelse", "Kontoer", "Beløp"],
-            row_buffer,
-            money_cols={4},
-        )
-        self._toggle_empty_state(self.list_table, self.list_empty, bool(row_buffer))
-        self.list_table.setSortingEnabled(True)
-
-        summary_buffer = list(monthly_summary)
-        populate_table(
-            self.summary_table,
-            ["Måned", "Antall", "Sum kreditnotaer"],
-            summary_buffer,
-            money_cols={2},
-        )
-        self._toggle_empty_state(
-            self.summary_table, self.summary_empty, bool(summary_buffer)
-        )
-        self.summary_table.setSortingEnabled(True)
-
-    def clear_credit_notes(self) -> None:
-        self.list_table.setRowCount(0)
-        self.summary_table.setRowCount(0)
-        self.list_table.hide()
-        self.summary_table.hide()
-        self.list_empty.show()
-        self.summary_empty.show()
-        self._set_active_section(0)
 
     def _set_active_section(self, index: int) -> None:
         self.section_stack.setCurrentIndex(index)

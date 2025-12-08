@@ -48,10 +48,6 @@ REVISION_TASKS: Dict[str, List[str]] = {
         "Bekreft vesentlige kontrakter",
         "Test cut-off rundt periodeslutt",
     ],
-    "rev.kreditnotaer": [
-        "Følg opp kreditnotaer mot salgskonti",
-        "Undersøk uvanlige perioder",
-    ],
     "rev.mva": [
         "Stem av mva-koder mot innleverte oppgaver",
         "Kontroller mva-grunnlag",
@@ -74,7 +70,6 @@ NAV_ICON_FILENAMES: Dict[str, str] = {
     "rev.finans": "bank.svg",
     "rev.varelager": "boxes.svg",
     "rev.salg": "trend-up.svg",
-    "rev.kreditnotaer": "analytics.svg",
     "rev.mva": "percent.svg",
 }
 

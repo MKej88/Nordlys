@@ -22,7 +22,6 @@ from .pages.import_page import ImportPage
 from .pages.revision_pages import (
     ChecklistPage,
     CostVoucherReviewPage,
-    CreditNotesPage,
     FixedAssetsPage,
     PurchasesApPage,
     SalesArPage,
@@ -63,7 +62,6 @@ class PageStateHandler:
         self.vesentlig_page: Optional[SummaryPage] = None
         self.sammenstilling_page: Optional[SammenstillingsanalysePage] = None
         self.sales_ar_page: Optional[SalesArPage] = None
-        self.credit_notes_page: Optional[CreditNotesPage] = None
         self.purchases_ap_page: Optional[PurchasesApPage] = None
         self.cost_review_page: Optional[CostVoucherReviewPage] = None
         self.fixed_assets_page: Optional[FixedAssetsPage] = None
@@ -122,8 +120,6 @@ class PageStateHandler:
             )
             if not self._dataset_store.has_customer_data:
                 widget.clear_top_customers()
-        elif key == "rev.kreditnotaer" and isinstance(widget, CreditNotesPage):
-            self.credit_notes_page = widget
             widget.set_credit_notes(
                 self._dataset_store.credit_note_rows(),
                 self._dataset_store.credit_note_monthly_summary(),
