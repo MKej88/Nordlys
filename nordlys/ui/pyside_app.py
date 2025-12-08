@@ -107,6 +107,7 @@ class NordlysWindow(QMainWindow):
     def _on_navigation_changed(
         self, current: Optional[QTreeWidgetItem], _previous: Optional[QTreeWidgetItem]
     ) -> None:
+        self._ensure_startup_completed()
         if self._page_manager is None:
             return
         if current is None:
