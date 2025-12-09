@@ -107,12 +107,14 @@ def build_customer_supplier_analysis(
         if parent_map is None:
             parent_map = saft_customers.build_parent_map(root)
         if has_transaction_dates:
-            customer_sales, supplier_purchases = saft_customers.compute_customer_supplier_totals(
-                root,
-                ns,
-                date_from=effective_start,
-                date_to=effective_end,
-                parent_map=parent_map,
+            customer_sales, supplier_purchases = (
+                saft_customers.compute_customer_supplier_totals(
+                    root,
+                    ns,
+                    date_from=effective_start,
+                    date_to=effective_end,
+                    parent_map=parent_map,
+                )
             )
             cost_vouchers = saft_customers.extract_cost_vouchers(
                 root,
@@ -122,11 +124,13 @@ def build_customer_supplier_analysis(
                 parent_map=parent_map,
             )
         elif analysis_year is not None:
-            customer_sales, supplier_purchases = saft_customers.compute_customer_supplier_totals(
-                root,
-                ns,
-                year=analysis_year,
-                parent_map=parent_map,
+            customer_sales, supplier_purchases = (
+                saft_customers.compute_customer_supplier_totals(
+                    root,
+                    ns,
+                    year=analysis_year,
+                    parent_map=parent_map,
+                )
             )
             cost_vouchers = saft_customers.extract_cost_vouchers(
                 root,
@@ -140,11 +144,13 @@ def build_customer_supplier_analysis(
     elif analysis_year is not None:
         if parent_map is None:
             parent_map = saft_customers.build_parent_map(root)
-        customer_sales, supplier_purchases = saft_customers.compute_customer_supplier_totals(
-            root,
-            ns,
-            year=analysis_year,
-            parent_map=parent_map,
+        customer_sales, supplier_purchases = (
+            saft_customers.compute_customer_supplier_totals(
+                root,
+                ns,
+                year=analysis_year,
+                parent_map=parent_map,
+            )
         )
         cost_vouchers = saft_customers.extract_cost_vouchers(
             root,
