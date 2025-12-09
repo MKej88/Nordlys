@@ -36,6 +36,7 @@ from nordlys.saft_customers import (
     compute_customer_supplier_totals,
     compute_purchases_per_supplier,
     compute_sales_per_customer,
+    extract_credit_notes,
     get_amount,
     get_tx_customer_id,
     get_tx_supplier_id,
@@ -1215,6 +1216,55 @@ def test_compute_purchases_per_supplier_date_filter():
     assert df.empty
 
 
+def test_extract_credit_notes_filters_months_and_year():
+    xml = """
+    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <GeneralLedgerEntries>
+        <Journal>
+          <Transaction>
+            <Period>
+              <PeriodYear>2023</PeriodYear>
+              <PeriodNumber>2</PeriodNumber>
+            </Period>
+            <TransactionDate>2023-02-15</TransactionDate>
+            <Line>
+              <AccountID>3000</AccountID>
+              <DebitAmount>500</DebitAmount>
+            </Line>
+            <Line>
+              <AccountID>1500</AccountID>
+              <CreditAmount>500</CreditAmount>
+            </Line>
+          </Transaction>
+            <Transaction>
+              <TransactionDate>2023-03-01</TransactionDate>
+              <Line>
+                <AccountID>3000</AccountID>
+                <DebitAmount>800</DebitAmount>
+              </Line>
+              <Line>
+                <AccountID>1500</AccountID>
+                <CreditAmount>800</CreditAmount>
+              </Line>
+            </Transaction>
+        </Journal>
+      </GeneralLedgerEntries>
+    </AuditFile>
+    """
+    root = ET.fromstring(xml)
+    ns = {"n1": root.tag.split("}")[0][1:]}
+
+    df = extract_credit_notes(root, ns, year=2023)
+    assert len(df.index) == 2
+    feb_row = df.iloc[0]
+    march_row = df.iloc[1]
+    assert feb_row["Dato"] == date(2023, 2, 15)
+    assert feb_row["Beløp"] == pytest.approx(500.0)
+    assert "3000" in feb_row["Kontoer"]
+    assert march_row["Dato"] == date(2023, 3, 1)
+    assert march_row["Beløp"] == pytest.approx(800.0)
+
+
 def test_compute_customer_supplier_totals_matches_individual():
     root = build_sample_root()
     ns = {"n1": root.tag.split("}")[0][1:]}
@@ -1403,6 +1453,63 @@ def test_customer_supplier_analysis_includes_all_file_months():
         )
     )
     assert totals["FULL-YEAR"] == pytest.approx(2000.0)
+
+
+def test_build_customer_supplier_analysis_handles_missing_transaction_dates():
+    xml = """
+    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <Header>
+        <SelectionCriteria>
+          <PeriodEnd>2023-12-31</PeriodEnd>
+        </SelectionCriteria>
+        <FiscalYear>2023</FiscalYear>
+      </Header>
+      <MasterFiles>
+        <Customer>
+          <CustomerID>PERIOD-ONLY</CustomerID>
+          <Name>Period Customer</Name>
+        </Customer>
+      </MasterFiles>
+      <GeneralLedgerEntries>
+        <Journal>
+          <Transaction>
+            <Period>
+              <PeriodYear>2023</PeriodYear>
+              <PeriodNumber>2</PeriodNumber>
+            </Period>
+            <Line>
+              <AccountID>3000</AccountID>
+              <CreditAmount>500</CreditAmount>
+            </Line>
+            <Line>
+              <AccountID>2700</AccountID>
+              <CreditAmount>125</CreditAmount>
+            </Line>
+            <Line>
+              <AccountID>1500</AccountID>
+              <DebitAmount>625</DebitAmount>
+              <CustomerID>PERIOD-ONLY</CustomerID>
+            </Line>
+          </Transaction>
+        </Journal>
+      </GeneralLedgerEntries>
+    </AuditFile>
+    """
+    root = ET.fromstring(xml)
+    ns = {"n1": root.tag.split("}")[0][1:]}
+    header = parse_saft_header(root)
+
+    analysis = build_customer_supplier_analysis(header, root, ns)
+
+    assert analysis.customer_sales is not None
+    assert not analysis.customer_sales.empty
+    totals = dict(
+        zip(
+            analysis.customer_sales["Kundenr"],
+            analysis.customer_sales["Omsetning eks mva"],
+        )
+    )
+    assert totals["PERIOD-ONLY"] == pytest.approx(500.0)
 
 
 def test_compute_purchases_includes_all_cost_accounts():
@@ -1844,6 +1951,7 @@ def test_load_saft_files_parallel_progress(monkeypatch):
             customer_sales=None,
             suppliers={},
             supplier_purchases=None,
+            credit_notes=None,
             cost_vouchers=[],
             analysis_year=None,
             summary={},
@@ -1884,6 +1992,7 @@ def test_load_saft_files_keeps_successes_when_one_fails(monkeypatch):
             customer_sales=None,
             suppliers={},
             supplier_purchases=None,
+            credit_notes=None,
             cost_vouchers=[],
             analysis_year=None,
             summary={},
@@ -1922,6 +2031,7 @@ def test_load_saft_files_raises_on_partial_failure_without_progress(monkeypatch)
             customer_sales=None,
             suppliers={},
             supplier_purchases=None,
+            credit_notes=None,
             cost_vouchers=[],
             analysis_year=None,
             summary={},

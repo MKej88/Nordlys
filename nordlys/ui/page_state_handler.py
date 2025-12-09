@@ -120,6 +120,10 @@ class PageStateHandler:
             )
             if not self._dataset_store.has_customer_data:
                 widget.clear_top_customers()
+            widget.set_credit_notes(
+                self._dataset_store.credit_note_rows(),
+                self._dataset_store.credit_note_monthly_summary(),
+            )
         elif key == "rev.innkjop" and isinstance(widget, PurchasesApPage):
             self.purchases_ap_page = widget
             widget.set_controls_enabled(self._dataset_store.has_supplier_data)

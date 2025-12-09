@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date, datetime
 from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Tuple
 
 from ...industry_groups import IndustryClassification
@@ -62,6 +63,7 @@ class SaftDatasetStore:
         self._sup_id_to_nr: Dict[str, str] = {}
         self._customer_sales: Optional[pd.DataFrame] = None
         self._supplier_purchases: Optional[pd.DataFrame] = None
+        self._credit_notes: Optional[pd.DataFrame] = None
         self._cost_vouchers: List["saft_customers.CostVoucher"] = []
         self._trial_balance: Optional[Dict[str, object]] = None
         self._trial_balance_error: Optional[str] = None
@@ -167,6 +169,7 @@ class SaftDatasetStore:
         self._supplier_purchases = self._prepare_supplier_purchases(
             result.supplier_purchases
         )
+        self._credit_notes = result.credit_notes
         self._cost_vouchers = list(result.cost_vouchers)
         self._trial_balance = result.trial_balance
         self._trial_balance_error = result.trial_balance_error
@@ -259,6 +262,10 @@ class SaftDatasetStore:
     @property
     def supplier_purchases(self) -> Optional[pd.DataFrame]:
         return self._supplier_purchases
+
+    @property
+    def credit_notes(self) -> Optional[pd.DataFrame]:
+        return self._credit_notes
 
     @property
     def cost_vouchers(self) -> List["saft_customers.CostVoucher"]:
@@ -448,6 +455,76 @@ class SaftDatasetStore:
         except (TypeError, ValueError):
             return 0.0
 
+    def credit_note_rows(self) -> List[Tuple[str, str, str, str, float]]:
+        if self._credit_notes is None or self._credit_notes.empty:
+            return []
+
+        rows: List[Tuple[str, str, str, str, float]] = []
+        for _, row in self._credit_notes.iterrows():
+            date_value = row.get("Dato")
+            if isinstance(date_value, datetime):
+                date_text = date_value.strftime("%d.%m.%Y")
+            elif isinstance(date_value, date):
+                date_text = date_value.strftime("%d.%m.%Y")
+            elif date_value:
+                date_text = str(date_value)
+            else:
+                date_text = "—"
+
+            rows.append(
+                (
+                    date_text,
+                    str(row.get("Bilagsnr", "—")),
+                    str(row.get("Beskrivelse", "—")),
+                    str(row.get("Kontoer", "—")),
+                    self.safe_float(row.get("Beløp")),
+                )
+            )
+        return rows
+
+    def credit_note_monthly_summary(self) -> List[Tuple[str, int, float]]:
+        if self._credit_notes is None or self._credit_notes.empty:
+            return []
+
+        month_totals: Dict[int, Tuple[int, float]] = {}
+        for _, row in self._credit_notes.iterrows():
+            date_value = row.get("Dato")
+            if isinstance(date_value, (datetime, date)):
+                month = date_value.month
+            else:
+                continue
+
+            count, amount = month_totals.get(month, (0, 0.0))
+            month_totals[month] = (
+                count + 1,
+                amount + self.safe_float(row.get("Beløp")),
+            )
+
+        month_names = [
+            "Januar",
+            "Februar",
+            "Mars",
+            "April",
+            "Mai",
+            "Juni",
+            "Juli",
+            "August",
+            "September",
+            "Oktober",
+            "November",
+            "Desember",
+        ]
+
+        rows: List[Tuple[str, int, float]] = []
+        for month in range(1, 13):
+            totals = month_totals.get(month)
+            if totals:
+                name = month_names[month - 1]
+                count, amount = totals
+                rows.append((name, count, round(amount, 2)))
+
+        return rows
+
     # endregion
 
     # region Interne hjelpere
@@ -465,6 +542,7 @@ class SaftDatasetStore:
         self._sup_id_to_nr = {}
         self._customer_sales = None
         self._supplier_purchases = None
+        self._credit_notes = None
         self._cost_vouchers = []
         self._trial_balance = None
         self._trial_balance_error = None

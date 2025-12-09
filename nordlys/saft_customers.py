@@ -10,6 +10,7 @@ from .saft.analytics import (
     compute_customer_supplier_totals,
     compute_purchases_per_supplier,
     compute_sales_per_customer,
+    extract_credit_notes,
     extract_cost_vouchers,
 )
 from .saft.export import save_outputs
@@ -30,6 +31,7 @@ __all__ = [
     "build_supplier_name_map",
     "build_account_name_map",
     "build_parent_map",
+    "extract_credit_notes",
     "compute_customer_supplier_totals",
     "compute_sales_per_customer",
     "compute_purchases_per_supplier",
