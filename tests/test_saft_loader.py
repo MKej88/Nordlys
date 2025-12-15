@@ -292,6 +292,24 @@ def test_suggest_max_workers_caps_for_two_heavy_files(monkeypatch):
     assert suggested == loader.HEAVY_SAFT_MAX_WORKERS
 
 
+def test_suggest_max_workers_allows_heavy_parallel_mode(monkeypatch):
+    size_map = {
+        "heavy_a": loader.HEAVY_SAFT_FILE_BYTES + 5,
+        "heavy_b": loader.HEAVY_SAFT_FILE_BYTES * 2,
+    }
+
+    def fake_stat(self: Path, follow_symlinks: bool = True) -> SimpleNamespace:
+        return SimpleNamespace(st_size=size_map.get(str(self), 0))
+
+    monkeypatch.setattr(Path, "stat", fake_stat)
+    monkeypatch.setattr(loader, "SAFT_HEAVY_PARALLEL", True)
+
+    dummy_paths = list(size_map)
+    suggested = loader._suggest_max_workers(dummy_paths, cpu_limit=8)
+
+    assert suggested == len(dummy_paths)
+
+
 def test_loader_runs_heavy_parsers_in_background_threads(tmp_path, monkeypatch):
     xml_content = """
     <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
