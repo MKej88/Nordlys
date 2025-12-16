@@ -7,7 +7,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
-from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import Dict, List, Optional, Sequence, Tuple, TYPE_CHECKING
 
 from .customer_buckets import DESCRIPTION_BUCKET_MAP
 from .entry_helpers import get_amount, get_tx_customer_id, get_tx_supplier_id
@@ -33,6 +33,7 @@ __all__ = [
     "compute_customer_supplier_totals",
     "compute_sales_per_customer",
     "compute_purchases_per_supplier",
+    "extract_credit_notes",
 ]
 
 _DESCRIPTION_BUCKET_NAMES: set[str] = set(DESCRIPTION_BUCKET_MAP)
@@ -198,6 +199,18 @@ def _build_transaction_scope(
         period_year=period_year,
         period_number=period_number,
     )
+
+
+def _first_text(element: ET.Element, paths: Tuple[str, ...], ns: NamespaceMap) -> str:
+    """Returnerer tekstinnhold fra første matchende path."""
+
+    for path in paths:
+        candidate = _find(element, path, ns)
+        if candidate is not None and candidate.text:
+            cleaned = _clean_text(candidate.text)
+            if cleaned:
+                return cleaned
+    return ""
 
 
 def _transaction_in_scope(
@@ -782,3 +795,84 @@ def compute_purchases_per_supplier(
     df = pandas.DataFrame(rows)
     df["Innkjøp eks mva"] = df["Innkjøp eks mva"].astype(float).round(2)
     return df.sort_values("Innkjøp eks mva", ascending=False).reset_index(drop=True)
+
+
+def extract_credit_notes(
+    root: ET.Element,
+    ns: NamespaceMap,
+    *,
+    months: Sequence[int] = tuple(range(1, 13)),
+    year: Optional[int] = None,
+) -> "pd.DataFrame":
+    """Henter kreditnotaer i angitte måneder for 3xxx-konti gjennom året."""
+
+    pandas = _require_pandas()
+    month_filter = {month for month in months if isinstance(month, int)}
+    if not month_filter:
+        month_filter = set(range(1, 13))
+
+    rows: List[Dict[str, object]] = []
+
+    for transaction in _iter_transactions(root, ns):
+        scope = _build_transaction_scope(transaction, ns)
+        tx_date = scope.date
+        if tx_date is None or tx_date.month not in month_filter:
+            continue
+        if year is not None and tx_date.year != year:
+            continue
+
+        revenue_total = Decimal("0")
+        accounts: List[str] = []
+        for line in _findall(transaction, "n1:Line", ns):
+            account_element = _find(line, "n1:AccountID", ns)
+            account_text = _clean_text(
+                account_element.text if account_element is not None else None
+            )
+            if not account_text:
+                continue
+
+            normalized = _normalize_account_key(account_text) or account_text
+            if not _is_revenue_account(normalized):
+                continue
+
+            debit = get_amount(line, "DebitAmount", ns)
+            credit = get_amount(line, "CreditAmount", ns)
+            revenue_total += credit - debit
+            accounts.append(normalized)
+
+        if revenue_total >= 0 or not accounts:
+            continue
+
+        document_number = _first_text(
+            transaction,
+            (
+                "n1:DocumentNumber",
+                "n1:SourceDocumentID",
+                "n1:DocumentReference/n1:DocumentNumber",
+                "n1:DocumentReference/n1:ID",
+                "n1:SourceID",
+            ),
+            ns,
+        )
+
+        description = scope.voucher_description or scope.transaction_description
+        unique_accounts = sorted(set(accounts))
+        rows.append(
+            {
+                "Dato": tx_date,
+                "Bilagsnr": document_number or "—",
+                "Beskrivelse": description or "—",
+                "Kontoer": ", ".join(unique_accounts) if unique_accounts else "—",
+                "Beløp": float(abs(revenue_total)),
+            }
+        )
+
+    if not rows:
+        return pandas.DataFrame(
+            columns=["Dato", "Bilagsnr", "Beskrivelse", "Kontoer", "Beløp"]
+        )
+
+    df = pandas.DataFrame(rows)
+    df["Beløp"] = df["Beløp"].astype(float).round(2)
+    df.sort_values("Dato", inplace=True)
+    return df.reset_index(drop=True)
