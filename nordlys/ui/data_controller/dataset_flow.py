@@ -287,6 +287,7 @@ class DatasetFlowController:
             pages.sales_ar_page.set_controls_enabled(False)
             pages.sales_ar_page.update_sales_reconciliation(None, None)
             pages.sales_ar_page.clear_top_customers()
+            pages.sales_ar_page.clear_sales_correlation()
             pages.sales_ar_page.clear_credit_notes()
             pages.sales_ar_page.clear_receivable_overview()
         if pages.purchases_ap_page:
