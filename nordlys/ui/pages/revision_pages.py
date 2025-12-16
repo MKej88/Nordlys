@@ -1631,7 +1631,6 @@ class SalesArPage(QWidget):
 
         missing_title = QLabel("Salg uten motpost kundefordringer")
         missing_title.setObjectName("analysisSectionTitle")
-        self.correlation_card.add_widget(missing_title)
 
         self.missing_sales_empty = EmptyStateWidget(
             "Ingen avvik",
@@ -1639,8 +1638,11 @@ class SalesArPage(QWidget):
             icon="✅",
         )
         self.missing_sales_empty.setSizePolicy(
-            QSizePolicy.Expanding, QSizePolicy.MinimumExpanding
+            QSizePolicy.Expanding, QSizePolicy.Minimum
         )
+        empty_layout = cast(QVBoxLayout, self.missing_sales_empty.layout())
+        empty_layout.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+        empty_layout.setContentsMargins(12, 12, 12, 12)
 
         self.missing_sales_table = create_table_widget()
         self.missing_sales_table.setColumnCount(6)
@@ -1657,8 +1659,17 @@ class SalesArPage(QWidget):
         self.missing_sales_table.setSortingEnabled(True)
         self.missing_sales_table.hide()
 
-        self.correlation_card.add_widget(self.missing_sales_empty)
-        self.correlation_card.add_widget(self.missing_sales_table)
+        missing_section = QVBoxLayout()
+        missing_section.setContentsMargins(0, 0, 0, 0)
+        missing_section.setSpacing(8)
+        missing_section.setAlignment(Qt.AlignTop)
+        missing_section.addWidget(missing_title, 0, Qt.AlignLeft | Qt.AlignTop)
+        missing_section.addWidget(
+            self.missing_sales_empty, 0, Qt.AlignLeft | Qt.AlignTop
+        )
+        missing_section.addWidget(self.missing_sales_table)
+
+        self.correlation_card.add_layout(missing_section)
 
         page_layout.addWidget(self.correlation_card)
         self._update_correlation_summary(None, None)
