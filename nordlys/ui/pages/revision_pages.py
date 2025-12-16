@@ -1599,89 +1599,24 @@ class SalesArPage(QWidget):
         page_layout.setContentsMargins(0, 0, 0, 0)
         page_layout.setSpacing(24)
 
-        subtitle = (
-            "Knytter salgsbilag på 3xxx-kontoer mot kundefordringer (1500)."
-            " Viser både samlede beløp og bilag uten motpost."
-        )
-        self.correlation_card = CardFrame("Korrelasjonsanalyse", subtitle)
-        self.correlation_card.setSizePolicy(
-            QSizePolicy.Expanding, QSizePolicy.Expanding
-        )
+        self.correlation_tabs = QTabWidget()
+        self.correlation_tabs.setObjectName("correlationTabs")
 
-        intro_label = QLabel(
-            "Summene under er hentet direkte fra SAF-T-transaksjonene og viser "
-            "hvorvidt salgsføringer har motpost i kundefordringer."
-        )
-        intro_label.setWordWrap(True)
-        self.correlation_card.add_widget(intro_label)
+        sales_tab = self._build_sales_correlation_tab()
+        self.correlation_tabs.addTab(sales_tab, "Salgsinntekter")
 
-        self.correlation_summary_table = create_table_widget()
-        self.correlation_summary_table.setColumnCount(2)
-        self.correlation_summary_table.setHorizontalHeaderLabels(
-            ["Kategori", "Sum salg"]
+        receivables_tab = self._build_placeholder_tab(
+            "Kundefordringer", "Kommer snart."
         )
-        self.correlation_summary_table.horizontalHeader().setSectionResizeMode(
-            0, QHeaderView.ResizeToContents
-        )
-        self.correlation_summary_table.horizontalHeader().setSectionResizeMode(
-            1, QHeaderView.Stretch
-        )
-        self.correlation_summary_table.setSortingEnabled(False)
-        self.correlation_summary_table.setSizePolicy(
-            QSizePolicy.Expanding, QSizePolicy.Minimum
-        )
-        apply_compact_row_heights(self.correlation_summary_table)
-        self.correlation_card.add_widget(self.correlation_summary_table)
+        self.correlation_tabs.addTab(receivables_tab, "Kundefordringer")
 
-        missing_title = QLabel("Salg uten motpost kundefordringer")
-        missing_title.setObjectName("analysisSectionTitle")
+        bank_tab = self._build_placeholder_tab("Bankinnskudd", "Kommer snart.")
+        self.correlation_tabs.addTab(bank_tab, "Bankinnskudd")
 
-        self.missing_sales_empty = EmptyStateWidget(
-            "Ingen avvik",
-            "Alle salgsbilag har motpost på kundefordringer (1500).",
-            icon="✅",
-        )
-        self.missing_sales_empty.setSizePolicy(
-            QSizePolicy.Expanding, QSizePolicy.Minimum
-        )
-        empty_layout = cast(QVBoxLayout, self.missing_sales_empty.layout())
-        empty_layout.setAlignment(Qt.AlignLeft | Qt.AlignTop)
-        empty_layout.setContentsMargins(12, 4, 12, 12)
-        empty_layout.setSpacing(8)
+        summary_tab = self._build_placeholder_tab("Oppsummering", "Kommer snart.")
+        self.correlation_tabs.addTab(summary_tab, "Oppsummering")
 
-        self.missing_sales_table = create_table_widget()
-        self.missing_sales_table.setColumnCount(6)
-        self.missing_sales_table.setHorizontalHeaderLabels(
-            [
-                "Dato",
-                "Bilagsnr",
-                "Beskrivelse",
-                "Kontoer",
-                "Motkontoer",
-                "Beløp",
-            ]
-        )
-        self.missing_sales_table.setSortingEnabled(True)
-        self.missing_sales_table.setSizePolicy(
-            QSizePolicy.Expanding, QSizePolicy.Expanding
-        )
-        self.missing_sales_table.hide()
-
-        missing_section = QVBoxLayout()
-        missing_section.setContentsMargins(0, 0, 0, 0)
-        missing_section.setSpacing(4)
-        missing_section.addWidget(missing_title, 0, Qt.AlignLeft | Qt.AlignTop)
-        missing_section.addWidget(
-            self.missing_sales_empty, 0, Qt.AlignLeft | Qt.AlignTop
-        )
-        missing_section.addWidget(self.missing_sales_table)
-        missing_section.setStretch(2, 1)
-
-        self.correlation_card.add_layout(missing_section)
-
-        page_layout.addWidget(self.correlation_card)
-        self._update_correlation_summary(None, None)
-        self._toggle_empty_state(self.missing_sales_table, self.missing_sales_empty, False)
+        page_layout.addWidget(self.correlation_tabs)
 
         return page
 
@@ -1866,6 +1801,111 @@ class SalesArPage(QWidget):
         else:
             table.hide()
             empty_state.show()
+
+    def _build_sales_correlation_tab(self) -> QWidget:
+        page = QWidget()
+        page_layout = QVBoxLayout(page)
+        page_layout.setContentsMargins(0, 0, 0, 0)
+        page_layout.setSpacing(24)
+
+        subtitle = (
+            "Knytter salgsbilag på 3xxx-kontoer mot kundefordringer (1500)."
+            " Viser både samlede beløp og bilag uten motpost."
+        )
+        self.correlation_card = CardFrame("Korrelasjonsanalyse", subtitle)
+        self.correlation_card.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Expanding
+        )
+
+        intro_label = QLabel(
+            "Summene under er hentet direkte fra SAF-T-transaksjonene og viser "
+            "hvorvidt salgsføringer har motpost i kundefordringer."
+        )
+        intro_label.setWordWrap(True)
+        self.correlation_card.add_widget(intro_label)
+
+        self.correlation_summary_table = create_table_widget()
+        self.correlation_summary_table.setColumnCount(2)
+        self.correlation_summary_table.setHorizontalHeaderLabels(
+            ["Kategori", "Sum salg"]
+        )
+        self.correlation_summary_table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeToContents
+        )
+        self.correlation_summary_table.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.Stretch
+        )
+        self.correlation_summary_table.setSortingEnabled(False)
+        self.correlation_summary_table.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Minimum
+        )
+        apply_compact_row_heights(self.correlation_summary_table)
+        self.correlation_card.add_widget(self.correlation_summary_table)
+
+        missing_title = QLabel("Salg uten motpost kundefordringer")
+        missing_title.setObjectName("analysisSectionTitle")
+
+        self.missing_sales_empty = EmptyStateWidget(
+            "Ingen avvik",
+            "Alle salgsbilag har motpost på kundefordringer (1500).",
+            icon="✅",
+        )
+        self.missing_sales_empty.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Minimum
+        )
+        empty_layout = cast(QVBoxLayout, self.missing_sales_empty.layout())
+        empty_layout.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+        empty_layout.setContentsMargins(12, 4, 12, 12)
+        empty_layout.setSpacing(8)
+
+        self.missing_sales_table = create_table_widget()
+        self.missing_sales_table.setColumnCount(6)
+        self.missing_sales_table.setHorizontalHeaderLabels(
+            [
+                "Dato",
+                "Bilagsnr",
+                "Beskrivelse",
+                "Kontoer",
+                "Motkontoer",
+                "Beløp",
+            ]
+        )
+        self.missing_sales_table.setSortingEnabled(True)
+        self.missing_sales_table.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Expanding
+        )
+        self.missing_sales_table.hide()
+
+        missing_section = QVBoxLayout()
+        missing_section.setContentsMargins(0, 0, 0, 0)
+        missing_section.setSpacing(4)
+        missing_section.addWidget(missing_title, 0, Qt.AlignLeft | Qt.AlignTop)
+        missing_section.addWidget(
+            self.missing_sales_empty, 0, Qt.AlignLeft | Qt.AlignTop
+        )
+        missing_section.addWidget(self.missing_sales_table)
+        missing_section.setStretch(2, 1)
+
+        self.correlation_card.add_layout(missing_section)
+
+        page_layout.addWidget(self.correlation_card)
+        self._update_correlation_summary(None, None)
+        self._toggle_empty_state(self.missing_sales_table, self.missing_sales_empty, False)
+
+        return page
+
+    def _build_placeholder_tab(self, title: str, message: str) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        placeholder = EmptyStateWidget(title, message, icon="ℹ️")
+        placeholder.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        layout.addWidget(placeholder, 0, Qt.AlignTop)
+        layout.addStretch(1)
+
+        return page
 
 
 class PurchasesApPage(QWidget):
