@@ -3,9 +3,7 @@ from __future__ import annotations
 from typing import List
 
 
-def test_progress_animator_moves_while_idle(
-    dummy_pyside6: None, monkeypatch
-) -> None:
+def test_progress_animator_moves_while_idle(dummy_pyside6: None, monkeypatch) -> None:
     import nordlys.ui.progress_display as progress_display
 
     times: List[float] = [0.0]

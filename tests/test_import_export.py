@@ -1,6 +1,7 @@
 import importlib
 import types
 
+
 def test_handle_load_finished_reports_apply_errors(dummy_pyside6: None) -> None:
     import nordlys.ui.import_export as import_export
 

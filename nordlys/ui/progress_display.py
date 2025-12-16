@@ -57,14 +57,12 @@ class _ProgressAnimator(QObject):
         idle_time = time.monotonic() - self._last_report_time
 
         if self._reported_target < 100 and idle_time > self._idle_seconds:
-            idle_steps = int(
-                (idle_time - self._idle_seconds) // self._idle_growth_seconds
-            ) + 1
+            idle_steps = (
+                int((idle_time - self._idle_seconds) // self._idle_growth_seconds) + 1
+            )
             max_idle_target = min(99, self._reported_target + idle_steps)
             if self._floating_target < max_idle_target:
-                self._floating_target = min(
-                    max_idle_target, self._floating_target + 1
-                )
+                self._floating_target = min(max_idle_target, self._floating_target + 1)
         elif self._reported_target >= 100 and idle_time > self._finish_seconds:
             self._floating_target = 100
 
