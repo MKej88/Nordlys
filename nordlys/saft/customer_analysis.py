@@ -163,9 +163,18 @@ def build_customer_supplier_analysis(
             root, ns, months=(1, 2), year=analysis_year
         )
 
-    sales_ar_correlation = saft_customers.analyze_sales_receivable_correlation(
-        root, ns, year=analysis_year
-    )
+    if has_transaction_dates:
+        sales_ar_correlation = saft_customers.analyze_sales_receivable_correlation(
+            root,
+            ns,
+            date_from=effective_start,
+            date_to=effective_end,
+            year=analysis_year,
+        )
+    else:
+        sales_ar_correlation = saft_customers.analyze_sales_receivable_correlation(
+            root, ns, year=analysis_year
+        )
 
     return CustomerSupplierAnalysis(
         analysis_year=analysis_year,

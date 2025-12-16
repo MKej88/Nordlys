@@ -1316,6 +1316,60 @@ def test_analyze_sales_receivable_correlation_separates_totals():
     assert "1920" in missing_row["Motkontoer"]
 
 
+def test_analyze_sales_receivable_correlation_includes_spillover_dates():
+    xml = """
+    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <GeneralLedgerEntries>
+        <Journal>
+          <Transaction>
+            <TransactionID>3001</TransactionID>
+            <TransactionDate>2023-12-28</TransactionDate>
+            <Line>
+              <AccountID>3000</AccountID>
+              <CreditAmount>1200</CreditAmount>
+            </Line>
+            <Line>
+              <AccountID>1500</AccountID>
+              <DebitAmount>1200</DebitAmount>
+            </Line>
+          </Transaction>
+          <Transaction>
+            <TransactionID>3002</TransactionID>
+            <TransactionDate>2024-01-15</TransactionDate>
+            <Line>
+              <AccountID>3100</AccountID>
+              <CreditAmount>600</CreditAmount>
+            </Line>
+            <Line>
+              <AccountID>1920</AccountID>
+              <DebitAmount>600</DebitAmount>
+            </Line>
+          </Transaction>
+        </Journal>
+      </GeneralLedgerEntries>
+    </AuditFile>
+    """
+
+    root = ET.fromstring(xml)
+    ns = {"n1": root.tag.split("}")[0][1:]}
+
+    result = analyze_sales_receivable_correlation(
+        root,
+        ns,
+        date_from=date(2023, 12, 1),
+        date_to=date(2024, 1, 31),
+        year=2023,
+    )
+
+    assert result.with_receivable_total == pytest.approx(1200.0)
+    assert result.without_receivable_total == pytest.approx(600.0)
+    assert len(result.missing_sales.index) == 1
+    missing_row = result.missing_sales.iloc[0]
+    assert missing_row["Dato"] == date(2024, 1, 15)
+    assert missing_row["Bilagsnr"] == "3002"
+    assert missing_row["Beløp"] == pytest.approx(600.0)
+
+
 def test_compute_customer_supplier_totals_matches_individual():
     root = build_sample_root()
     ns = {"n1": root.tag.split("}")[0][1:]}

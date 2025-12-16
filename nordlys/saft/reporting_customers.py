@@ -891,7 +891,12 @@ def extract_credit_notes(
 
 
 def analyze_sales_receivable_correlation(
-    root: ET.Element, ns: NamespaceMap, *, year: Optional[int] = None
+    root: ET.Element,
+    ns: NamespaceMap,
+    *,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    year: Optional[int] = None,
 ) -> SalesReceivableCorrelation:
     """Summerer salg etter om bilaget har motpost på 1500."""
 
@@ -900,15 +905,17 @@ def analyze_sales_receivable_correlation(
     without_receivable = Decimal("0")
     missing_rows: List[Dict[str, object]] = []
 
+    use_range = date_from is not None or date_to is not None
+
     for transaction in _iter_transactions(root, ns):
         scope = _build_transaction_scope(transaction, ns)
         if not _transaction_in_scope(
             scope,
-            start_date=None,
-            end_date=None,
+            start_date=date_from,
+            end_date=date_to,
             year=year,
             last_period=None,
-            use_range=False,
+            use_range=use_range,
         ):
             continue
 
