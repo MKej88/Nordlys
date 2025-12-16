@@ -1662,17 +1662,20 @@ class SalesArPage(QWidget):
             ]
         )
         self.missing_sales_table.setSortingEnabled(True)
+        self.missing_sales_table.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Expanding
+        )
         self.missing_sales_table.hide()
 
         missing_section = QVBoxLayout()
         missing_section.setContentsMargins(0, 0, 0, 0)
         missing_section.setSpacing(4)
-        missing_section.setAlignment(Qt.AlignTop)
         missing_section.addWidget(missing_title, 0, Qt.AlignLeft | Qt.AlignTop)
         missing_section.addWidget(
             self.missing_sales_empty, 0, Qt.AlignLeft | Qt.AlignTop
         )
         missing_section.addWidget(self.missing_sales_table)
+        missing_section.setStretch(2, 1)
 
         self.correlation_card.add_layout(missing_section)
 
