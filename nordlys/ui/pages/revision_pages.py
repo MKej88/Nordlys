@@ -1395,53 +1395,6 @@ class FixedAssetsPage(QWidget):
             table.hide()
             empty_state.show()
 
-    def _update_receivable_summary(
-        self, analysis: Optional["saft_customers.ReceivablePostingAnalysis"]
-    ) -> None:
-        def _format(value: Optional[float]) -> str:
-            return format_currency(value)
-
-        if analysis is None:
-            sales_total: Optional[float] = None
-            bank_total: Optional[float] = None
-            other_total: Optional[float] = None
-            opening = None
-            closing = None
-            control = None
-        else:
-            sales_total = analysis.sales_counter_total
-            bank_total = analysis.bank_counter_total
-            other_total = analysis.other_counter_total
-            opening = analysis.opening_balance
-            closing = analysis.closing_balance
-            control = analysis.control_total
-
-        rows = [
-            ("Inngående balanse (1500)", _format(opening)),
-            ("Kundefordringer postert mot salgsinntekter", _format(sales_total)),
-            ("Kundefordringer postert mot bank", _format(bank_total)),
-            (
-                "Kundefordringer uten motpost bank eller salg",
-                _format(other_total),
-            ),
-            ("Utgående balanse (1500)", _format(closing)),
-            (
-                "Kontroll: IB + bevegelser – UB",
-                _format(control),
-            ),
-        ]
-
-        self.receivable_summary_table.setRowCount(len(rows))
-        for row_index, (label, value) in enumerate(rows):
-            label_item = QTableWidgetItem(label)
-            label_item.setFlags(label_item.flags() & ~Qt.ItemIsEditable)
-            value_item = QTableWidgetItem(value)
-            value_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            value_item.setFlags(value_item.flags() & ~Qt.ItemIsEditable)
-            self.receivable_summary_table.setItem(row_index, 0, label_item)
-            self.receivable_summary_table.setItem(row_index, 1, value_item)
-
-
 class SalesArPage(QWidget):
     """Revisjonsside for salg og kundefordringer med topp kunder og kreditnotaer."""
 
@@ -1861,6 +1814,52 @@ class SalesArPage(QWidget):
             value_item.setFlags(value_item.flags() & ~Qt.ItemIsEditable)
             self.correlation_summary_table.setItem(row_index, 0, label_item)
             self.correlation_summary_table.setItem(row_index, 1, value_item)
+
+    def _update_receivable_summary(
+        self, analysis: Optional["saft_customers.ReceivablePostingAnalysis"]
+    ) -> None:
+        def _format(value: Optional[float]) -> str:
+            return format_currency(value)
+
+        if analysis is None:
+            sales_total: Optional[float] = None
+            bank_total: Optional[float] = None
+            other_total: Optional[float] = None
+            opening = None
+            closing = None
+            control = None
+        else:
+            sales_total = analysis.sales_counter_total
+            bank_total = analysis.bank_counter_total
+            other_total = analysis.other_counter_total
+            opening = analysis.opening_balance
+            closing = analysis.closing_balance
+            control = analysis.control_total
+
+        rows = [
+            ("Inngående balanse (1500)", _format(opening)),
+            ("Kundefordringer postert mot salgsinntekter", _format(sales_total)),
+            ("Kundefordringer postert mot bank", _format(bank_total)),
+            (
+                "Kundefordringer uten motpost bank eller salg",
+                _format(other_total),
+            ),
+            ("Utgående balanse (1500)", _format(closing)),
+            (
+                "Kontroll: IB + bevegelser – UB",
+                _format(control),
+            ),
+        ]
+
+        self.receivable_summary_table.setRowCount(len(rows))
+        for row_index, (label, value) in enumerate(rows):
+            label_item = QTableWidgetItem(label)
+            label_item.setFlags(label_item.flags() & ~Qt.ItemIsEditable)
+            value_item = QTableWidgetItem(value)
+            value_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            value_item.setFlags(value_item.flags() & ~Qt.ItemIsEditable)
+            self.receivable_summary_table.setItem(row_index, 0, label_item)
+            self.receivable_summary_table.setItem(row_index, 1, value_item)
 
     def _set_active_section(self, index: int) -> None:
         self.section_stack.setCurrentIndex(index)
