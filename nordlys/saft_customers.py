@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from .saft.analytics import (
+    SalesReceivableCorrelation,
+    analyze_sales_receivable_correlation,
     build_account_name_map,
     build_customer_name_map,
     build_parent_map,
     build_supplier_name_map,
-    analyze_sales_receivable_correlation,
     compute_customer_supplier_totals,
     compute_purchases_per_supplier,
     compute_sales_per_customer,
@@ -34,6 +35,7 @@ __all__ = [
     "build_parent_map",
     "extract_credit_notes",
     "analyze_sales_receivable_correlation",
+    "SalesReceivableCorrelation",
     "compute_customer_supplier_totals",
     "compute_sales_per_customer",
     "compute_purchases_per_supplier",
