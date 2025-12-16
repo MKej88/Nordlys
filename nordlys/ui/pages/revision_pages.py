@@ -1642,7 +1642,8 @@ class SalesArPage(QWidget):
         )
         empty_layout = cast(QVBoxLayout, self.missing_sales_empty.layout())
         empty_layout.setAlignment(Qt.AlignLeft | Qt.AlignTop)
-        empty_layout.setContentsMargins(12, 12, 12, 12)
+        empty_layout.setContentsMargins(12, 4, 12, 12)
+        empty_layout.setSpacing(8)
 
         self.missing_sales_table = create_table_widget()
         self.missing_sales_table.setColumnCount(6)
@@ -1661,7 +1662,7 @@ class SalesArPage(QWidget):
 
         missing_section = QVBoxLayout()
         missing_section.setContentsMargins(0, 0, 0, 0)
-        missing_section.setSpacing(8)
+        missing_section.setSpacing(4)
         missing_section.setAlignment(Qt.AlignTop)
         missing_section.addWidget(missing_title, 0, Qt.AlignLeft | Qt.AlignTop)
         missing_section.addWidget(
