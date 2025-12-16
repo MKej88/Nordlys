@@ -59,13 +59,39 @@ def _create_dummy_pyside6() -> dict[str, types.ModuleType | None]:
 
     class _DummySignal:
         def __init__(self, *_: object, **__: object) -> None:
-            self._callbacks: list[object] = []
+            self._callbacks: dict[int, list[object]] = {}
+
+        def __get__(
+            self, instance: object | None, owner: type[object] | None = None
+        ) -> "_BoundDummySignal | _DummySignal":
+            if instance is None:
+                return self
+            return _BoundDummySignal(self, instance)
+
+        def _callbacks_for(self, emitter: object) -> list[object]:
+            return self._callbacks.setdefault(id(emitter), [])
 
         def connect(self, callback, *_: object, **__: object) -> None:
-            self._callbacks.append(callback)
+            callbacks = self._callbacks_for(self)
+            callbacks.append(callback)
 
         def emit(self, *args: object, **kwargs: object) -> None:
-            for callback in list(self._callbacks):
+            callbacks = self._callbacks_for(self)
+            for callback in list(callbacks):
+                callback(*args, **kwargs)
+
+    class _BoundDummySignal:
+        def __init__(self, signal: _DummySignal, instance: object) -> None:
+            self._signal = signal
+            self._instance = instance
+
+        def connect(self, callback, *_: object, **__: object) -> None:
+            callbacks = self._signal._callbacks_for(self._instance)
+            callbacks.append(callback)
+
+        def emit(self, *args: object, **kwargs: object) -> None:
+            callbacks = self._signal._callbacks.get(id(self._instance), [])
+            for callback in list(callbacks):
                 callback(*args, **kwargs)
 
     qtcore.QThreadPool = _DummyThreadPool
