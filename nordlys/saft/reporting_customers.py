@@ -1126,7 +1126,9 @@ def analyze_receivable_postings(
         if not receivable_lines:
             continue
 
-        receivable_amount = sum(amount for _, amount in receivable_lines)
+        receivable_amount = sum(
+            (amount for _, amount in receivable_lines), Decimal("0")
+        )
         if revenue_found:
             sales_total += receivable_amount
         elif bank_found:
