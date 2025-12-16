@@ -543,9 +543,9 @@ class SaftDatasetStore:
             return None
         return float(correlation.without_receivable_total)
 
-    def sales_without_receivable_rows(self) -> List[
-        Tuple[str, str, str, str, str, float]
-    ]:
+    def sales_without_receivable_rows(
+        self,
+    ) -> List[Tuple[str, str, str, str, str, float]]:
         correlation = self._sales_ar_correlation
         if correlation is None:
             return []

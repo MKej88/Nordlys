@@ -29,9 +29,7 @@ class CustomerSupplierAnalysis:
     supplier_purchases: Optional["pd.DataFrame"]
     cost_vouchers: List["saft_customers.CostVoucher"]
     credit_notes: Optional["pd.DataFrame"] = None
-    sales_ar_correlation: Optional[
-        "saft_customers.SalesReceivableCorrelation"
-    ] = None
+    sales_ar_correlation: Optional["saft_customers.SalesReceivableCorrelation"] = None
 
 
 def determine_analysis_year(

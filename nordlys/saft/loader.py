@@ -55,9 +55,7 @@ class SaftLoadResult:
     suppliers: Dict[str, "saft.SupplierInfo"]
     supplier_purchases: Optional[pd.DataFrame]
     credit_notes: Optional[pd.DataFrame]
-    sales_ar_correlation: Optional[
-        "saft_customers.SalesReceivableCorrelation"
-    ]
+    sales_ar_correlation: Optional["saft_customers.SalesReceivableCorrelation"]
     cost_vouchers: List["saft_customers.CostVoucher"]
     analysis_year: Optional[int]
     summary: Optional[Dict[str, float]]

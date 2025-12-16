@@ -1890,7 +1890,9 @@ class SalesArPage(QWidget):
 
         page_layout.addWidget(self.correlation_card)
         self._update_correlation_summary(None, None)
-        self._toggle_empty_state(self.missing_sales_table, self.missing_sales_empty, False)
+        self._toggle_empty_state(
+            self.missing_sales_table, self.missing_sales_empty, False
+        )
 
         return page
 
