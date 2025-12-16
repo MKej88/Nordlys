@@ -1627,6 +1627,10 @@ class SalesArPage(QWidget):
             1, QHeaderView.Stretch
         )
         self.correlation_summary_table.setSortingEnabled(False)
+        self.correlation_summary_table.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Minimum
+        )
+        apply_compact_row_heights(self.correlation_summary_table)
         self.correlation_card.add_widget(self.correlation_summary_table)
 
         missing_title = QLabel("Salg uten motpost kundefordringer")
