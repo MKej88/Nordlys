@@ -974,7 +974,7 @@ def analyze_sales_receivable_correlation(
             elif debit != 0 or credit != 0:
                 counter_accounts.add(normalized)
 
-        if revenue_total <= 0:
+        if revenue_total == 0:
             continue
 
         if has_receivable:

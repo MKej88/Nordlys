@@ -1317,6 +1317,68 @@ def test_analyze_sales_receivable_correlation_separates_totals():
     assert "1920" in missing_row["Motkontoer"]
 
 
+def test_analyze_sales_receivable_correlation_includes_credit_notes():
+    xml = """
+    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <GeneralLedgerEntries>
+        <Journal>
+          <Transaction>
+            <TransactionID>1001</TransactionID>
+            <TransactionDate>2023-02-10</TransactionDate>
+            <Line>
+              <AccountID>3000</AccountID>
+              <CreditAmount>1000</CreditAmount>
+            </Line>
+            <Line>
+              <AccountID>1500</AccountID>
+              <DebitAmount>1000</DebitAmount>
+            </Line>
+          </Transaction>
+          <Transaction>
+            <TransactionID>1002</TransactionID>
+            <TransactionDate>2023-02-20</TransactionDate>
+            <Line>
+              <AccountID>3000</AccountID>
+              <DebitAmount>1000</DebitAmount>
+            </Line>
+            <Line>
+              <AccountID>1500</AccountID>
+              <CreditAmount>1000</CreditAmount>
+            </Line>
+          </Transaction>
+          <Transaction>
+            <TransactionID>1003</TransactionID>
+            <TransactionDate>2023-03-01</TransactionDate>
+            <Line>
+              <AccountID>3100</AccountID>
+              <DebitAmount>600</DebitAmount>
+            </Line>
+            <Line>
+              <AccountID>1920</AccountID>
+              <CreditAmount>600</CreditAmount>
+            </Line>
+          </Transaction>
+        </Journal>
+      </GeneralLedgerEntries>
+    </AuditFile>
+    """
+
+    root = ET.fromstring(xml)
+    ns = {"n1": root.tag.split("}")[0][1:]}
+
+    result = analyze_sales_receivable_correlation(root, ns, year=2023)
+
+    assert result.with_receivable_total == pytest.approx(0.0)
+    assert result.without_receivable_total == pytest.approx(-600.0)
+    assert len(result.missing_sales.index) == 1
+    missing_row = result.missing_sales.iloc[0]
+    assert missing_row["Dato"] == date(2023, 3, 1)
+    assert missing_row["Bilagsnr"] == "1003"
+    assert missing_row["Beløp"] == pytest.approx(-600.0)
+    assert "3100" in missing_row["Kontoer"]
+    assert "1920" in missing_row["Motkontoer"]
+
+
 def test_analyze_sales_receivable_correlation_includes_spillover_dates():
     xml = """
     <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
