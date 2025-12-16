@@ -1395,6 +1395,7 @@ class FixedAssetsPage(QWidget):
             table.hide()
             empty_state.show()
 
+
 class SalesArPage(QWidget):
     """Revisjonsside for salg og kundefordringer med topp kunder og kreditnotaer."""
 
@@ -1982,9 +1983,7 @@ class SalesArPage(QWidget):
             "en kontroll av balansen."
         )
         self.receivable_card = CardFrame("Kundefordringer", subtitle)
-        self.receivable_card.setSizePolicy(
-            QSizePolicy.Expanding, QSizePolicy.Expanding
-        )
+        self.receivable_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         intro_label = QLabel(
             "Tabellen under summerer posteringer på kundefordringer etter motpost. "
@@ -1995,9 +1994,7 @@ class SalesArPage(QWidget):
 
         self.receivable_summary_table = create_table_widget()
         self.receivable_summary_table.setColumnCount(2)
-        self.receivable_summary_table.setHorizontalHeaderLabels(
-            ["Kategori", "Sum"]
-        )
+        self.receivable_summary_table.setHorizontalHeaderLabels(["Kategori", "Sum"])
         self.receivable_summary_table.horizontalHeader().setSectionResizeMode(
             0, QHeaderView.ResizeToContents
         )
@@ -2022,9 +2019,7 @@ class SalesArPage(QWidget):
         self.receivable_missing_empty.setSizePolicy(
             QSizePolicy.Expanding, QSizePolicy.Minimum
         )
-        missing_empty_layout = cast(
-            QVBoxLayout, self.receivable_missing_empty.layout()
-        )
+        missing_empty_layout = cast(QVBoxLayout, self.receivable_missing_empty.layout())
         missing_empty_layout.setAlignment(Qt.AlignLeft | Qt.AlignTop)
         missing_empty_layout.setContentsMargins(12, 4, 12, 12)
         missing_empty_layout.setSpacing(8)

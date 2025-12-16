@@ -30,9 +30,7 @@ class CustomerSupplierAnalysis:
     cost_vouchers: List["saft_customers.CostVoucher"]
     credit_notes: Optional["pd.DataFrame"] = None
     sales_ar_correlation: Optional["saft_customers.SalesReceivableCorrelation"] = None
-    receivable_analysis: Optional[
-        "saft_customers.ReceivablePostingAnalysis"
-    ] = None
+    receivable_analysis: Optional["saft_customers.ReceivablePostingAnalysis"] = None
     analysis_start_date: Optional[date] = None
     analysis_end_date: Optional[date] = None
 

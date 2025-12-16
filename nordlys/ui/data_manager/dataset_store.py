@@ -584,9 +584,9 @@ class SaftDatasetStore:
         return rows
 
     @property
-    def receivable_analysis(self) -> Optional[
-        "saft_customers.ReceivablePostingAnalysis"
-    ]:
+    def receivable_analysis(
+        self,
+    ) -> Optional["saft_customers.ReceivablePostingAnalysis"]:
         return self._receivable_analysis
 
     def receivable_unclassified_rows(

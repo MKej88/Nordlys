@@ -1430,9 +1430,7 @@ def test_analyze_receivable_postings_splits_by_counter_accounts():
         }
     )
 
-    result = analyze_receivable_postings(
-        root, ns, year=2023, trial_balance=tb
-    )
+    result = analyze_receivable_postings(root, ns, year=2023, trial_balance=tb)
 
     assert result.opening_balance == pytest.approx(100.0)
     assert result.closing_balance == pytest.approx(500.0)
