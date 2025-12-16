@@ -1643,9 +1643,16 @@ class SalesArPage(QWidget):
         )
 
         self.missing_sales_table = create_table_widget()
-        self.missing_sales_table.setColumnCount(5)
+        self.missing_sales_table.setColumnCount(6)
         self.missing_sales_table.setHorizontalHeaderLabels(
-            ["Dato", "Bilagsnr", "Beskrivelse", "Kontoer", "Beløp"]
+            [
+                "Dato",
+                "Bilagsnr",
+                "Beskrivelse",
+                "Kontoer",
+                "Motkontoer",
+                "Beløp",
+            ]
         )
         self.missing_sales_table.setSortingEnabled(True)
         self.missing_sales_table.hide()
@@ -1723,15 +1730,22 @@ class SalesArPage(QWidget):
         self,
         with_receivable: Optional[float],
         without_receivable: Optional[float],
-        missing_rows: Iterable[Tuple[str, str, str, str, float]],
+        missing_rows: Iterable[Tuple[str, str, str, str, str, float]],
     ) -> None:
         self._update_correlation_summary(with_receivable, without_receivable)
         rows = list(missing_rows or [])
         populate_table(
             self.missing_sales_table,
-            ["Dato", "Bilagsnr", "Beskrivelse", "Kontoer", "Beløp"],
+            [
+                "Dato",
+                "Bilagsnr",
+                "Beskrivelse",
+                "Kontoer",
+                "Motkontoer",
+                "Beløp",
+            ],
             rows,
-            money_cols={4},
+            money_cols={5},
         )
         self._toggle_empty_state(
             self.missing_sales_table, self.missing_sales_empty, bool(rows)

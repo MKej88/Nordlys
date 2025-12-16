@@ -1272,6 +1272,7 @@ def test_analyze_sales_receivable_correlation_separates_totals():
       <GeneralLedgerEntries>
         <Journal>
           <Transaction>
+            <TransactionID>1001</TransactionID>
             <TransactionDate>2023-02-10</TransactionDate>
             <Line>
               <AccountID>3000</AccountID>
@@ -1283,6 +1284,7 @@ def test_analyze_sales_receivable_correlation_separates_totals():
             </Line>
           </Transaction>
           <Transaction>
+            <TransactionID>2001</TransactionID>
             <TransactionDate>2023-03-05</TransactionDate>
             <Line>
               <AccountID>3100</AccountID>
@@ -1308,8 +1310,10 @@ def test_analyze_sales_receivable_correlation_separates_totals():
     assert len(result.missing_sales.index) == 1
     missing_row = result.missing_sales.iloc[0]
     assert missing_row["Dato"] == date(2023, 3, 5)
+    assert missing_row["Bilagsnr"] == "2001"
     assert missing_row["Beløp"] == pytest.approx(800.0)
     assert "3100" in missing_row["Kontoer"]
+    assert "1920" in missing_row["Motkontoer"]
 
 
 def test_compute_customer_supplier_totals_matches_individual():

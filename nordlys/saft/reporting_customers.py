@@ -915,6 +915,7 @@ def analyze_sales_receivable_correlation(
         revenue_total = Decimal("0")
         has_receivable = False
         revenue_accounts: set[str] = set()
+        counter_accounts: set[str] = set()
 
         for line in _findall(transaction, "n1:Line", ns):
             account_element = _find(line, "n1:AccountID", ns)
@@ -936,6 +937,8 @@ def analyze_sales_receivable_correlation(
                 revenue_total += delta
                 if delta != 0:
                     revenue_accounts.add(normalized)
+            elif debit != 0 or credit != 0:
+                counter_accounts.add(normalized)
 
         if revenue_total <= 0:
             continue
@@ -951,6 +954,7 @@ def analyze_sales_receivable_correlation(
                     "n1:SourceDocumentID",
                     "n1:DocumentReference/n1:DocumentNumber",
                     "n1:DocumentReference/n1:ID",
+                    "n1:TransactionID",
                     "n1:SourceID",
                 ),
                 ns,
@@ -962,6 +966,7 @@ def analyze_sales_receivable_correlation(
                     "Bilagsnr": document_number or "—",
                     "Beskrivelse": description or "—",
                     "Kontoer": ", ".join(sorted(revenue_accounts)) or "—",
+                    "Motkontoer": ", ".join(sorted(counter_accounts)) or "—",
                     "Beløp": _format_decimal(revenue_total),
                 }
             )
@@ -973,7 +978,14 @@ def analyze_sales_receivable_correlation(
         missing_df.reset_index(drop=True, inplace=True)
     else:
         missing_df = pandas.DataFrame(
-            columns=["Dato", "Bilagsnr", "Beskrivelse", "Kontoer", "Beløp"]
+            columns=[
+                "Dato",
+                "Bilagsnr",
+                "Beskrivelse",
+                "Kontoer",
+                "Motkontoer",
+                "Beløp",
+            ]
         )
 
     return SalesReceivableCorrelation(

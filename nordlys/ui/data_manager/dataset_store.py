@@ -463,7 +463,7 @@ class SaftDatasetStore:
         if self._credit_notes is None or self._credit_notes.empty:
             return []
 
-        rows: List[Tuple[str, str, str, str, float]] = []
+        rows: List[Tuple[str, str, str, str, str, float]] = []
         for _, row in self._credit_notes.iterrows():
             date_value = row.get("Dato")
             if isinstance(date_value, datetime):
@@ -544,7 +544,7 @@ class SaftDatasetStore:
         return float(correlation.without_receivable_total)
 
     def sales_without_receivable_rows(self) -> List[
-        Tuple[str, str, str, str, float]
+        Tuple[str, str, str, str, str, float]
     ]:
         correlation = self._sales_ar_correlation
         if correlation is None:
@@ -572,6 +572,7 @@ class SaftDatasetStore:
                     str(row.get("Bilagsnr", "—")),
                     str(row.get("Beskrivelse", "—")),
                     str(row.get("Kontoer", "—")),
+                    str(row.get("Motkontoer", "—")),
                     self.safe_float(row.get("Beløp")),
                 )
             )
