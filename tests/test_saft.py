@@ -36,6 +36,7 @@ from nordlys.saft_customers import (
     compute_customer_supplier_totals,
     compute_purchases_per_supplier,
     compute_sales_per_customer,
+    analyze_sales_receivable_correlation,
     extract_credit_notes,
     get_amount,
     get_tx_customer_id,
@@ -1265,6 +1266,52 @@ def test_extract_credit_notes_filters_months_and_year():
     assert march_row["Beløp"] == pytest.approx(800.0)
 
 
+def test_analyze_sales_receivable_correlation_separates_totals():
+    xml = """
+    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <GeneralLedgerEntries>
+        <Journal>
+          <Transaction>
+            <TransactionDate>2023-02-10</TransactionDate>
+            <Line>
+              <AccountID>3000</AccountID>
+              <CreditAmount>1000</CreditAmount>
+            </Line>
+            <Line>
+              <AccountID>1500</AccountID>
+              <DebitAmount>1000</DebitAmount>
+            </Line>
+          </Transaction>
+          <Transaction>
+            <TransactionDate>2023-03-05</TransactionDate>
+            <Line>
+              <AccountID>3100</AccountID>
+              <CreditAmount>800</CreditAmount>
+            </Line>
+            <Line>
+              <AccountID>1920</AccountID>
+              <DebitAmount>800</DebitAmount>
+            </Line>
+          </Transaction>
+        </Journal>
+      </GeneralLedgerEntries>
+    </AuditFile>
+    """
+
+    root = ET.fromstring(xml)
+    ns = {"n1": root.tag.split("}")[0][1:]}
+
+    result = analyze_sales_receivable_correlation(root, ns, year=2023)
+
+    assert result.with_receivable_total == pytest.approx(1000.0)
+    assert result.without_receivable_total == pytest.approx(800.0)
+    assert len(result.missing_sales.index) == 1
+    missing_row = result.missing_sales.iloc[0]
+    assert missing_row["Dato"] == date(2023, 3, 5)
+    assert missing_row["Beløp"] == pytest.approx(800.0)
+    assert "3100" in missing_row["Kontoer"]
+
+
 def test_compute_customer_supplier_totals_matches_individual():
     root = build_sample_root()
     ns = {"n1": root.tag.split("}")[0][1:]}
@@ -1952,6 +1999,7 @@ def test_load_saft_files_parallel_progress(monkeypatch):
             suppliers={},
             supplier_purchases=None,
             credit_notes=None,
+            sales_ar_correlation=None,
             cost_vouchers=[],
             analysis_year=None,
             summary={},
@@ -1993,6 +2041,7 @@ def test_load_saft_files_keeps_successes_when_one_fails(monkeypatch):
             suppliers={},
             supplier_purchases=None,
             credit_notes=None,
+            sales_ar_correlation=None,
             cost_vouchers=[],
             analysis_year=None,
             summary={},
@@ -2032,6 +2081,7 @@ def test_load_saft_files_raises_on_partial_failure_without_progress(monkeypatch)
             suppliers={},
             supplier_purchases=None,
             credit_notes=None,
+            sales_ar_correlation=None,
             cost_vouchers=[],
             analysis_year=None,
             summary={},

@@ -201,6 +201,11 @@ class DatasetFlowController:
             pages.sales_ar_page.set_credit_notes(
                 store.credit_note_rows(), store.credit_note_monthly_summary()
             )
+            pages.sales_ar_page.set_sales_correlation(
+                store.sales_with_receivable_total,
+                store.sales_without_receivable_total,
+                store.sales_without_receivable_rows(),
+            )
         if pages.purchases_ap_page:
             pages.purchases_ap_page.set_controls_enabled(store.has_supplier_data)
             pages.purchases_ap_page.clear_top_suppliers()

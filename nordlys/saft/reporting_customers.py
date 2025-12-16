@@ -18,6 +18,7 @@ from .name_lookup import (
 )
 from .reporting_utils import (
     _ensure_date,
+    _format_decimal,
     _is_cost_account,
     _is_revenue_account,
     _iter_transactions,
@@ -34,6 +35,8 @@ __all__ = [
     "compute_sales_per_customer",
     "compute_purchases_per_supplier",
     "extract_credit_notes",
+    "SalesReceivableCorrelation",
+    "analyze_sales_receivable_correlation",
 ]
 
 _DESCRIPTION_BUCKET_NAMES: set[str] = set(DESCRIPTION_BUCKET_MAP)
@@ -64,6 +67,15 @@ class TransactionLineAggregation:
     has_purchase: bool
     transaction_customer_id: Optional[str]
     line_summaries: List[Tuple[str, Optional[str], Decimal, Decimal]]
+
+
+@dataclass
+class SalesReceivableCorrelation:
+    """Oppsummerer sammenhengen mellom salg og kundefordringer."""
+
+    with_receivable_total: float
+    without_receivable_total: float
+    missing_sales: "pd.DataFrame"
 
 
 def _build_description_customer_map(
@@ -876,3 +888,96 @@ def extract_credit_notes(
     df["Beløp"] = df["Beløp"].astype(float).round(2)
     df.sort_values("Dato", inplace=True)
     return df.reset_index(drop=True)
+
+
+def analyze_sales_receivable_correlation(
+    root: ET.Element, ns: NamespaceMap, *, year: Optional[int] = None
+) -> SalesReceivableCorrelation:
+    """Summerer salg etter om bilaget har motpost på 1500."""
+
+    pandas = _require_pandas()
+    with_receivable = Decimal("0")
+    without_receivable = Decimal("0")
+    missing_rows: List[Dict[str, object]] = []
+
+    for transaction in _iter_transactions(root, ns):
+        scope = _build_transaction_scope(transaction, ns)
+        if not _transaction_in_scope(
+            scope,
+            start_date=None,
+            end_date=None,
+            year=year,
+            last_period=None,
+            use_range=False,
+        ):
+            continue
+
+        revenue_total = Decimal("0")
+        has_receivable = False
+        revenue_accounts: set[str] = set()
+
+        for line in _findall(transaction, "n1:Line", ns):
+            account_element = _find(line, "n1:AccountID", ns)
+            account_text = _clean_text(
+                account_element.text if account_element is not None else None
+            )
+            if not account_text:
+                continue
+
+            normalized = _normalize_account_key(account_text) or account_text
+            debit = get_amount(line, "DebitAmount", ns)
+            credit = get_amount(line, "CreditAmount", ns)
+
+            if normalized.startswith("1500") and (debit != 0 or credit != 0):
+                has_receivable = True
+
+            if _is_revenue_account(normalized):
+                delta = credit - debit
+                revenue_total += delta
+                if delta != 0:
+                    revenue_accounts.add(normalized)
+
+        if revenue_total <= 0:
+            continue
+
+        if has_receivable:
+            with_receivable += revenue_total
+        else:
+            without_receivable += revenue_total
+            document_number = _first_text(
+                transaction,
+                (
+                    "n1:DocumentNumber",
+                    "n1:SourceDocumentID",
+                    "n1:DocumentReference/n1:DocumentNumber",
+                    "n1:DocumentReference/n1:ID",
+                    "n1:SourceID",
+                ),
+                ns,
+            )
+            description = scope.voucher_description or scope.transaction_description
+            missing_rows.append(
+                {
+                    "Dato": scope.date,
+                    "Bilagsnr": document_number or "—",
+                    "Beskrivelse": description or "—",
+                    "Kontoer": ", ".join(sorted(revenue_accounts)) or "—",
+                    "Beløp": _format_decimal(revenue_total),
+                }
+            )
+
+    if missing_rows:
+        missing_df = pandas.DataFrame(missing_rows)
+        missing_df["Beløp"] = missing_df["Beløp"].astype(float).round(2)
+        missing_df.sort_values("Dato", inplace=True)
+        missing_df.reset_index(drop=True, inplace=True)
+    else:
+        missing_df = pandas.DataFrame(
+            columns=["Dato", "Bilagsnr", "Beskrivelse", "Kontoer", "Beløp"]
+        )
+
+    return SalesReceivableCorrelation(
+        with_receivable_total=_format_decimal(with_receivable),
+        without_receivable_total=_format_decimal(without_receivable),
+        missing_sales=missing_df,
+    )

@@ -55,6 +55,9 @@ class SaftLoadResult:
     suppliers: Dict[str, "saft.SupplierInfo"]
     supplier_purchases: Optional[pd.DataFrame]
     credit_notes: Optional[pd.DataFrame]
+    sales_ar_correlation: Optional[
+        "saft_customers.SalesReceivableCorrelation"
+    ]
     cost_vouchers: List["saft_customers.CostVoucher"]
     analysis_year: Optional[int]
     summary: Optional[Dict[str, float]]
@@ -261,6 +264,7 @@ def load_saft_file(
         supplier_purchases = analysis.supplier_purchases
         cost_vouchers = analysis.cost_vouchers
         credit_notes = analysis.credit_notes
+        sales_ar_correlation = analysis.sales_ar_correlation
 
         _report_progress(50, f"Analyserer kunder og leverandører for {file_name}")
 
@@ -290,6 +294,7 @@ def load_saft_file(
         suppliers=suppliers,
         supplier_purchases=supplier_purchases,
         credit_notes=credit_notes,
+        sales_ar_correlation=sales_ar_correlation,
         cost_vouchers=cost_vouchers,
         analysis_year=analysis_year,
         summary=summary,

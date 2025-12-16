@@ -1418,9 +1418,11 @@ class SalesArPage(QWidget):
 
         sales_tab = self._build_sales_tab(title, subtitle)
         credit_note_tab = self._build_credit_note_tab()
+        correlation_tab = self._build_correlation_tab()
 
         self.tab_widget.addTab(sales_tab, "Salg per kunde")
         self.tab_widget.addTab(credit_note_tab, "Kreditnotaer")
+        self.tab_widget.addTab(correlation_tab, "Korrelasjonsanalyse")
 
         self.set_controls_enabled(False)
         self.update_sales_reconciliation(None, None)
@@ -1591,6 +1593,72 @@ class SalesArPage(QWidget):
 
         return page
 
+    def _build_correlation_tab(self) -> QWidget:
+        page = QWidget()
+        page_layout = QVBoxLayout(page)
+        page_layout.setContentsMargins(0, 0, 0, 0)
+        page_layout.setSpacing(24)
+
+        subtitle = (
+            "Knytter salgsbilag på 3xxx-kontoer mot kundefordringer (1500)."
+            " Viser både samlede beløp og bilag uten motpost."
+        )
+        self.correlation_card = CardFrame("Korrelasjonsanalyse", subtitle)
+        self.correlation_card.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Expanding
+        )
+
+        intro_label = QLabel(
+            "Summene under er hentet direkte fra SAF-T-transaksjonene og viser "
+            "hvorvidt salgsføringer har motpost i kundefordringer."
+        )
+        intro_label.setWordWrap(True)
+        self.correlation_card.add_widget(intro_label)
+
+        self.correlation_summary_table = create_table_widget()
+        self.correlation_summary_table.setColumnCount(2)
+        self.correlation_summary_table.setHorizontalHeaderLabels(
+            ["Kategori", "Sum salg"]
+        )
+        self.correlation_summary_table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeToContents
+        )
+        self.correlation_summary_table.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.Stretch
+        )
+        self.correlation_summary_table.setSortingEnabled(False)
+        self.correlation_card.add_widget(self.correlation_summary_table)
+
+        missing_title = QLabel("Salg uten motpost kundefordringer")
+        missing_title.setObjectName("analysisSectionTitle")
+        self.correlation_card.add_widget(missing_title)
+
+        self.missing_sales_empty = EmptyStateWidget(
+            "Ingen avvik",
+            "Alle salgsbilag har motpost på kundefordringer (1500).",
+            icon="✅",
+        )
+        self.missing_sales_empty.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.MinimumExpanding
+        )
+
+        self.missing_sales_table = create_table_widget()
+        self.missing_sales_table.setColumnCount(5)
+        self.missing_sales_table.setHorizontalHeaderLabels(
+            ["Dato", "Bilagsnr", "Beskrivelse", "Kontoer", "Beløp"]
+        )
+        self.missing_sales_table.setSortingEnabled(True)
+        self.missing_sales_table.hide()
+
+        self.correlation_card.add_widget(self.missing_sales_empty)
+        self.correlation_card.add_widget(self.missing_sales_table)
+
+        page_layout.addWidget(self.correlation_card)
+        self._update_correlation_summary(None, None)
+        self._toggle_empty_state(self.missing_sales_table, self.missing_sales_empty, False)
+
+        return page
+
     def _handle_calc_clicked(self) -> None:
         rows = self._on_calc_top("3xxx", _requested_top_count(self.top_spin))
         if rows:
@@ -1651,6 +1719,32 @@ class SalesArPage(QWidget):
         self.summary_empty.show()
         self._set_active_section(0)
 
+    def set_sales_correlation(
+        self,
+        with_receivable: Optional[float],
+        without_receivable: Optional[float],
+        missing_rows: Iterable[Tuple[str, str, str, str, float]],
+    ) -> None:
+        self._update_correlation_summary(with_receivable, without_receivable)
+        rows = list(missing_rows or [])
+        populate_table(
+            self.missing_sales_table,
+            ["Dato", "Bilagsnr", "Beskrivelse", "Kontoer", "Beløp"],
+            rows,
+            money_cols={4},
+        )
+        self._toggle_empty_state(
+            self.missing_sales_table, self.missing_sales_empty, bool(rows)
+        )
+        self.missing_sales_table.setSortingEnabled(True)
+
+    def clear_sales_correlation(self) -> None:
+        self._update_correlation_summary(None, None)
+        self.missing_sales_table.setRowCount(0)
+        self._toggle_empty_state(
+            self.missing_sales_table, self.missing_sales_empty, False
+        )
+
     def set_controls_enabled(self, enabled: bool) -> None:
         self.calc_button.setEnabled(enabled)
         self.top_spin.setEnabled(enabled)
@@ -1697,6 +1791,32 @@ class SalesArPage(QWidget):
                 "Kontroll: Kundesalg ligger "
                 f"{format_currency(abs_diff)} under salgskonti."
             )
+
+    def _update_correlation_summary(
+        self,
+        with_receivable: Optional[float],
+        without_receivable: Optional[float],
+    ) -> None:
+        rows = [
+            (
+                "Salg som har motpost kundefordringer",
+                format_currency(with_receivable),
+            ),
+            (
+                "Salg som ikke har motpost kundefordringer",
+                format_currency(without_receivable),
+            ),
+        ]
+
+        self.correlation_summary_table.setRowCount(len(rows))
+        for row_index, (label, value) in enumerate(rows):
+            label_item = QTableWidgetItem(label)
+            label_item.setFlags(label_item.flags() & ~Qt.ItemIsEditable)
+            value_item = QTableWidgetItem(value)
+            value_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            value_item.setFlags(value_item.flags() & ~Qt.ItemIsEditable)
+            self.correlation_summary_table.setItem(row_index, 0, label_item)
+            self.correlation_summary_table.setItem(row_index, 1, value_item)
 
     def _set_active_section(self, index: int) -> None:
         self.section_stack.setCurrentIndex(index)

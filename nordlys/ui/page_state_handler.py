@@ -124,6 +124,11 @@ class PageStateHandler:
                 self._dataset_store.credit_note_rows(),
                 self._dataset_store.credit_note_monthly_summary(),
             )
+            widget.set_sales_correlation(
+                self._dataset_store.sales_with_receivable_total,
+                self._dataset_store.sales_without_receivable_total,
+                self._dataset_store.sales_without_receivable_rows(),
+            )
         elif key == "rev.innkjop" and isinstance(widget, PurchasesApPage):
             self.purchases_ap_page = widget
             widget.set_controls_enabled(self._dataset_store.has_supplier_data)

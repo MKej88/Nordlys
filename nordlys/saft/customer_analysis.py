@@ -29,6 +29,9 @@ class CustomerSupplierAnalysis:
     supplier_purchases: Optional["pd.DataFrame"]
     cost_vouchers: List["saft_customers.CostVoucher"]
     credit_notes: Optional["pd.DataFrame"] = None
+    sales_ar_correlation: Optional[
+        "saft_customers.SalesReceivableCorrelation"
+    ] = None
 
 
 def determine_analysis_year(
@@ -162,12 +165,17 @@ def build_customer_supplier_analysis(
             root, ns, months=(1, 2), year=analysis_year
         )
 
+    sales_ar_correlation = saft_customers.analyze_sales_receivable_correlation(
+        root, ns, year=analysis_year
+    )
+
     return CustomerSupplierAnalysis(
         analysis_year=analysis_year,
         customer_sales=customer_sales,
         supplier_purchases=supplier_purchases,
         cost_vouchers=cost_vouchers,
         credit_notes=credit_notes,
+        sales_ar_correlation=sales_ar_correlation,
     )
 
 
