@@ -37,6 +37,7 @@ def _make_result(
         supplier_purchases=None,
         credit_notes=None,
         sales_ar_correlation=None,
+        receivable_analysis=None,
         cost_vouchers=[],
         analysis_year=analysis_year,
         summary=summary or {},
