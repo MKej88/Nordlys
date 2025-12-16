@@ -14,7 +14,7 @@ from xml.etree.ElementTree import Element, ElementTree
 
 from ..helpers.lazy_imports import lazy_import, lazy_pandas
 from ..industry_groups import IndustryClassification
-from ..settings import SAFT_STREAMING_ENABLED
+from ..settings import SAFT_HEAVY_PARALLEL, SAFT_STREAMING_ENABLED
 from .entry_helpers import get_amount
 from .brreg_enrichment import BrregEnrichment, enrich_from_header
 from .customer_analysis import (
@@ -386,7 +386,9 @@ def load_saft_files(
 
             return _inner
 
-    max_workers = _suggest_max_workers(paths, file_sizes=file_sizes)
+    max_workers = _suggest_max_workers(
+        paths, file_sizes=file_sizes, allow_heavy_parallel=SAFT_HEAVY_PARALLEL
+    )
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {}
@@ -455,13 +457,24 @@ def _suggest_max_workers(
     *,
     cpu_limit: Optional[int] = None,
     file_sizes: Optional[Sequence[Optional[int]]] = None,
+    allow_heavy_parallel: Optional[bool] = None,
 ) -> int:
-    """Velger et trådantall som unngår minnepress ved store filer."""
+    """Velger et trådantall som unngår minnepress ved store filer.
+
+    ``allow_heavy_parallel`` kan settes til ``True`` for å overstyre
+    begrensningen for store filer. Dette kan redusere importtiden på maskiner
+    med mye minne ved å bruke flere tråder samtidig.
+    """
 
     if not paths:
         return 1
 
     cpu_count = cpu_limit if cpu_limit is not None else (os.cpu_count() or 1)
+    heavy_parallel = (
+        SAFT_HEAVY_PARALLEL
+        if allow_heavy_parallel is None
+        else bool(allow_heavy_parallel)
+    )
     desired = max(1, min(len(paths), cpu_count))
     if desired == 1:
         return 1
@@ -484,6 +497,8 @@ def _suggest_max_workers(
     heavy_by_total = total_bytes >= HEAVY_SAFT_TOTAL_BYTES
 
     if heavy_by_count or heavy_by_total:
+        if heavy_parallel:
+            return desired
         return min(desired, HEAVY_SAFT_MAX_WORKERS)
 
     return desired
