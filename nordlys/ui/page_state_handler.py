@@ -129,6 +129,10 @@ class PageStateHandler:
                 self._dataset_store.sales_without_receivable_total,
                 self._dataset_store.sales_without_receivable_rows(),
             )
+            widget.set_receivable_overview(
+                self._dataset_store.receivable_analysis,
+                self._dataset_store.receivable_unclassified_rows(),
+            )
         elif key == "rev.innkjop" and isinstance(widget, PurchasesApPage):
             self.purchases_ap_page = widget
             widget.set_controls_enabled(self._dataset_store.has_supplier_data)

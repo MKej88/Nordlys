@@ -67,6 +67,9 @@ class SaftDatasetStore:
         self._sales_ar_correlation: Optional[
             "saft_customers.SalesReceivableCorrelation"
         ] = None
+        self._receivable_analysis: Optional[
+            "saft_customers.ReceivablePostingAnalysis"
+        ] = None
         self._cost_vouchers: List["saft_customers.CostVoucher"] = []
         self._trial_balance: Optional[Dict[str, object]] = None
         self._trial_balance_error: Optional[str] = None
@@ -174,6 +177,7 @@ class SaftDatasetStore:
         )
         self._credit_notes = result.credit_notes
         self._sales_ar_correlation = result.sales_ar_correlation
+        self._receivable_analysis = result.receivable_analysis
         self._cost_vouchers = list(result.cost_vouchers)
         self._trial_balance = result.trial_balance
         self._trial_balance_error = result.trial_balance_error
@@ -579,6 +583,48 @@ class SaftDatasetStore:
 
         return rows
 
+    @property
+    def receivable_analysis(self) -> Optional[
+        "saft_customers.ReceivablePostingAnalysis"
+    ]:
+        return self._receivable_analysis
+
+    def receivable_unclassified_rows(
+        self,
+    ) -> List[Tuple[str, str, str, str, str, float]]:
+        analysis = self._receivable_analysis
+        if analysis is None:
+            return []
+
+        df = analysis.unclassified_rows
+        if df is None or df.empty:
+            return []
+
+        rows: List[Tuple[str, str, str, str, str, float]] = []
+        for _, row in df.iterrows():
+            date_value = row.get("Dato")
+            if isinstance(date_value, datetime):
+                date_text = date_value.strftime("%d.%m.%Y")
+            elif isinstance(date_value, date):
+                date_text = date_value.strftime("%d.%m.%Y")
+            elif date_value:
+                date_text = str(date_value)
+            else:
+                date_text = "—"
+
+            rows.append(
+                (
+                    date_text,
+                    str(row.get("Bilagsnr", "—")),
+                    str(row.get("Beskrivelse", "—")),
+                    str(row.get("Kontoer", "—")),
+                    str(row.get("Motkontoer", "—")),
+                    self.safe_float(row.get("Beløp")),
+                )
+            )
+
+        return rows
+
     # endregion
 
     # region Interne hjelpere
@@ -598,6 +644,7 @@ class SaftDatasetStore:
         self._supplier_purchases = None
         self._credit_notes = None
         self._sales_ar_correlation = None
+        self._receivable_analysis = None
         self._cost_vouchers = []
         self._trial_balance = None
         self._trial_balance_error = None

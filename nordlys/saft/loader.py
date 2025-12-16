@@ -56,6 +56,7 @@ class SaftLoadResult:
     supplier_purchases: Optional[pd.DataFrame]
     credit_notes: Optional[pd.DataFrame]
     sales_ar_correlation: Optional["saft_customers.SalesReceivableCorrelation"]
+    receivable_analysis: Optional["saft_customers.ReceivablePostingAnalysis"]
     cost_vouchers: List["saft_customers.CostVoucher"]
     analysis_year: Optional[int]
     summary: Optional[Dict[str, float]]
@@ -267,6 +268,14 @@ def load_saft_file(
         _report_progress(50, f"Analyserer kunder og leverandører for {file_name}")
 
         summary = saft.ns4102_summary_from_tb(dataframe)
+        receivable_analysis = saft_customers.analyze_receivable_postings(
+            parsed.root,
+            parsed.namespaces,
+            date_from=analysis.analysis_start_date,
+            date_to=analysis.analysis_end_date,
+            year=analysis.analysis_year,
+            trial_balance=dataframe,
+        )
 
         _report_progress(75, f"Validerer og beriker data for {file_name}")
 
@@ -293,6 +302,7 @@ def load_saft_file(
         supplier_purchases=supplier_purchases,
         credit_notes=credit_notes,
         sales_ar_correlation=sales_ar_correlation,
+        receivable_analysis=receivable_analysis,
         cost_vouchers=cost_vouchers,
         analysis_year=analysis_year,
         summary=summary,

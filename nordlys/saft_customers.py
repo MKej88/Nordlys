@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from .saft.analytics import (
+    ReceivablePostingAnalysis,
     SalesReceivableCorrelation,
+    analyze_receivable_postings,
     analyze_sales_receivable_correlation,
     build_account_name_map,
     build_customer_name_map,
@@ -42,5 +44,7 @@ __all__ = [
     "CostVoucher",
     "VoucherLine",
     "extract_cost_vouchers",
+    "ReceivablePostingAnalysis",
+    "analyze_receivable_postings",
     "save_outputs",
 ]

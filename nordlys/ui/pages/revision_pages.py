@@ -1395,6 +1395,52 @@ class FixedAssetsPage(QWidget):
             table.hide()
             empty_state.show()
 
+    def _update_receivable_summary(
+        self, analysis: Optional["saft_customers.ReceivablePostingAnalysis"]
+    ) -> None:
+        def _format(value: Optional[float]) -> str:
+            return format_currency(value)
+
+        if analysis is None:
+            sales_total: Optional[float] = None
+            bank_total: Optional[float] = None
+            other_total: Optional[float] = None
+            opening = None
+            closing = None
+            control = None
+        else:
+            sales_total = analysis.sales_counter_total
+            bank_total = analysis.bank_counter_total
+            other_total = analysis.other_counter_total
+            opening = analysis.opening_balance
+            closing = analysis.closing_balance
+            control = analysis.control_total
+
+        rows = [
+            ("Inngående balanse (1500)", _format(opening)),
+            ("Kundefordringer postert mot salgsinntekter", _format(sales_total)),
+            ("Kundefordringer postert mot bank", _format(bank_total)),
+            (
+                "Kundefordringer uten motpost bank eller salg",
+                _format(other_total),
+            ),
+            ("Utgående balanse (1500)", _format(closing)),
+            (
+                "Kontroll: IB + bevegelser – UB",
+                _format(control),
+            ),
+        ]
+
+        self.receivable_summary_table.setRowCount(len(rows))
+        for row_index, (label, value) in enumerate(rows):
+            label_item = QTableWidgetItem(label)
+            label_item.setFlags(label_item.flags() & ~Qt.ItemIsEditable)
+            value_item = QTableWidgetItem(value)
+            value_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            value_item.setFlags(value_item.flags() & ~Qt.ItemIsEditable)
+            self.receivable_summary_table.setItem(row_index, 0, label_item)
+            self.receivable_summary_table.setItem(row_index, 1, value_item)
+
 
 class SalesArPage(QWidget):
     """Revisjonsside for salg og kundefordringer med topp kunder og kreditnotaer."""
@@ -1605,9 +1651,7 @@ class SalesArPage(QWidget):
         sales_tab = self._build_sales_correlation_tab()
         self.correlation_tabs.addTab(sales_tab, "Salgsinntekter")
 
-        receivables_tab = self._build_placeholder_tab(
-            "Kundefordringer", "Kommer snart."
-        )
+        receivables_tab = self._build_receivable_correlation_tab()
         self.correlation_tabs.addTab(receivables_tab, "Kundefordringer")
 
         bank_tab = self._build_placeholder_tab("Bankinnskudd", "Kommer snart.")
@@ -1711,6 +1755,38 @@ class SalesArPage(QWidget):
         self.missing_sales_table.setRowCount(0)
         self._toggle_empty_state(
             self.missing_sales_table, self.missing_sales_empty, False
+        )
+
+    def set_receivable_overview(
+        self,
+        analysis: Optional["saft_customers.ReceivablePostingAnalysis"],
+        unclassified_rows: Iterable[Tuple[str, str, str, str, str, float]],
+    ) -> None:
+        self._update_receivable_summary(analysis)
+        rows = list(unclassified_rows or [])
+        populate_table(
+            self.receivable_missing_table,
+            [
+                "Dato",
+                "Bilagsnr",
+                "Beskrivelse",
+                "Kontoer",
+                "Motkontoer",
+                "Beløp",
+            ],
+            rows,
+            money_cols={5},
+        )
+        self._toggle_empty_state(
+            self.receivable_missing_table, self.receivable_missing_empty, bool(rows)
+        )
+        self.receivable_missing_table.setSortingEnabled(True)
+
+    def clear_receivable_overview(self) -> None:
+        self._update_receivable_summary(None)
+        self.receivable_missing_table.setRowCount(0)
+        self._toggle_empty_state(
+            self.receivable_missing_table, self.receivable_missing_empty, False
         )
 
     def set_controls_enabled(self, enabled: bool) -> None:
@@ -1892,6 +1968,102 @@ class SalesArPage(QWidget):
         self._update_correlation_summary(None, None)
         self._toggle_empty_state(
             self.missing_sales_table, self.missing_sales_empty, False
+        )
+
+        return page
+
+    def _build_receivable_correlation_tab(self) -> QWidget:
+        page = QWidget()
+        page_layout = QVBoxLayout(page)
+        page_layout.setContentsMargins(0, 0, 0, 0)
+        page_layout.setSpacing(24)
+
+        subtitle = (
+            "Viser bevegelser på kundefordringer (1500) fordelt på motposter og "
+            "en kontroll av balansen."
+        )
+        self.receivable_card = CardFrame("Kundefordringer", subtitle)
+        self.receivable_card.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Expanding
+        )
+
+        intro_label = QLabel(
+            "Tabellen under summerer posteringer på kundefordringer etter motpost. "
+            "Kontroll-linjen beregner IB + bevegelser – UB."
+        )
+        intro_label.setWordWrap(True)
+        self.receivable_card.add_widget(intro_label)
+
+        self.receivable_summary_table = create_table_widget()
+        self.receivable_summary_table.setColumnCount(2)
+        self.receivable_summary_table.setHorizontalHeaderLabels(
+            ["Kategori", "Sum"]
+        )
+        self.receivable_summary_table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeToContents
+        )
+        self.receivable_summary_table.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.Stretch
+        )
+        self.receivable_summary_table.setSortingEnabled(False)
+        self.receivable_summary_table.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Minimum
+        )
+        apply_compact_row_heights(self.receivable_summary_table)
+        self.receivable_card.add_widget(self.receivable_summary_table)
+
+        missing_title = QLabel("Kundefordringer uten motpost bank eller salg")
+        missing_title.setObjectName("analysisSectionTitle")
+
+        self.receivable_missing_empty = EmptyStateWidget(
+            "Ingen avvik",
+            "Alle kundefordringer har motpost i bank eller salgsinntekter.",
+            icon="✅",
+        )
+        self.receivable_missing_empty.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Minimum
+        )
+        missing_empty_layout = cast(
+            QVBoxLayout, self.receivable_missing_empty.layout()
+        )
+        missing_empty_layout.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+        missing_empty_layout.setContentsMargins(12, 4, 12, 12)
+        missing_empty_layout.setSpacing(8)
+
+        self.receivable_missing_table = create_table_widget()
+        self.receivable_missing_table.setColumnCount(6)
+        self.receivable_missing_table.setHorizontalHeaderLabels(
+            [
+                "Dato",
+                "Bilagsnr",
+                "Beskrivelse",
+                "Kontoer",
+                "Motkontoer",
+                "Beløp",
+            ]
+        )
+        self.receivable_missing_table.setSortingEnabled(True)
+        self.receivable_missing_table.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Expanding
+        )
+        self.receivable_missing_table.hide()
+
+        missing_layout = QVBoxLayout()
+        missing_layout.setContentsMargins(0, 0, 0, 0)
+        missing_layout.setSpacing(4)
+        missing_layout.addWidget(missing_title, 0, Qt.AlignLeft | Qt.AlignTop)
+        missing_layout.addWidget(
+            self.receivable_missing_empty, 0, Qt.AlignLeft | Qt.AlignTop
+        )
+        missing_layout.addWidget(self.receivable_missing_table)
+        missing_layout.setStretch(2, 1)
+
+        self.receivable_card.add_layout(missing_layout)
+
+        page_layout.addWidget(self.receivable_card)
+        self._update_receivable_summary(None)
+        self._toggle_empty_state(
+            self.receivable_missing_table, self.receivable_missing_empty, False
         )
 
         return page

@@ -37,6 +37,7 @@ from nordlys.saft_customers import (
     compute_purchases_per_supplier,
     compute_sales_per_customer,
     analyze_sales_receivable_correlation,
+    analyze_receivable_postings,
     extract_credit_notes,
     get_amount,
     get_tx_customer_id,
@@ -1368,6 +1369,82 @@ def test_analyze_sales_receivable_correlation_includes_spillover_dates():
     assert missing_row["Dato"] == date(2024, 1, 15)
     assert missing_row["Bilagsnr"] == "3002"
     assert missing_row["Beløp"] == pytest.approx(600.0)
+
+
+def test_analyze_receivable_postings_splits_by_counter_accounts():
+    xml = """
+    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <GeneralLedgerEntries>
+        <Journal>
+          <Transaction>
+            <TransactionID>4001</TransactionID>
+            <TransactionDate>2023-02-01</TransactionDate>
+            <Line>
+              <AccountID>1500</AccountID>
+              <DebitAmount>1000</DebitAmount>
+            </Line>
+            <Line>
+              <AccountID>3000</AccountID>
+              <CreditAmount>1000</CreditAmount>
+            </Line>
+          </Transaction>
+          <Transaction>
+            <TransactionID>4002</TransactionID>
+            <TransactionDate>2023-02-15</TransactionDate>
+            <Line>
+              <AccountID>1500</AccountID>
+              <CreditAmount>300</CreditAmount>
+            </Line>
+            <Line>
+              <AccountID>1920</AccountID>
+              <DebitAmount>300</DebitAmount>
+            </Line>
+          </Transaction>
+          <Transaction>
+            <TransactionID>4003</TransactionID>
+            <TransactionDate>2023-03-01</TransactionDate>
+            <Line>
+              <AccountID>1500</AccountID>
+              <DebitAmount>200</DebitAmount>
+            </Line>
+            <Line>
+              <AccountID>2400</AccountID>
+              <CreditAmount>200</CreditAmount>
+            </Line>
+          </Transaction>
+        </Journal>
+      </GeneralLedgerEntries>
+    </AuditFile>
+    """
+
+    root = ET.fromstring(xml)
+    ns = {"n1": root.tag.split("}")[0][1:]}
+
+    tb = pd.DataFrame(
+        {
+            "Konto": ["1500"],
+            "Kontonavn": ["Kundefordringer"],
+            "IB_netto": [100.0],
+            "UB_netto": [500.0],
+            "Konto_int": [1500],
+        }
+    )
+
+    result = analyze_receivable_postings(
+        root, ns, year=2023, trial_balance=tb
+    )
+
+    assert result.opening_balance == pytest.approx(100.0)
+    assert result.closing_balance == pytest.approx(500.0)
+    assert result.sales_counter_total == pytest.approx(1000.0)
+    assert result.bank_counter_total == pytest.approx(-300.0)
+    assert result.other_counter_total == pytest.approx(200.0)
+    assert result.control_total == pytest.approx(500.0)
+
+    assert len(result.unclassified_rows.index) == 1
+    only_row = result.unclassified_rows.iloc[0]
+    assert only_row["Bilagsnr"] == "4003"
+    assert only_row["Beløp"] == pytest.approx(200.0)
 
 
 def test_compute_customer_supplier_totals_matches_individual():

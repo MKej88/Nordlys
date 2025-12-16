@@ -206,6 +206,10 @@ class DatasetFlowController:
                 store.sales_without_receivable_total,
                 store.sales_without_receivable_rows(),
             )
+            pages.sales_ar_page.set_receivable_overview(
+                store.receivable_analysis,
+                store.receivable_unclassified_rows(),
+            )
         if pages.purchases_ap_page:
             pages.purchases_ap_page.set_controls_enabled(store.has_supplier_data)
             pages.purchases_ap_page.clear_top_suppliers()
@@ -284,6 +288,7 @@ class DatasetFlowController:
             pages.sales_ar_page.update_sales_reconciliation(None, None)
             pages.sales_ar_page.clear_top_customers()
             pages.sales_ar_page.clear_credit_notes()
+            pages.sales_ar_page.clear_receivable_overview()
         if pages.purchases_ap_page:
             pages.purchases_ap_page.set_controls_enabled(False)
             pages.purchases_ap_page.clear_top_suppliers()

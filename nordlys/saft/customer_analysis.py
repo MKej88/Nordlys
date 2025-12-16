@@ -30,6 +30,11 @@ class CustomerSupplierAnalysis:
     cost_vouchers: List["saft_customers.CostVoucher"]
     credit_notes: Optional["pd.DataFrame"] = None
     sales_ar_correlation: Optional["saft_customers.SalesReceivableCorrelation"] = None
+    receivable_analysis: Optional[
+        "saft_customers.ReceivablePostingAnalysis"
+    ] = None
+    analysis_start_date: Optional[date] = None
+    analysis_end_date: Optional[date] = None
 
 
 def determine_analysis_year(
@@ -183,6 +188,8 @@ def build_customer_supplier_analysis(
         cost_vouchers=cost_vouchers,
         credit_notes=credit_notes,
         sales_ar_correlation=sales_ar_correlation,
+        analysis_start_date=effective_start,
+        analysis_end_date=effective_end,
     )
 
 
