@@ -82,6 +82,44 @@ def test_customer_sales_balance_requires_both_sources() -> None:
     assert store.customer_sales_total is None
 
 
+def test_sales_three_way_correlation_builds_metrics() -> None:
+    store = SaftDatasetStore()
+    store._customer_sales = pd.DataFrame(  # type: ignore[attr-defined]
+        {
+            "Kundenr": ["1", "2"],
+            "Omsetning eks mva": [600.0, 500.0],
+        }
+    )
+    store._saft_summary = {  # type: ignore[attr-defined]
+        "driftsinntekter": 1000.0,
+        "kundefordringer_UB": 250.0,
+    }
+
+    correlation = store.sales_three_way_correlation
+
+    assert correlation is not None
+    assert correlation.customer_sales == pytest.approx(1100.0)
+    assert correlation.sales_accounts == pytest.approx(1000.0)
+    assert correlation.receivables == pytest.approx(250.0)
+    assert correlation.diff_customers_vs_accounts == pytest.approx(100.0)
+    assert correlation.diff_accounts_vs_receivables == pytest.approx(750.0)
+    assert correlation.receivable_share_of_sales == pytest.approx(0.25)
+
+
+def test_sales_three_way_correlation_requires_all_parts() -> None:
+    store = SaftDatasetStore()
+    assert store.sales_three_way_correlation is None
+
+    store._customer_sales = pd.DataFrame({"Omsetning eks mva": [100.0]})  # type: ignore[attr-defined]
+    assert store.sales_three_way_correlation is None
+
+    store._saft_summary = {"driftsinntekter": 100.0}  # type: ignore[attr-defined]
+    assert store.sales_three_way_correlation is None
+
+    store._saft_summary["kundefordringer_UB"] = 50.0  # type: ignore[attr-defined]
+    assert store.sales_three_way_correlation is not None
+
+
 def test_prepare_customer_sales_fills_missing_names() -> None:
     store = SaftDatasetStore()
     store._cust_name_by_nr = {"1": "Kari Kunde"}  # type: ignore[attr-defined]

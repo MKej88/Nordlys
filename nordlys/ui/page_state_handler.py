@@ -118,6 +118,9 @@ class PageStateHandler:
                 self._dataset_store.customer_sales_total,
                 self._dataset_store.sales_account_total,
             )
+            widget.update_three_way_correlation(
+                self._dataset_store.sales_three_way_correlation
+            )
             if not self._dataset_store.has_customer_data:
                 widget.clear_top_customers()
         elif key == "rev.innkjop" and isinstance(widget, PurchasesApPage):

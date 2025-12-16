@@ -61,6 +61,7 @@ from ..widgets import CardFrame, EmptyStateWidget, StatBadge
 
 if TYPE_CHECKING:  # pragma: no cover - kun for typekontroll
     import pandas as pd
+    from ..data_manager.dataset_store import SalesCorrelation
 
 __all__ = [
     "FixedAssetsPage",
@@ -1485,8 +1486,38 @@ class SalesArPage(QWidget):
         self.top_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         layout.addWidget(self.top_card, 1)
 
+        self.correlation_card = CardFrame(
+            "3-veis korrelasjon",
+            "Sammenligner kundesalg, salgskonti og kundefordringer.",
+        )
+        self.correlation_table = create_table_widget()
+        self.correlation_table.setColumnCount(3)
+        self.correlation_table.setHorizontalHeaderLabels(
+            ["Måling", "Beløp", "Kommentar"]
+        )
+        corr_header = self.correlation_table.horizontalHeader()
+        corr_header.setSectionResizeMode(0, QHeaderView.Stretch)
+        corr_header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        corr_header.setSectionResizeMode(2, QHeaderView.Stretch)
+        self.correlation_table.hide()
+
+        self.correlation_empty = EmptyStateWidget(
+            "Korrelasjon venter på data",
+            "Importer en SAF-T-fil med både kundesalg og saldobalanse for å se "
+            "sammenhengen.",
+            icon="📊",
+        )
+
+        self.correlation_card.add_widget(self.correlation_empty)
+        self.correlation_card.add_widget(self.correlation_table)
+        self.correlation_card.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.MinimumExpanding
+        )
+        layout.addWidget(self.correlation_card)
+
         self.set_controls_enabled(False)
         self.update_sales_reconciliation(None, None)
+        self.update_three_way_correlation(None)
 
     def _handle_calc_clicked(self) -> None:
         rows = self._on_calc_top("3xxx", _requested_top_count(self.top_spin))
@@ -1558,6 +1589,93 @@ class SalesArPage(QWidget):
                 "Kontroll: Kundesalg ligger "
                 f"{format_currency(abs_diff)} under salgskonti."
             )
+
+    def update_three_way_correlation(
+        self, correlation: Optional["SalesCorrelation"]
+    ) -> None:
+        if correlation is None:
+            self.correlation_table.setRowCount(0)
+            self._toggle_empty_state(
+                self.correlation_table, self.correlation_empty, False
+            )
+            return
+
+        share_text = self._format_share(correlation.receivable_share_of_sales)
+
+        rows = [
+            (
+                "Kundesalg (eks. mva)",
+                correlation.customer_sales,
+                "Summerte bilag per kunde",
+            ),
+            (
+                "Salgskonti (3xxx)",
+                correlation.sales_accounts,
+                "Beløp fra saldobalansen",
+            ),
+            (
+                "Kundefordringer (UB)",
+                correlation.receivables,
+                "Saldo for kontoer 15xx",
+            ),
+            (
+                "Avvik kundesalg vs salgskonti",
+                correlation.diff_customers_vs_accounts,
+                self._diff_comment(correlation.diff_customers_vs_accounts),
+            ),
+            (
+                "Avvik salgskonti vs kundefordringer",
+                correlation.diff_accounts_vs_receivables,
+                self._diff_comment(correlation.diff_accounts_vs_receivables),
+            ),
+            (
+                "Kundefordringer som andel av salg",
+                share_text,
+                self._share_comment(correlation.receivable_share_of_sales),
+            ),
+        ]
+
+        populate_table(
+            self.correlation_table,
+            ["Måling", "Beløp", "Kommentar"],
+            rows,
+            money_cols={1},
+        )
+        self._toggle_empty_state(
+            self.correlation_table, self.correlation_empty, True
+        )
+
+    @staticmethod
+    def _diff_comment(diff: float) -> str:
+        if math.isclose(diff, 0.0, abs_tol=1.0):
+            return "Liten forskjell – tallene henger godt sammen."
+        if diff > 0:
+            return (
+                "Kundesalg overstiger hovedboken – sjekk periodisering "
+                "og mapping av konti."
+            )
+        return (
+            "Hovedboken viser mer salg enn kundedata – vurder "
+            "kreditnotaer eller manglende bilag."
+        )
+
+    @staticmethod
+    def _format_share(share: Optional[float]) -> str:
+        if share is None:
+            return "—"
+        return f"{share * 100:.1f} %"
+
+    @staticmethod
+    def _share_comment(share: Optional[float]) -> str:
+        if share is None:
+            return "Mangler data – last både kundesalg og saldobalanse."
+        if share < 0:
+            return "Negativ saldo – kontroller før videre analyse."
+        if share < 0.1:
+            return "Lav andel – kort kredittid eller kontantsalg."
+        if share < 0.4:
+            return "Moderat andel – ofte et normalt nivå."
+        return "Høy andel – vurder kredittid og inndrivelse."
 
 
 class PurchasesApPage(QWidget):

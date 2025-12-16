@@ -197,6 +197,9 @@ class DatasetFlowController:
                 store.customer_sales_total,
                 store.sales_account_total,
             )
+            pages.sales_ar_page.update_three_way_correlation(
+                store.sales_three_way_correlation
+            )
             pages.sales_ar_page.clear_top_customers()
         if pages.purchases_ap_page:
             pages.purchases_ap_page.set_controls_enabled(store.has_supplier_data)
@@ -274,6 +277,7 @@ class DatasetFlowController:
         if pages.sales_ar_page:
             pages.sales_ar_page.set_controls_enabled(False)
             pages.sales_ar_page.update_sales_reconciliation(None, None)
+            pages.sales_ar_page.update_three_way_correlation(None)
             pages.sales_ar_page.clear_top_customers()
         if pages.purchases_ap_page:
             pages.purchases_ap_page.set_controls_enabled(False)

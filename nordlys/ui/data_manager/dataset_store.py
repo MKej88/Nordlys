@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Tuple
 
@@ -15,7 +16,12 @@ pd = lazy_pandas()
 saft = lazy_import("nordlys.saft")
 saft_customers = lazy_import("nordlys.saft_customers")
 
-__all__ = ["DatasetMetadata", "SaftDatasetStore", "SummarySnapshot"]
+__all__ = [
+    "DatasetMetadata",
+    "SalesCorrelation",
+    "SaftDatasetStore",
+    "SummarySnapshot",
+]
 
 
 @dataclass(frozen=True)
@@ -34,6 +40,18 @@ class SummarySnapshot:
     summary: Dict[str, float]
     year: Optional[int]
     is_current: bool
+
+
+@dataclass(frozen=True)
+class SalesCorrelation:
+    """Tallgrunnlag for en enkel 3-veis-korrelasjon av salgsinntekter."""
+
+    customer_sales: float
+    sales_accounts: float
+    receivables: float
+    diff_customers_vs_accounts: float
+    diff_accounts_vs_receivables: float
+    receivable_share_of_sales: Optional[float]
 
 
 class SaftDatasetStore:
@@ -311,6 +329,49 @@ class SaftDatasetStore:
             return float(value)
         except (TypeError, ValueError):
             return None
+
+    @property
+    def accounts_receivable_total(self) -> Optional[float]:
+        """Henter kundefordringer fra saldobalansen om de finnes."""
+
+        if not self._saft_summary:
+            return None
+        value = self._saft_summary.get("kundefordringer_UB")
+        if value is None:
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    @property
+    def sales_three_way_correlation(self) -> Optional[SalesCorrelation]:
+        """Bygger tallene som trengs for en enkel 3-veis-korrelasjon."""
+
+        sales_total = self.customer_sales_total
+        revenue_total = self.sales_account_total
+        receivables_total = self.accounts_receivable_total
+        if (
+            sales_total is None
+            or revenue_total is None
+            or receivables_total is None
+        ):
+            return None
+
+        diff_customers_vs_accounts = sales_total - revenue_total
+        diff_accounts_vs_receivables = revenue_total - receivables_total
+        receivable_share: Optional[float] = None
+        if not math.isclose(revenue_total, 0.0, abs_tol=1e-6):
+            receivable_share = receivables_total / revenue_total
+
+        return SalesCorrelation(
+            customer_sales=sales_total,
+            sales_accounts=revenue_total,
+            receivables=receivables_total,
+            diff_customers_vs_accounts=diff_customers_vs_accounts,
+            diff_accounts_vs_receivables=diff_accounts_vs_receivables,
+            receivable_share_of_sales=receivable_share,
+        )
 
     @property
     def customer_sales_balance_diff(self) -> Optional[float]:
