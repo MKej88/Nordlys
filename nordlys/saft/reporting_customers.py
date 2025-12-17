@@ -115,6 +115,7 @@ class BankPostingAnalysis:
     with_receivable_total: float
     without_receivable_total: float
     closing_balance: Optional[float]
+    mismatched_rows: "pd.DataFrame"
 
     @property
     def control_total(self) -> Optional[float]:
@@ -1246,9 +1247,10 @@ def analyze_bank_postings(
     date_to: Optional[date] = None,
     year: Optional[int] = None,
     trial_balance: Optional["pd.DataFrame"] = None,
-) -> BankPostingAnalysis:
+    ) -> BankPostingAnalysis:
     """Summerer bankbevegelser fordelt på motpost kundefordringer."""
 
+    pandas = _require_pandas()
     start_date = _ensure_date(date_from)
     end_date = _ensure_date(date_to)
     use_range = start_date is not None or end_date is not None
@@ -1258,6 +1260,7 @@ def analyze_bank_postings(
 
     with_receivable = Decimal("0")
     without_receivable = Decimal("0")
+    mismatched_rows: List[Dict[str, object]] = []
 
     for transaction in _iter_transactions(root, ns):
         scope = _build_transaction_scope(transaction, ns)
@@ -1272,7 +1275,10 @@ def analyze_bank_postings(
             continue
 
         bank_total = Decimal("0")
+        receivable_total = Decimal("0")
         has_receivable = False
+        bank_accounts: set[str] = set()
+        receivable_accounts: set[str] = set()
 
         for line in _findall(transaction, "n1:Line", ns):
             account_element = _find(line, "n1:AccountID", ns)
@@ -1288,23 +1294,94 @@ def analyze_bank_postings(
 
             if normalized.startswith("1500") and (debit != 0 or credit != 0):
                 has_receivable = True
+                receivable_accounts.add(normalized)
+                receivable_total += debit - credit
 
             if _is_bank_account(normalized):
                 delta = debit - credit
                 if delta != 0:
                     bank_total += delta
+                    bank_accounts.add(normalized)
 
         if bank_total == 0:
             continue
 
         if has_receivable:
             with_receivable += bank_total
+
+            mismatch = bank_total + receivable_total
+            rounded_mismatch = mismatch.quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+            if rounded_mismatch != 0:
+                document_number = _first_text(
+                    transaction,
+                    (
+                        "n1:DocumentNumber",
+                        "n1:SourceDocumentID",
+                        "n1:DocumentReference/n1:DocumentNumber",
+                        "n1:DocumentReference/n1:ID",
+                        "n1:TransactionID",
+                        "n1:SourceID",
+                    ),
+                    ns,
+                )
+                description = scope.voucher_description or scope.transaction_description
+                mismatched_rows.append(
+                    {
+                        "Dato": scope.date,
+                        "Bilagsnr": document_number or "—",
+                        "Beskrivelse": description or "—",
+                        "Bank": _format_decimal(bank_total),
+                        "Kundefordringer": _format_decimal(receivable_total),
+                        "Differanse": _format_decimal(rounded_mismatch),
+                        "Bankkontoer": ", ".join(sorted(bank_accounts)) or "—",
+                        "Kundefordringskontoer":
+                            ", ".join(sorted(receivable_accounts)) or "—",
+                    }
+                )
         else:
             without_receivable += bank_total
+
+    if mismatched_rows:
+        mismatch_df = pandas.DataFrame(
+            mismatched_rows,
+            columns=[
+                "Dato",
+                "Bilagsnr",
+                "Beskrivelse",
+                "Bank",
+                "Kundefordringer",
+                "Differanse",
+                "Bankkontoer",
+                "Kundefordringskontoer",
+            ],
+        )
+        mismatch_df["Bank"] = mismatch_df["Bank"].astype(float).round(2)
+        mismatch_df["Kundefordringer"] = (
+            mismatch_df["Kundefordringer"].astype(float).round(2)
+        )
+        mismatch_df["Differanse"] = mismatch_df["Differanse"].astype(float).round(2)
+        mismatch_df.sort_values("Dato", inplace=True)
+        mismatch_df.reset_index(drop=True, inplace=True)
+    else:
+        mismatch_df = pandas.DataFrame(
+            columns=[
+                "Dato",
+                "Bilagsnr",
+                "Beskrivelse",
+                "Bank",
+                "Kundefordringer",
+                "Differanse",
+                "Bankkontoer",
+                "Kundefordringskontoer",
+            ]
+        )
 
     return BankPostingAnalysis(
         opening_balance=opening_balance,
         with_receivable_total=_format_decimal(with_receivable),
         without_receivable_total=_format_decimal(without_receivable),
         closing_balance=closing_balance,
+        mismatched_rows=mismatch_df,
     )

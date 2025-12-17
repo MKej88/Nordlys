@@ -210,7 +210,9 @@ class DatasetFlowController:
                 store.receivable_analysis,
                 store.receivable_unclassified_rows(),
             )
-            pages.sales_ar_page.set_bank_overview(store.bank_analysis)
+            pages.sales_ar_page.set_bank_overview(
+                store.bank_analysis, store.bank_mismatch_rows()
+            )
         if pages.purchases_ap_page:
             pages.purchases_ap_page.set_controls_enabled(store.has_supplier_data)
             pages.purchases_ap_page.clear_top_suppliers()

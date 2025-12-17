@@ -595,6 +595,42 @@ class SaftDatasetStore:
     def bank_analysis(self) -> Optional["saft_customers.BankPostingAnalysis"]:
         return self._bank_analysis
 
+    def bank_mismatch_rows(self) -> List[Tuple[str, str, str, float, float, float, str, str]]:
+        analysis = self._bank_analysis
+        if analysis is None:
+            return []
+
+        df = analysis.mismatched_rows
+        if df is None or df.empty:
+            return []
+
+        rows: List[Tuple[str, str, str, float, float, float, str, str]] = []
+        for _, row in df.iterrows():
+            date_value = row.get("Dato")
+            if isinstance(date_value, datetime):
+                date_text = date_value.strftime("%d.%m.%Y")
+            elif isinstance(date_value, date):
+                date_text = date_value.strftime("%d.%m.%Y")
+            elif date_value:
+                date_text = str(date_value)
+            else:
+                date_text = "—"
+
+            rows.append(
+                (
+                    date_text,
+                    str(row.get("Bilagsnr", "—")),
+                    str(row.get("Beskrivelse", "—")),
+                    self.safe_float(row.get("Bank")),
+                    self.safe_float(row.get("Kundefordringer")),
+                    self.safe_float(row.get("Differanse")),
+                    str(row.get("Bankkontoer", "—")),
+                    str(row.get("Kundefordringskontoer", "—")),
+                )
+            )
+
+        return rows
+
     def receivable_unclassified_rows(
         self,
     ) -> List[Tuple[str, str, str, str, str, float]]:

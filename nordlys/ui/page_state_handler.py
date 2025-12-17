@@ -133,7 +133,10 @@ class PageStateHandler:
                 self._dataset_store.receivable_analysis,
                 self._dataset_store.receivable_unclassified_rows(),
             )
-            widget.set_bank_overview(self._dataset_store.bank_analysis)
+            widget.set_bank_overview(
+                self._dataset_store.bank_analysis,
+                self._dataset_store.bank_mismatch_rows(),
+            )
         elif key == "rev.innkjop" and isinstance(widget, PurchasesApPage):
             self.purchases_ap_page = widget
             widget.set_controls_enabled(self._dataset_store.has_supplier_data)

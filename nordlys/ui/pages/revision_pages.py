@@ -1744,9 +1744,34 @@ class SalesArPage(QWidget):
         )
 
     def set_bank_overview(
-        self, analysis: Optional["saft_customers.BankPostingAnalysis"]
+        self,
+        analysis: Optional["saft_customers.BankPostingAnalysis"],
+        mismatch_rows: Iterable[
+            Tuple[str, str, str, float, float, float, str, str]
+        ],
     ) -> None:
         self._update_bank_summary(analysis)
+
+        rows = list(mismatch_rows or [])
+        populate_table(
+            self.bank_mismatch_table,
+            [
+                "Dato",
+                "Bilagsnr",
+                "Beskrivelse",
+                "Bank",
+                "Kundefordringer",
+                "Differanse",
+                "Bankkontoer",
+                "Kundefordringskontoer",
+            ],
+            rows,
+            money_cols={3, 4, 5},
+        )
+        self._toggle_empty_state(
+            self.bank_mismatch_table, self.bank_mismatch_empty, bool(rows)
+        )
+        self.bank_mismatch_table.setSortingEnabled(True)
 
     def set_controls_enabled(self, enabled: bool) -> None:
         self.calc_button.setEnabled(enabled)
@@ -2148,6 +2173,52 @@ class SalesArPage(QWidget):
 
         self.bank_card.add_widget(self.bank_summary_empty)
         self.bank_card.add_widget(self.bank_summary_table)
+
+        mismatch_title = QLabel(
+            "Bankposteringer mot kundefordringer som ikke balanserer"
+        )
+        mismatch_title.setObjectName("analysisSectionTitle")
+
+        self.bank_mismatch_empty = EmptyStateWidget(
+            "Ingen avvik",
+            "Bankposteringene mot kundefordringer balanserer.",
+            icon="✅",
+        )
+        self.bank_mismatch_empty.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Minimum
+        )
+
+        self.bank_mismatch_table = create_table_widget()
+        self.bank_mismatch_table.setColumnCount(8)
+        self.bank_mismatch_table.setHorizontalHeaderLabels(
+            [
+                "Dato",
+                "Bilagsnr",
+                "Beskrivelse",
+                "Bank",
+                "Kundefordringer",
+                "Differanse",
+                "Bankkontoer",
+                "Kundefordringskontoer",
+            ]
+        )
+        self.bank_mismatch_table.setSortingEnabled(True)
+        self.bank_mismatch_table.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Expanding
+        )
+        self.bank_mismatch_table.hide()
+
+        mismatch_layout = QVBoxLayout()
+        mismatch_layout.setContentsMargins(0, 0, 0, 0)
+        mismatch_layout.setSpacing(4)
+        mismatch_layout.addWidget(mismatch_title, 0, Qt.AlignLeft | Qt.AlignTop)
+        mismatch_layout.addWidget(
+            self.bank_mismatch_empty, 0, Qt.AlignLeft | Qt.AlignTop
+        )
+        mismatch_layout.addWidget(self.bank_mismatch_table)
+        mismatch_layout.setStretch(2, 1)
+
+        self.bank_card.add_layout(mismatch_layout)
 
         page_layout.addWidget(self.bank_card)
         return page

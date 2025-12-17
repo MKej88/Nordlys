@@ -1575,6 +1575,58 @@ def test_analyze_bank_postings_splits_by_receivable_counter():
     assert result.control_total == pytest.approx(0.0)
 
 
+def test_analyze_bank_postings_flags_mismatches():
+    xml = """
+    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <GeneralLedgerEntries>
+        <Journal>
+          <Transaction>
+            <TransactionID>5004</TransactionID>
+            <TransactionDate>2023-04-01</TransactionDate>
+            <Line>
+              <AccountID>1920</AccountID>
+              <DebitAmount>1000</DebitAmount>
+            </Line>
+            <Line>
+              <AccountID>1500</AccountID>
+              <CreditAmount>900</CreditAmount>
+            </Line>
+            <Line>
+              <AccountID>7770</AccountID>
+              <CreditAmount>100</CreditAmount>
+            </Line>
+          </Transaction>
+          <Transaction>
+            <TransactionID>5005</TransactionID>
+            <TransactionDate>2023-04-02</TransactionDate>
+            <Line>
+              <AccountID>1920</AccountID>
+              <DebitAmount>500</DebitAmount>
+            </Line>
+            <Line>
+              <AccountID>1500</AccountID>
+              <CreditAmount>500</CreditAmount>
+            </Line>
+          </Transaction>
+        </Journal>
+      </GeneralLedgerEntries>
+    </AuditFile>
+    """
+
+    root = ET.fromstring(xml)
+    ns = {"n1": root.tag.split("}")[0][1:]}
+
+    result = analyze_bank_postings(root, ns, year=2023)
+
+    assert result.with_receivable_total == pytest.approx(1500.0)
+    assert len(result.mismatched_rows.index) == 1
+    mismatch = result.mismatched_rows.iloc[0]
+    assert mismatch["Bilagsnr"] == "5004"
+    assert mismatch["Bank"] == pytest.approx(1000.0)
+    assert mismatch["Kundefordringer"] == pytest.approx(-900.0)
+    assert mismatch["Differanse"] == pytest.approx(100.0)
+
+
 def test_compute_customer_supplier_totals_matches_individual():
     root = build_sample_root()
     ns = {"n1": root.tag.split("}")[0][1:]}
