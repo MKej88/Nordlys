@@ -1,4 +1,6 @@
+import importlib
 import json
+import sys
 
 import pytest
 
@@ -47,6 +49,19 @@ def test_secondary_hint_changes_fallback() -> None:
 def test_secondary_hint_returns_correct_text() -> None:
     group = industry_groups._apply_secondary_hints("Byggmester Anlegg AS")
     assert group == "Salg av varer og tjenester"
+
+
+def test_import_does_not_pull_saft_modules(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delitem(sys.modules, "nordlys.saft", raising=False)
+    monkeypatch.delitem(sys.modules, "nordlys.saft_customers", raising=False)
+
+    reloaded = importlib.reload(industry_groups)
+
+    assert sys.modules.get("nordlys.saft") is None
+    assert sys.modules.get("nordlys.saft_customers") is None
+
+    # Sjekk at funksjonen fortsatt fungerer når den importerer lokalt.
+    reloaded._apply_secondary_hints("restaurant")
 
 
 def test_cache_prevents_double_fetch(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
