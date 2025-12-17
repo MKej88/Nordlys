@@ -1746,9 +1746,7 @@ class SalesArPage(QWidget):
     def set_bank_overview(
         self,
         analysis: Optional["saft_customers.BankPostingAnalysis"],
-        mismatch_rows: Iterable[
-            Tuple[str, str, str, float, float, float, str, str]
-        ],
+        mismatch_rows: Iterable[Tuple[str, str, str, float, float, float, str, str]],
     ) -> None:
         self._update_bank_summary(analysis)
 

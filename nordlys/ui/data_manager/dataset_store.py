@@ -595,7 +595,9 @@ class SaftDatasetStore:
     def bank_analysis(self) -> Optional["saft_customers.BankPostingAnalysis"]:
         return self._bank_analysis
 
-    def bank_mismatch_rows(self) -> List[Tuple[str, str, str, float, float, float, str, str]]:
+    def bank_mismatch_rows(
+        self,
+    ) -> List[Tuple[str, str, str, float, float, float, str, str]]:
         analysis = self._bank_analysis
         if analysis is None:
             return []

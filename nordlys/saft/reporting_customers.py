@@ -1247,7 +1247,7 @@ def analyze_bank_postings(
     date_to: Optional[date] = None,
     year: Optional[int] = None,
     trial_balance: Optional["pd.DataFrame"] = None,
-    ) -> BankPostingAnalysis:
+) -> BankPostingAnalysis:
     """Summerer bankbevegelser fordelt på motpost kundefordringer."""
 
     pandas = _require_pandas()
@@ -1336,8 +1336,8 @@ def analyze_bank_postings(
                         "Kundefordringer": _format_decimal(receivable_total),
                         "Differanse": _format_decimal(rounded_mismatch),
                         "Bankkontoer": ", ".join(sorted(bank_accounts)) or "—",
-                        "Kundefordringskontoer":
-                            ", ".join(sorted(receivable_accounts)) or "—",
+                        "Kundefordringskontoer": ", ".join(sorted(receivable_accounts))
+                        or "—",
                     }
                 )
         else:
