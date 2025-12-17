@@ -1395,6 +1395,18 @@ class FixedAssetsPage(QWidget):
             table.hide()
             empty_state.show()
 
+    def _create_correlation_summary_table(self) -> QTableWidget:
+        table = create_table_widget()
+        table.setColumnCount(3)
+        table.setHorizontalHeaderLabels(["Kategori", "Beløp", "Andel"])
+        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        table.setSortingEnabled(False)
+        table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+        apply_compact_row_heights(table)
+        return table
+
 
 class SalesArPage(QWidget):
     """Revisjonsside for salg og kundefordringer med topp kunder og kreditnotaer."""
@@ -1831,10 +1843,8 @@ class SalesArPage(QWidget):
         percent_diff: Optional[float] = None
         if sales_with_receivable is not None and receivable_with_sales is not None:
             difference = round(sales_with_receivable - receivable_with_sales, 2)
-            if receivable_with_sales != 0:
-                percent_diff = round(
-                    (sales_with_receivable / receivable_with_sales) * 100, 1
-                )
+            if sales_with_receivable != 0:
+                percent_diff = round((difference / sales_with_receivable) * 100, 1)
 
         rows: List[Tuple[str, str, str]] = [
             (
@@ -1863,7 +1873,23 @@ class SalesArPage(QWidget):
                 )
             )
 
-        self.correlation_summary_table.setRowCount(len(rows))
+        self._populate_correlation_summary_table(self.correlation_summary_table, rows)
+        self._populate_correlation_summary_table(
+            getattr(self, "correlation_sales_table", None), rows
+        )
+
+    def _format_percent(self, value: Optional[float]) -> str:
+        if value is None or math.isnan(value):
+            return "—"
+        return f"{value:.1f} %"
+
+    def _populate_correlation_summary_table(
+        self, table: Optional[QTableWidget], rows: List[Tuple[str, str, str]]
+    ) -> None:
+        if table is None:
+            return
+
+        table.setRowCount(len(rows))
         for row_index, (label, value, percent) in enumerate(rows):
             label_item = QTableWidgetItem(label)
             label_item.setFlags(label_item.flags() & ~Qt.ItemIsEditable)
@@ -1873,14 +1899,9 @@ class SalesArPage(QWidget):
             percent_item = QTableWidgetItem(percent)
             percent_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             percent_item.setFlags(percent_item.flags() & ~Qt.ItemIsEditable)
-            self.correlation_summary_table.setItem(row_index, 0, label_item)
-            self.correlation_summary_table.setItem(row_index, 1, value_item)
-            self.correlation_summary_table.setItem(row_index, 2, percent_item)
-
-    def _format_percent(self, value: Optional[float]) -> str:
-        if value is None or math.isnan(value):
-            return "—"
-        return f"{value:.1f} %"
+            table.setItem(row_index, 0, label_item)
+            table.setItem(row_index, 1, value_item)
+            table.setItem(row_index, 2, percent_item)
 
     def _update_receivable_summary(
         self, analysis: Optional["saft_customers.ReceivablePostingAnalysis"]
@@ -2001,25 +2022,7 @@ class SalesArPage(QWidget):
         intro_label.setWordWrap(True)
         self.correlation_summary_card.add_widget(intro_label)
 
-        self.correlation_summary_table = create_table_widget()
-        self.correlation_summary_table.setColumnCount(3)
-        self.correlation_summary_table.setHorizontalHeaderLabels(
-            ["Kategori", "Beløp", "Andel"]
-        )
-        self.correlation_summary_table.horizontalHeader().setSectionResizeMode(
-            0, QHeaderView.ResizeToContents
-        )
-        self.correlation_summary_table.horizontalHeader().setSectionResizeMode(
-            1, QHeaderView.Stretch
-        )
-        self.correlation_summary_table.horizontalHeader().setSectionResizeMode(
-            2, QHeaderView.ResizeToContents
-        )
-        self.correlation_summary_table.setSortingEnabled(False)
-        self.correlation_summary_table.setSizePolicy(
-            QSizePolicy.Expanding, QSizePolicy.Minimum
-        )
-        apply_compact_row_heights(self.correlation_summary_table)
+        self.correlation_summary_table = self._create_correlation_summary_table()
         self.correlation_summary_card.add_widget(self.correlation_summary_table)
 
         page_layout.addWidget(self.correlation_summary_card)
@@ -2048,6 +2051,19 @@ class SalesArPage(QWidget):
         )
         intro_label.setWordWrap(True)
         self.correlation_card.add_widget(intro_label)
+
+        summary_title = QLabel("Korrelasjon mellom salg og kundefordringer")
+        summary_title.setObjectName("analysisSectionTitle")
+
+        self.correlation_sales_table = self._create_correlation_summary_table()
+
+        summary_layout = QVBoxLayout()
+        summary_layout.setContentsMargins(0, 0, 0, 0)
+        summary_layout.setSpacing(8)
+        summary_layout.addWidget(summary_title, 0, Qt.AlignLeft | Qt.AlignTop)
+        summary_layout.addWidget(self.correlation_sales_table)
+
+        self.correlation_card.add_layout(summary_layout)
 
         missing_title = QLabel("Salg uten motpost kundefordringer")
         missing_title.setObjectName("analysisSectionTitle")
