@@ -205,6 +205,7 @@ class DatasetFlowController:
                 store.sales_with_receivable_total,
                 store.sales_without_receivable_total,
                 store.sales_without_receivable_rows(),
+                store.receivable_sales_counter_total,
             )
             pages.sales_ar_page.set_receivable_overview(
                 store.receivable_analysis,

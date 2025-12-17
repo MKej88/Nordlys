@@ -1683,8 +1683,11 @@ class SalesArPage(QWidget):
         with_receivable: Optional[float],
         without_receivable: Optional[float],
         missing_rows: Iterable[Tuple[str, str, str, str, str, float]],
+        receivable_sales_total: Optional[float],
     ) -> None:
-        self._update_correlation_summary(with_receivable, without_receivable)
+        self._update_correlation_summary(
+            with_receivable, receivable_sales_total, without_receivable
+        )
         rows = list(missing_rows or [])
         populate_table(
             self.missing_sales_table,
@@ -1705,7 +1708,7 @@ class SalesArPage(QWidget):
         self.missing_sales_table.setSortingEnabled(True)
 
     def clear_sales_correlation(self) -> None:
-        self._update_correlation_summary(None, None)
+        self._update_correlation_summary(None, None, None)
         self.missing_sales_table.setRowCount(0)
         self._toggle_empty_state(
             self.missing_sales_table, self.missing_sales_empty, False
@@ -1820,29 +1823,63 @@ class SalesArPage(QWidget):
 
     def _update_correlation_summary(
         self,
-        with_receivable: Optional[float],
-        without_receivable: Optional[float],
+        sales_with_receivable: Optional[float],
+        receivable_with_sales: Optional[float],
+        sales_without_receivable: Optional[float],
     ) -> None:
-        rows = [
+        difference: Optional[float] = None
+        percent_diff: Optional[float] = None
+        if sales_with_receivable is not None and receivable_with_sales is not None:
+            difference = round(sales_with_receivable - receivable_with_sales, 2)
+            base = max(abs(sales_with_receivable), abs(receivable_with_sales))
+            if base > 0:
+                percent_diff = round((difference / base) * 100, 1)
+
+        rows: List[Tuple[str, str, str]] = [
             (
-                "Salg som har motpost kundefordringer",
-                format_currency(with_receivable),
+                "Posteringer på salg med motkonto kundefordringer",
+                format_currency(sales_with_receivable),
+                "—",
             ),
             (
-                "Salg som ikke har motpost kundefordringer",
-                format_currency(without_receivable),
+                "Posteringer på kundefordringer med motkonto salg",
+                format_currency(receivable_with_sales),
+                "—",
+            ),
+            (
+                "Uforklart avvik",
+                format_currency(difference),
+                self._format_percent(percent_diff),
             ),
         ]
 
+        if sales_without_receivable is not None:
+            rows.append(
+                (
+                    "Salg uten motpost kundefordringer",
+                    format_currency(sales_without_receivable),
+                    "—",
+                )
+            )
+
         self.correlation_summary_table.setRowCount(len(rows))
-        for row_index, (label, value) in enumerate(rows):
+        for row_index, (label, value, percent) in enumerate(rows):
             label_item = QTableWidgetItem(label)
             label_item.setFlags(label_item.flags() & ~Qt.ItemIsEditable)
             value_item = QTableWidgetItem(value)
             value_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             value_item.setFlags(value_item.flags() & ~Qt.ItemIsEditable)
+            percent_item = QTableWidgetItem(percent)
+            percent_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            percent_item.setFlags(percent_item.flags() & ~Qt.ItemIsEditable)
             self.correlation_summary_table.setItem(row_index, 0, label_item)
             self.correlation_summary_table.setItem(row_index, 1, value_item)
+            self.correlation_summary_table.setItem(row_index, 2, percent_item)
+
+    def _format_percent(self, value: Optional[float]) -> str:
+        if value is None or math.isnan(value):
+            return "—"
+        return f"{value:.1f} %"
 
     def _update_receivable_summary(
         self, analysis: Optional["saft_customers.ReceivablePostingAnalysis"]
@@ -1964,15 +2001,18 @@ class SalesArPage(QWidget):
         self.correlation_card.add_widget(intro_label)
 
         self.correlation_summary_table = create_table_widget()
-        self.correlation_summary_table.setColumnCount(2)
+        self.correlation_summary_table.setColumnCount(3)
         self.correlation_summary_table.setHorizontalHeaderLabels(
-            ["Kategori", "Sum salg"]
+            ["Kategori", "Beløp", "Andel"]
         )
         self.correlation_summary_table.horizontalHeader().setSectionResizeMode(
             0, QHeaderView.ResizeToContents
         )
         self.correlation_summary_table.horizontalHeader().setSectionResizeMode(
             1, QHeaderView.Stretch
+        )
+        self.correlation_summary_table.horizontalHeader().setSectionResizeMode(
+            2, QHeaderView.ResizeToContents
         )
         self.correlation_summary_table.setSortingEnabled(False)
         self.correlation_summary_table.setSizePolicy(
@@ -2028,7 +2068,7 @@ class SalesArPage(QWidget):
         self.correlation_card.add_layout(missing_section)
 
         page_layout.addWidget(self.correlation_card)
-        self._update_correlation_summary(None, None)
+        self._update_correlation_summary(None, None, None)
         self._toggle_empty_state(
             self.missing_sales_table, self.missing_sales_empty, False
         )

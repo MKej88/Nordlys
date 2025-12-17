@@ -6,7 +6,10 @@ import pytest
 from nordlys.saft.header import SaftHeader
 from nordlys.saft.loader import SaftLoadResult
 from nordlys.saft.masterfiles import SupplierInfo
-from nordlys.saft.reporting_customers import SalesReceivableCorrelation
+from nordlys.saft.reporting_customers import (
+    ReceivablePostingAnalysis,
+    SalesReceivableCorrelation,
+)
 from nordlys.saft.validation import SaftValidationResult
 from nordlys.ui.data_manager.dataset_store import SaftDatasetStore
 
@@ -238,6 +241,20 @@ def test_sales_without_receivable_rows_include_motkonto_and_bilagsnr() -> None:
     rows = store.sales_without_receivable_rows()
 
     assert rows == [("01.01.2023", "42", "Test", "3100", "1920", 100.0)]
+
+
+def test_receivable_sales_counter_total_exposes_sales_sum() -> None:
+    store = SaftDatasetStore()
+    store._receivable_analysis = ReceivablePostingAnalysis(  # type: ignore[attr-defined]
+        opening_balance=None,
+        sales_counter_total=1234.56,
+        bank_counter_total=0.0,
+        other_counter_total=0.0,
+        closing_balance=None,
+        unclassified_rows=pd.DataFrame(),
+    )
+
+    assert store.receivable_sales_counter_total == pytest.approx(1234.56)
 
 
 def test_apply_batch_blocks_multiple_companies_in_same_batch() -> None:

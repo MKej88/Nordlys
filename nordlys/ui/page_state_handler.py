@@ -128,6 +128,7 @@ class PageStateHandler:
                 self._dataset_store.sales_with_receivable_total,
                 self._dataset_store.sales_without_receivable_total,
                 self._dataset_store.sales_without_receivable_rows(),
+                self._dataset_store.receivable_sales_counter_total,
             )
             widget.set_receivable_overview(
                 self._dataset_store.receivable_analysis,

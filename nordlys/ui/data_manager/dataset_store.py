@@ -549,6 +549,13 @@ class SaftDatasetStore:
             return None
         return float(correlation.without_receivable_total)
 
+    @property
+    def receivable_sales_counter_total(self) -> Optional[float]:
+        analysis = self._receivable_analysis
+        if analysis is None:
+            return None
+        return float(analysis.sales_counter_total)
+
     def sales_without_receivable_rows(
         self,
     ) -> List[Tuple[str, str, str, str, str, float]]:
