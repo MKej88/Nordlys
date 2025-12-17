@@ -1611,7 +1611,7 @@ class SalesArPage(QWidget):
         bank_tab = self._build_bank_correlation_tab()
         self.correlation_tabs.addTab(bank_tab, "Bankinnskudd")
 
-        summary_tab = self._build_placeholder_tab("Oppsummering", "Kommer snart.")
+        summary_tab = self._build_correlation_summary_tab()
         self.correlation_tabs.addTab(summary_tab, "Oppsummering")
 
         page_layout.addWidget(self.correlation_tabs)
@@ -1831,9 +1831,10 @@ class SalesArPage(QWidget):
         percent_diff: Optional[float] = None
         if sales_with_receivable is not None and receivable_with_sales is not None:
             difference = round(sales_with_receivable - receivable_with_sales, 2)
-            base = max(abs(sales_with_receivable), abs(receivable_with_sales))
-            if base > 0:
-                percent_diff = round((difference / base) * 100, 1)
+            if receivable_with_sales != 0:
+                percent_diff = round(
+                    (sales_with_receivable / receivable_with_sales) * 100, 1
+                )
 
         rows: List[Tuple[str, str, str]] = [
             (
@@ -1978,7 +1979,7 @@ class SalesArPage(QWidget):
             table.hide()
             empty_state.show()
 
-    def _build_sales_correlation_tab(self) -> QWidget:
+    def _build_correlation_summary_tab(self) -> QWidget:
         page = QWidget()
         page_layout = QVBoxLayout(page)
         page_layout.setContentsMargins(0, 0, 0, 0)
@@ -1986,10 +1987,10 @@ class SalesArPage(QWidget):
 
         subtitle = (
             "Knytter salgsbilag på 3xxx-kontoer mot kundefordringer (1500)."
-            " Viser både samlede beløp og bilag uten motpost."
+            " Viser et sammendrag av sammenligningen mellom posteringene."
         )
-        self.correlation_card = CardFrame("Korrelasjonsanalyse", subtitle)
-        self.correlation_card.setSizePolicy(
+        self.correlation_summary_card = CardFrame("Korrelasjonsanalyse", subtitle)
+        self.correlation_summary_card.setSizePolicy(
             QSizePolicy.Expanding, QSizePolicy.Expanding
         )
 
@@ -1998,7 +1999,7 @@ class SalesArPage(QWidget):
             "hvorvidt salgsføringer har motpost i kundefordringer."
         )
         intro_label.setWordWrap(True)
-        self.correlation_card.add_widget(intro_label)
+        self.correlation_summary_card.add_widget(intro_label)
 
         self.correlation_summary_table = create_table_widget()
         self.correlation_summary_table.setColumnCount(3)
@@ -2019,7 +2020,34 @@ class SalesArPage(QWidget):
             QSizePolicy.Expanding, QSizePolicy.Minimum
         )
         apply_compact_row_heights(self.correlation_summary_table)
-        self.correlation_card.add_widget(self.correlation_summary_table)
+        self.correlation_summary_card.add_widget(self.correlation_summary_table)
+
+        page_layout.addWidget(self.correlation_summary_card)
+        self._update_correlation_summary(None, None, None)
+
+        return page
+
+    def _build_sales_correlation_tab(self) -> QWidget:
+        page = QWidget()
+        page_layout = QVBoxLayout(page)
+        page_layout.setContentsMargins(0, 0, 0, 0)
+        page_layout.setSpacing(24)
+
+        subtitle = (
+            "Knytter salgsbilag på 3xxx-kontoer mot kundefordringer (1500)."
+            " Viser bilag uten motpost."
+        )
+        self.correlation_card = CardFrame("Korrelasjonsanalyse", subtitle)
+        self.correlation_card.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Expanding
+        )
+
+        intro_label = QLabel(
+            "Her ser du salgsbilag som ikke har motpost i kundefordringer. "
+            "Summene i oversikten ligger i fanen Oppsummering."
+        )
+        intro_label.setWordWrap(True)
+        self.correlation_card.add_widget(intro_label)
 
         missing_title = QLabel("Salg uten motpost kundefordringer")
         missing_title.setObjectName("analysisSectionTitle")
@@ -2068,7 +2096,6 @@ class SalesArPage(QWidget):
         self.correlation_card.add_layout(missing_section)
 
         page_layout.addWidget(self.correlation_card)
-        self._update_correlation_summary(None, None, None)
         self._toggle_empty_state(
             self.missing_sales_table, self.missing_sales_empty, False
         )
