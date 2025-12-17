@@ -39,6 +39,8 @@ __all__ = [
     "analyze_sales_receivable_correlation",
     "ReceivablePostingAnalysis",
     "analyze_receivable_postings",
+    "BankPostingAnalysis",
+    "analyze_bank_postings",
 ]
 
 _DESCRIPTION_BUCKET_NAMES: set[str] = set(DESCRIPTION_BUCKET_MAP)
@@ -100,6 +102,28 @@ class ReceivablePostingAnalysis:
             + self.sales_counter_total
             + self.bank_counter_total
             + self.other_counter_total
+            - self.closing_balance
+        )
+        return round(total, 2)
+
+
+@dataclass
+class BankPostingAnalysis:
+    """Oppsummerer bevegelser på bankkonti med og uten motpost kundefordringer."""
+
+    opening_balance: Optional[float]
+    with_receivable_total: float
+    without_receivable_total: float
+    closing_balance: Optional[float]
+
+    @property
+    def control_total(self) -> Optional[float]:
+        if self.opening_balance is None or self.closing_balance is None:
+            return None
+        total = (
+            self.opening_balance
+            + self.with_receivable_total
+            + self.without_receivable_total
             - self.closing_balance
         )
         return round(total, 2)
@@ -1183,4 +1207,104 @@ def analyze_receivable_postings(
         other_counter_total=_format_decimal(other_total),
         closing_balance=closing_balance,
         unclassified_rows=other_df,
+    )
+
+
+def _extract_bank_balance(
+    trial_balance: Optional["pd.DataFrame"], column: str
+) -> Optional[float]:
+    if trial_balance is None:
+        return None
+    if column not in trial_balance:
+        return None
+
+    if "Konto_int" in trial_balance:
+        account_series = trial_balance["Konto_int"].astype(str)
+    elif "Konto" in trial_balance:
+        account_series = trial_balance["Konto"].astype(str)
+    else:
+        return None
+
+    bank_rows = trial_balance.loc[
+        account_series.str.startswith("19") | account_series.str.startswith("2380")
+    ]
+    if bank_rows.empty:
+        return None
+
+    total_value = bank_rows[column].sum()
+    try:
+        return round(float(total_value), 2)
+    except (TypeError, ValueError):
+        return None
+
+
+def analyze_bank_postings(
+    root: ET.Element,
+    ns: NamespaceMap,
+    *,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    year: Optional[int] = None,
+    trial_balance: Optional["pd.DataFrame"] = None,
+) -> BankPostingAnalysis:
+    """Summerer bankbevegelser fordelt på motpost kundefordringer."""
+
+    start_date = _ensure_date(date_from)
+    end_date = _ensure_date(date_to)
+    use_range = start_date is not None or end_date is not None
+
+    opening_balance = _extract_bank_balance(trial_balance, "IB_netto")
+    closing_balance = _extract_bank_balance(trial_balance, "UB_netto")
+
+    with_receivable = Decimal("0")
+    without_receivable = Decimal("0")
+
+    for transaction in _iter_transactions(root, ns):
+        scope = _build_transaction_scope(transaction, ns)
+        if not _transaction_in_scope(
+            scope,
+            start_date=start_date,
+            end_date=end_date,
+            year=year,
+            last_period=None,
+            use_range=use_range,
+        ):
+            continue
+
+        bank_total = Decimal("0")
+        has_receivable = False
+
+        for line in _findall(transaction, "n1:Line", ns):
+            account_element = _find(line, "n1:AccountID", ns)
+            account_text = _clean_text(
+                account_element.text if account_element is not None else None
+            )
+            if not account_text:
+                continue
+
+            normalized = _normalize_account_key(account_text) or account_text
+            debit = get_amount(line, "DebitAmount", ns)
+            credit = get_amount(line, "CreditAmount", ns)
+
+            if normalized.startswith("1500") and (debit != 0 or credit != 0):
+                has_receivable = True
+
+            if _is_bank_account(normalized):
+                delta = debit - credit
+                if delta != 0:
+                    bank_total += delta
+
+        if bank_total == 0:
+            continue
+
+        if has_receivable:
+            with_receivable += bank_total
+        else:
+            without_receivable += bank_total
+
+    return BankPostingAnalysis(
+        opening_balance=opening_balance,
+        with_receivable_total=_format_decimal(with_receivable),
+        without_receivable_total=_format_decimal(without_receivable),
+        closing_balance=closing_balance,
     )

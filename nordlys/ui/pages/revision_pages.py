@@ -1608,7 +1608,7 @@ class SalesArPage(QWidget):
         receivables_tab = self._build_receivable_correlation_tab()
         self.correlation_tabs.addTab(receivables_tab, "Kundefordringer")
 
-        bank_tab = self._build_placeholder_tab("Bankinnskudd", "Kommer snart.")
+        bank_tab = self._build_bank_correlation_tab()
         self.correlation_tabs.addTab(bank_tab, "Bankinnskudd")
 
         summary_tab = self._build_placeholder_tab("Oppsummering", "Kommer snart.")
@@ -1743,6 +1743,11 @@ class SalesArPage(QWidget):
             self.receivable_missing_table, self.receivable_missing_empty, False
         )
 
+    def set_bank_overview(
+        self, analysis: Optional["saft_customers.BankPostingAnalysis"]
+    ) -> None:
+        self._update_bank_summary(analysis)
+
     def set_controls_enabled(self, enabled: bool) -> None:
         self.calc_button.setEnabled(enabled)
         self.top_spin.setEnabled(enabled)
@@ -1861,6 +1866,41 @@ class SalesArPage(QWidget):
             value_item.setFlags(value_item.flags() & ~Qt.ItemIsEditable)
             self.receivable_summary_table.setItem(row_index, 0, label_item)
             self.receivable_summary_table.setItem(row_index, 1, value_item)
+
+    def _update_bank_summary(
+        self, analysis: Optional["saft_customers.BankPostingAnalysis"]
+    ) -> None:
+        def _format(value: Optional[float]) -> str:
+            return format_currency(value)
+
+        if analysis is None:
+            self.bank_summary_table.setRowCount(0)
+            self.bank_summary_table.hide()
+            self.bank_summary_empty.show()
+            return
+
+        rows = [
+            ("Inngående balanse (bank)", _format(analysis.opening_balance)),
+            (
+                "Bankposteringer mot kundefordringer",
+                _format(analysis.with_receivable_total),
+            ),
+            (
+                "Bankposteringer uten motpost kundefordringer",
+                _format(analysis.without_receivable_total),
+            ),
+            ("Utgående balanse (bank)", _format(analysis.closing_balance)),
+            (
+                "Kontroll: IB + bevegelser – UB",
+                _format(analysis.control_total),
+            ),
+        ]
+
+        populate_table(
+            self.bank_summary_table, ["Kategori", "Sum"], rows, money_cols={1}
+        )
+        self.bank_summary_empty.hide()
+        self.bank_summary_table.show()
 
     def _set_active_section(self, index: int) -> None:
         self.section_stack.setCurrentIndex(index)
@@ -2060,6 +2100,56 @@ class SalesArPage(QWidget):
             self.receivable_missing_table, self.receivable_missing_empty, False
         )
 
+        return page
+
+    def _build_bank_correlation_tab(self) -> QWidget:
+        page = QWidget()
+        page_layout = QVBoxLayout(page)
+        page_layout.setContentsMargins(0, 0, 0, 0)
+        page_layout.setSpacing(24)
+
+        subtitle = (
+            "Viser bankkonti (19xx/2380) fordelt på om de er postert mot "
+            "kundefordringer eller ikke."
+        )
+        self.bank_card = CardFrame("Bankinnskudd", subtitle)
+        self.bank_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+        intro_label = QLabel(
+            "Tabellen summerer IB, bevegelser og UB på bankkontoene. "
+            "Kontroll-linjen beregner IB + bevegelser – UB."
+        )
+        intro_label.setWordWrap(True)
+        self.bank_card.add_widget(intro_label)
+
+        self.bank_summary_empty = EmptyStateWidget(
+            "Ingen data",
+            "Fant ingen bankbevegelser for valgt periode.",
+        )
+        self.bank_summary_empty.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.MinimumExpanding
+        )
+
+        self.bank_summary_table = create_table_widget()
+        self.bank_summary_table.setColumnCount(2)
+        self.bank_summary_table.setHorizontalHeaderLabels(["Kategori", "Sum"])
+        self.bank_summary_table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeToContents
+        )
+        self.bank_summary_table.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.Stretch
+        )
+        self.bank_summary_table.setSortingEnabled(False)
+        self.bank_summary_table.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Minimum
+        )
+        apply_compact_row_heights(self.bank_summary_table)
+        self.bank_summary_table.hide()
+
+        self.bank_card.add_widget(self.bank_summary_empty)
+        self.bank_card.add_widget(self.bank_summary_table)
+
+        page_layout.addWidget(self.bank_card)
         return page
 
     def _build_placeholder_tab(self, title: str, message: str) -> QWidget:

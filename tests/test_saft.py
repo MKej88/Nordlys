@@ -38,6 +38,7 @@ from nordlys.saft_customers import (
     compute_sales_per_customer,
     analyze_sales_receivable_correlation,
     analyze_receivable_postings,
+    analyze_bank_postings,
     extract_credit_notes,
     get_amount,
     get_tx_customer_id,
@@ -1507,6 +1508,73 @@ def test_analyze_receivable_postings_splits_by_counter_accounts():
     assert only_row["Beløp"] == pytest.approx(200.0)
 
 
+def test_analyze_bank_postings_splits_by_receivable_counter():
+    xml = """
+    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <GeneralLedgerEntries>
+        <Journal>
+          <Transaction>
+            <TransactionID>5001</TransactionID>
+            <TransactionDate>2023-02-01</TransactionDate>
+            <Line>
+              <AccountID>1920</AccountID>
+              <DebitAmount>1000</DebitAmount>
+            </Line>
+            <Line>
+              <AccountID>1500</AccountID>
+              <CreditAmount>1000</CreditAmount>
+            </Line>
+          </Transaction>
+          <Transaction>
+            <TransactionID>5002</TransactionID>
+            <TransactionDate>2023-02-10</TransactionDate>
+            <Line>
+              <AccountID>1920</AccountID>
+              <CreditAmount>500</CreditAmount>
+            </Line>
+            <Line>
+              <AccountID>1500</AccountID>
+              <DebitAmount>500</DebitAmount>
+            </Line>
+          </Transaction>
+          <Transaction>
+            <TransactionID>5003</TransactionID>
+            <TransactionDate>2023-03-05</TransactionDate>
+            <Line>
+              <AccountID>1920</AccountID>
+              <CreditAmount>800</CreditAmount>
+            </Line>
+            <Line>
+              <AccountID>3000</AccountID>
+              <DebitAmount>800</DebitAmount>
+            </Line>
+          </Transaction>
+        </Journal>
+      </GeneralLedgerEntries>
+    </AuditFile>
+    """
+
+    root = ET.fromstring(xml)
+    ns = {"n1": root.tag.split("}")[0][1:]}
+
+    tb = pd.DataFrame(
+        {
+            "Konto": ["1920"],
+            "Konto_int": [1920],
+            "IB_netto": [1000.0],
+            "UB_netto": [700.0],
+        }
+    )
+
+    result = analyze_bank_postings(root, ns, year=2023, trial_balance=tb)
+
+    assert result.opening_balance == pytest.approx(1000.0)
+    assert result.closing_balance == pytest.approx(700.0)
+    assert result.with_receivable_total == pytest.approx(500.0)
+    assert result.without_receivable_total == pytest.approx(-800.0)
+    assert result.control_total == pytest.approx(0.0)
+
+
 def test_compute_customer_supplier_totals_matches_individual():
     root = build_sample_root()
     ns = {"n1": root.tag.split("}")[0][1:]}
@@ -2196,6 +2264,7 @@ def test_load_saft_files_parallel_progress(monkeypatch):
             credit_notes=None,
             sales_ar_correlation=None,
             receivable_analysis=None,
+            bank_analysis=None,
             cost_vouchers=[],
             analysis_year=None,
             summary={},
@@ -2239,6 +2308,7 @@ def test_load_saft_files_keeps_successes_when_one_fails(monkeypatch):
             credit_notes=None,
             sales_ar_correlation=None,
             receivable_analysis=None,
+            bank_analysis=None,
             cost_vouchers=[],
             analysis_year=None,
             summary={},
@@ -2280,6 +2350,7 @@ def test_load_saft_files_raises_on_partial_failure_without_progress(monkeypatch)
             credit_notes=None,
             sales_ar_correlation=None,
             receivable_analysis=None,
+            bank_analysis=None,
             cost_vouchers=[],
             analysis_year=None,
             summary={},

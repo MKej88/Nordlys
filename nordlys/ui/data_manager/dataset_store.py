@@ -70,6 +70,7 @@ class SaftDatasetStore:
         self._receivable_analysis: Optional[
             "saft_customers.ReceivablePostingAnalysis"
         ] = None
+        self._bank_analysis: Optional["saft_customers.BankPostingAnalysis"] = None
         self._cost_vouchers: List["saft_customers.CostVoucher"] = []
         self._trial_balance: Optional[Dict[str, object]] = None
         self._trial_balance_error: Optional[str] = None
@@ -178,6 +179,7 @@ class SaftDatasetStore:
         self._credit_notes = result.credit_notes
         self._sales_ar_correlation = result.sales_ar_correlation
         self._receivable_analysis = result.receivable_analysis
+        self._bank_analysis = result.bank_analysis
         self._cost_vouchers = list(result.cost_vouchers)
         self._trial_balance = result.trial_balance
         self._trial_balance_error = result.trial_balance_error
@@ -589,6 +591,10 @@ class SaftDatasetStore:
     ) -> Optional["saft_customers.ReceivablePostingAnalysis"]:
         return self._receivable_analysis
 
+    @property
+    def bank_analysis(self) -> Optional["saft_customers.BankPostingAnalysis"]:
+        return self._bank_analysis
+
     def receivable_unclassified_rows(
         self,
     ) -> List[Tuple[str, str, str, str, str, float]]:
@@ -645,6 +651,7 @@ class SaftDatasetStore:
         self._credit_notes = None
         self._sales_ar_correlation = None
         self._receivable_analysis = None
+        self._bank_analysis = None
         self._cost_vouchers = []
         self._trial_balance = None
         self._trial_balance_error = None
