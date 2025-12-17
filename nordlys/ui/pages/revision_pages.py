@@ -1903,6 +1903,18 @@ class SalesArPage(QWidget):
             table.setItem(row_index, 1, value_item)
             table.setItem(row_index, 2, percent_item)
 
+    def _create_correlation_summary_table(self) -> QTableWidget:
+        table = create_table_widget()
+        table.setColumnCount(3)
+        table.setHorizontalHeaderLabels(["Kategori", "Beløp", "Andel"])
+        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        table.setSortingEnabled(False)
+        table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+        apply_compact_row_heights(table)
+        return table
+
     def _update_receivable_summary(
         self, analysis: Optional["saft_customers.ReceivablePostingAnalysis"]
     ) -> None:
