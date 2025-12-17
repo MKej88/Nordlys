@@ -294,6 +294,7 @@ class DatasetFlowController:
             pages.sales_ar_page.clear_sales_correlation()
             pages.sales_ar_page.clear_credit_notes()
             pages.sales_ar_page.clear_receivable_overview()
+            pages.sales_ar_page.set_bank_overview(None, [])
         if pages.purchases_ap_page:
             pages.purchases_ap_page.set_controls_enabled(False)
             pages.purchases_ap_page.clear_top_suppliers()
