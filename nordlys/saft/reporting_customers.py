@@ -18,6 +18,7 @@ from .name_lookup import (
 )
 from .reporting_utils import (
     _ensure_date,
+    _format_decimal,
     _is_cost_account,
     _is_revenue_account,
     _iter_transactions,
@@ -34,6 +35,12 @@ __all__ = [
     "compute_sales_per_customer",
     "compute_purchases_per_supplier",
     "extract_credit_notes",
+    "SalesReceivableCorrelation",
+    "analyze_sales_receivable_correlation",
+    "ReceivablePostingAnalysis",
+    "analyze_receivable_postings",
+    "BankPostingAnalysis",
+    "analyze_bank_postings",
 ]
 
 _DESCRIPTION_BUCKET_NAMES: set[str] = set(DESCRIPTION_BUCKET_MAP)
@@ -64,6 +71,63 @@ class TransactionLineAggregation:
     has_purchase: bool
     transaction_customer_id: Optional[str]
     line_summaries: List[Tuple[str, Optional[str], Decimal, Decimal]]
+
+
+@dataclass
+class SalesReceivableCorrelation:
+    """Oppsummerer sammenhengen mellom salg og kundefordringer."""
+
+    with_receivable_total: float
+    without_receivable_total: float
+    missing_sales: "pd.DataFrame"
+
+
+@dataclass
+class ReceivablePostingAnalysis:
+    """Oppsummerer bevegelser på kundefordringer (1500)."""
+
+    opening_balance: Optional[float]
+    sales_counter_total: float
+    bank_counter_total: float
+    other_counter_total: float
+    closing_balance: Optional[float]
+    unclassified_rows: "pd.DataFrame"
+
+    @property
+    def control_total(self) -> Optional[float]:
+        if self.opening_balance is None or self.closing_balance is None:
+            return None
+        total = (
+            self.opening_balance
+            + self.sales_counter_total
+            + self.bank_counter_total
+            + self.other_counter_total
+            - self.closing_balance
+        )
+        return round(total, 2)
+
+
+@dataclass
+class BankPostingAnalysis:
+    """Oppsummerer bevegelser på bankkonti med og uten motpost kundefordringer."""
+
+    opening_balance: Optional[float]
+    with_receivable_total: float
+    without_receivable_total: float
+    closing_balance: Optional[float]
+    mismatched_rows: "pd.DataFrame"
+
+    @property
+    def control_total(self) -> Optional[float]:
+        if self.opening_balance is None or self.closing_balance is None:
+            return None
+        total = (
+            self.opening_balance
+            + self.with_receivable_total
+            + self.without_receivable_total
+            - self.closing_balance
+        )
+        return round(total, 2)
 
 
 def _build_description_customer_map(
@@ -876,3 +940,448 @@ def extract_credit_notes(
     df["Beløp"] = df["Beløp"].astype(float).round(2)
     df.sort_values("Dato", inplace=True)
     return df.reset_index(drop=True)
+
+
+def analyze_sales_receivable_correlation(
+    root: ET.Element,
+    ns: NamespaceMap,
+    *,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    year: Optional[int] = None,
+) -> SalesReceivableCorrelation:
+    """Summerer salg etter om bilaget har motpost på 1500."""
+
+    pandas = _require_pandas()
+    with_receivable = Decimal("0")
+    without_receivable = Decimal("0")
+    missing_rows: List[Dict[str, object]] = []
+
+    use_range = date_from is not None or date_to is not None
+
+    for transaction in _iter_transactions(root, ns):
+        scope = _build_transaction_scope(transaction, ns)
+        if not _transaction_in_scope(
+            scope,
+            start_date=date_from,
+            end_date=date_to,
+            year=year,
+            last_period=None,
+            use_range=use_range,
+        ):
+            continue
+
+        revenue_total = Decimal("0")
+        has_receivable = False
+        revenue_accounts: set[str] = set()
+        counter_accounts: set[str] = set()
+
+        for line in _findall(transaction, "n1:Line", ns):
+            account_element = _find(line, "n1:AccountID", ns)
+            account_text = _clean_text(
+                account_element.text if account_element is not None else None
+            )
+            if not account_text:
+                continue
+
+            normalized = _normalize_account_key(account_text) or account_text
+            debit = get_amount(line, "DebitAmount", ns)
+            credit = get_amount(line, "CreditAmount", ns)
+
+            if normalized.startswith("1500") and (debit != 0 or credit != 0):
+                has_receivable = True
+
+            if _is_revenue_account(normalized):
+                delta = credit - debit
+                revenue_total += delta
+                if delta != 0:
+                    revenue_accounts.add(normalized)
+            elif debit != 0 or credit != 0:
+                counter_accounts.add(normalized)
+
+        if revenue_total == 0:
+            continue
+
+        if has_receivable:
+            with_receivable += revenue_total
+        else:
+            without_receivable += revenue_total
+            document_number = _first_text(
+                transaction,
+                (
+                    "n1:DocumentNumber",
+                    "n1:SourceDocumentID",
+                    "n1:DocumentReference/n1:DocumentNumber",
+                    "n1:DocumentReference/n1:ID",
+                    "n1:TransactionID",
+                    "n1:SourceID",
+                ),
+                ns,
+            )
+            description = scope.voucher_description or scope.transaction_description
+            missing_rows.append(
+                {
+                    "Dato": scope.date,
+                    "Bilagsnr": document_number or "—",
+                    "Beskrivelse": description or "—",
+                    "Kontoer": ", ".join(sorted(revenue_accounts)) or "—",
+                    "Motkontoer": ", ".join(sorted(counter_accounts)) or "—",
+                    "Beløp": _format_decimal(revenue_total),
+                }
+            )
+
+    if missing_rows:
+        missing_df = pandas.DataFrame(missing_rows)
+        missing_df["Beløp"] = missing_df["Beløp"].astype(float).round(2)
+        missing_df.sort_values("Dato", inplace=True)
+        missing_df.reset_index(drop=True, inplace=True)
+    else:
+        missing_df = pandas.DataFrame(
+            columns=[
+                "Dato",
+                "Bilagsnr",
+                "Beskrivelse",
+                "Kontoer",
+                "Motkontoer",
+                "Beløp",
+            ]
+        )
+
+    return SalesReceivableCorrelation(
+        with_receivable_total=_format_decimal(with_receivable),
+        without_receivable_total=_format_decimal(without_receivable),
+        missing_sales=missing_df,
+    )
+
+
+def _extract_receivable_balance(
+    trial_balance: Optional["pd.DataFrame"], column: str
+) -> Optional[float]:
+    if trial_balance is None:
+        return None
+    if column not in trial_balance or "Konto_int" not in trial_balance:
+        return None
+    receivable_rows = trial_balance.loc[trial_balance["Konto_int"] == 1500]
+    if receivable_rows.empty:
+        return None
+    value = receivable_rows.iloc[0].get(column)
+    if value is None:
+        return None
+    try:
+        return round(float(value), 2)
+    except (TypeError, ValueError):
+        return None
+
+
+def _is_bank_account(account: str) -> bool:
+    normalized = _normalize_account_key(account) or account
+    if not normalized:
+        return False
+    return normalized.startswith("19") or normalized.startswith("2380")
+
+
+def analyze_receivable_postings(
+    root: ET.Element,
+    ns: NamespaceMap,
+    *,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    year: Optional[int] = None,
+    trial_balance: Optional["pd.DataFrame"] = None,
+) -> ReceivablePostingAnalysis:
+    """Summerer bevegelser på konto 1500 fordelt på motposter."""
+
+    pandas = _require_pandas()
+
+    start_date = _ensure_date(date_from)
+    end_date = _ensure_date(date_to)
+    use_range = start_date is not None or end_date is not None
+
+    opening_balance = _extract_receivable_balance(trial_balance, "IB_netto")
+    closing_balance = _extract_receivable_balance(trial_balance, "UB_netto")
+
+    sales_total = Decimal("0")
+    bank_total = Decimal("0")
+    other_total = Decimal("0")
+    other_rows: List[Dict[str, object]] = []
+
+    for transaction in _iter_transactions(root, ns):
+        scope = _build_transaction_scope(transaction, ns)
+        if not _transaction_in_scope(
+            scope,
+            start_date=start_date,
+            end_date=end_date,
+            year=year,
+            last_period=None,
+            use_range=use_range,
+        ):
+            continue
+
+        receivable_lines: List[Tuple[str, Decimal]] = []
+        revenue_found = False
+        bank_found = False
+        counter_accounts: set[str] = set()
+
+        for line in _findall(transaction, "n1:Line", ns):
+            account_element = _find(line, "n1:AccountID", ns)
+            account_text = _clean_text(
+                account_element.text if account_element is not None else None
+            )
+            if not account_text:
+                continue
+
+            normalized = _normalize_account_key(account_text) or account_text
+            debit = get_amount(line, "DebitAmount", ns)
+            credit = get_amount(line, "CreditAmount", ns)
+            amount = debit - credit
+
+            if normalized.startswith("1500"):
+                if amount == 0:
+                    continue
+                receivable_lines.append((normalized, amount))
+                continue
+
+            if _is_revenue_account(normalized):
+                revenue_found = True
+            if _is_bank_account(normalized):
+                bank_found = True
+            if debit != 0 or credit != 0:
+                counter_accounts.add(normalized)
+
+        if not receivable_lines:
+            continue
+
+        receivable_amount = sum(
+            (amount for _, amount in receivable_lines), Decimal("0")
+        )
+        if revenue_found:
+            sales_total += receivable_amount
+        elif bank_found:
+            bank_total += receivable_amount
+        else:
+            other_total += receivable_amount
+            document_number = _first_text(
+                transaction,
+                (
+                    "n1:DocumentNumber",
+                    "n1:SourceDocumentID",
+                    "n1:DocumentReference/n1:DocumentNumber",
+                    "n1:DocumentReference/n1:ID",
+                    "n1:TransactionID",
+                    "n1:SourceID",
+                ),
+                ns,
+            )
+            description = scope.voucher_description or scope.transaction_description
+            receivable_accounts = sorted({account for account, _ in receivable_lines})
+            other_rows.append(
+                {
+                    "Dato": scope.date,
+                    "Bilagsnr": document_number or "—",
+                    "Beskrivelse": description or "—",
+                    "Kontoer": ", ".join(receivable_accounts) or "—",
+                    "Motkontoer": ", ".join(sorted(counter_accounts)) or "—",
+                    "Beløp": _format_decimal(receivable_amount),
+                }
+            )
+
+    other_df = pandas.DataFrame(
+        other_rows,
+        columns=[
+            "Dato",
+            "Bilagsnr",
+            "Beskrivelse",
+            "Kontoer",
+            "Motkontoer",
+            "Beløp",
+        ],
+    )
+    if not other_df.empty:
+        other_df["Beløp"] = other_df["Beløp"].astype(float).round(2)
+        other_df.sort_values("Dato", inplace=True)
+        other_df.reset_index(drop=True, inplace=True)
+
+    return ReceivablePostingAnalysis(
+        opening_balance=opening_balance,
+        sales_counter_total=_format_decimal(sales_total),
+        bank_counter_total=_format_decimal(bank_total),
+        other_counter_total=_format_decimal(other_total),
+        closing_balance=closing_balance,
+        unclassified_rows=other_df,
+    )
+
+
+def _extract_bank_balance(
+    trial_balance: Optional["pd.DataFrame"], column: str
+) -> Optional[float]:
+    if trial_balance is None:
+        return None
+    if column not in trial_balance:
+        return None
+
+    if "Konto_int" in trial_balance:
+        account_series = trial_balance["Konto_int"].astype(str)
+    elif "Konto" in trial_balance:
+        account_series = trial_balance["Konto"].astype(str)
+    else:
+        return None
+
+    bank_rows = trial_balance.loc[
+        account_series.str.startswith("19") | account_series.str.startswith("2380")
+    ]
+    if bank_rows.empty:
+        return None
+
+    total_value = bank_rows[column].sum()
+    try:
+        return round(float(total_value), 2)
+    except (TypeError, ValueError):
+        return None
+
+
+def analyze_bank_postings(
+    root: ET.Element,
+    ns: NamespaceMap,
+    *,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    year: Optional[int] = None,
+    trial_balance: Optional["pd.DataFrame"] = None,
+) -> BankPostingAnalysis:
+    """Summerer bankbevegelser fordelt på motpost kundefordringer."""
+
+    pandas = _require_pandas()
+    start_date = _ensure_date(date_from)
+    end_date = _ensure_date(date_to)
+    use_range = start_date is not None or end_date is not None
+
+    opening_balance = _extract_bank_balance(trial_balance, "IB_netto")
+    closing_balance = _extract_bank_balance(trial_balance, "UB_netto")
+
+    with_receivable = Decimal("0")
+    without_receivable = Decimal("0")
+    mismatched_rows: List[Dict[str, object]] = []
+
+    for transaction in _iter_transactions(root, ns):
+        scope = _build_transaction_scope(transaction, ns)
+        if not _transaction_in_scope(
+            scope,
+            start_date=start_date,
+            end_date=end_date,
+            year=year,
+            last_period=None,
+            use_range=use_range,
+        ):
+            continue
+
+        bank_total = Decimal("0")
+        receivable_total = Decimal("0")
+        has_receivable = False
+        bank_accounts: set[str] = set()
+        receivable_accounts: set[str] = set()
+
+        for line in _findall(transaction, "n1:Line", ns):
+            account_element = _find(line, "n1:AccountID", ns)
+            account_text = _clean_text(
+                account_element.text if account_element is not None else None
+            )
+            if not account_text:
+                continue
+
+            normalized = _normalize_account_key(account_text) or account_text
+            debit = get_amount(line, "DebitAmount", ns)
+            credit = get_amount(line, "CreditAmount", ns)
+
+            if normalized.startswith("1500") and (debit != 0 or credit != 0):
+                has_receivable = True
+                receivable_accounts.add(normalized)
+                receivable_total += debit - credit
+
+            if _is_bank_account(normalized):
+                delta = debit - credit
+                if delta != 0:
+                    bank_total += delta
+                    bank_accounts.add(normalized)
+
+        if bank_total == 0:
+            continue
+
+        if has_receivable:
+            with_receivable += bank_total
+
+            mismatch = bank_total + receivable_total
+            rounded_mismatch = mismatch.quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+            if rounded_mismatch != 0:
+                document_number = _first_text(
+                    transaction,
+                    (
+                        "n1:DocumentNumber",
+                        "n1:SourceDocumentID",
+                        "n1:DocumentReference/n1:DocumentNumber",
+                        "n1:DocumentReference/n1:ID",
+                        "n1:TransactionID",
+                        "n1:SourceID",
+                    ),
+                    ns,
+                )
+                description = scope.voucher_description or scope.transaction_description
+                mismatched_rows.append(
+                    {
+                        "Dato": scope.date,
+                        "Bilagsnr": document_number or "—",
+                        "Beskrivelse": description or "—",
+                        "Bank": _format_decimal(bank_total),
+                        "Kundefordringer": _format_decimal(receivable_total),
+                        "Differanse": _format_decimal(rounded_mismatch),
+                        "Bankkontoer": ", ".join(sorted(bank_accounts)) or "—",
+                        "Kundefordringskontoer": ", ".join(sorted(receivable_accounts))
+                        or "—",
+                    }
+                )
+        else:
+            without_receivable += bank_total
+
+    if mismatched_rows:
+        mismatch_df = pandas.DataFrame(
+            mismatched_rows,
+            columns=[
+                "Dato",
+                "Bilagsnr",
+                "Beskrivelse",
+                "Bank",
+                "Kundefordringer",
+                "Differanse",
+                "Bankkontoer",
+                "Kundefordringskontoer",
+            ],
+        )
+        mismatch_df["Bank"] = mismatch_df["Bank"].astype(float).round(2)
+        mismatch_df["Kundefordringer"] = (
+            mismatch_df["Kundefordringer"].astype(float).round(2)
+        )
+        mismatch_df["Differanse"] = mismatch_df["Differanse"].astype(float).round(2)
+        mismatch_df.sort_values("Dato", inplace=True)
+        mismatch_df.reset_index(drop=True, inplace=True)
+    else:
+        mismatch_df = pandas.DataFrame(
+            columns=[
+                "Dato",
+                "Bilagsnr",
+                "Beskrivelse",
+                "Bank",
+                "Kundefordringer",
+                "Differanse",
+                "Bankkontoer",
+                "Kundefordringskontoer",
+            ]
+        )
+
+    return BankPostingAnalysis(
+        opening_balance=opening_balance,
+        with_receivable_total=_format_decimal(with_receivable),
+        without_receivable_total=_format_decimal(without_receivable),
+        closing_balance=closing_balance,
+        mismatched_rows=mismatch_df,
+    )

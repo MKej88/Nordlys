@@ -6,6 +6,10 @@ import pytest
 from nordlys.saft.header import SaftHeader
 from nordlys.saft.loader import SaftLoadResult
 from nordlys.saft.masterfiles import SupplierInfo
+from nordlys.saft.reporting_customers import (
+    ReceivablePostingAnalysis,
+    SalesReceivableCorrelation,
+)
 from nordlys.saft.validation import SaftValidationResult
 from nordlys.ui.data_manager.dataset_store import SaftDatasetStore
 
@@ -35,6 +39,9 @@ def _make_result(
         suppliers={},
         supplier_purchases=None,
         credit_notes=None,
+        sales_ar_correlation=None,
+        receivable_analysis=None,
+        bank_analysis=None,
         cost_vouchers=[],
         analysis_year=analysis_year,
         summary=summary or {},
@@ -212,6 +219,42 @@ def test_credit_note_monthly_summary_sorts_by_month() -> None:
         ("Mars", 1, 200.0),
         ("Desember", 1, 300.0),
     ]
+
+
+def test_sales_without_receivable_rows_include_motkonto_and_bilagsnr() -> None:
+    store = SaftDatasetStore()
+    store._sales_ar_correlation = SalesReceivableCorrelation(  # type: ignore[attr-defined]
+        with_receivable_total=0.0,
+        without_receivable_total=0.0,
+        missing_sales=pd.DataFrame(
+            {
+                "Dato": [pd.Timestamp(year=2023, month=1, day=1)],
+                "Bilagsnr": ["42"],
+                "Beskrivelse": ["Test"],
+                "Kontoer": ["3100"],
+                "Motkontoer": ["1920"],
+                "Beløp": [100.0],
+            }
+        ),
+    )
+
+    rows = store.sales_without_receivable_rows()
+
+    assert rows == [("01.01.2023", "42", "Test", "3100", "1920", 100.0)]
+
+
+def test_receivable_sales_counter_total_exposes_sales_sum() -> None:
+    store = SaftDatasetStore()
+    store._receivable_analysis = ReceivablePostingAnalysis(  # type: ignore[attr-defined]
+        opening_balance=None,
+        sales_counter_total=1234.56,
+        bank_counter_total=0.0,
+        other_counter_total=0.0,
+        closing_balance=None,
+        unclassified_rows=pd.DataFrame(),
+    )
+
+    assert store.receivable_sales_counter_total == pytest.approx(1234.56)
 
 
 def test_apply_batch_blocks_multiple_companies_in_same_batch() -> None:

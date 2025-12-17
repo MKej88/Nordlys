@@ -64,6 +64,13 @@ class SaftDatasetStore:
         self._customer_sales: Optional[pd.DataFrame] = None
         self._supplier_purchases: Optional[pd.DataFrame] = None
         self._credit_notes: Optional[pd.DataFrame] = None
+        self._sales_ar_correlation: Optional[
+            "saft_customers.SalesReceivableCorrelation"
+        ] = None
+        self._receivable_analysis: Optional[
+            "saft_customers.ReceivablePostingAnalysis"
+        ] = None
+        self._bank_analysis: Optional["saft_customers.BankPostingAnalysis"] = None
         self._cost_vouchers: List["saft_customers.CostVoucher"] = []
         self._trial_balance: Optional[Dict[str, object]] = None
         self._trial_balance_error: Optional[str] = None
@@ -170,6 +177,9 @@ class SaftDatasetStore:
             result.supplier_purchases
         )
         self._credit_notes = result.credit_notes
+        self._sales_ar_correlation = result.sales_ar_correlation
+        self._receivable_analysis = result.receivable_analysis
+        self._bank_analysis = result.bank_analysis
         self._cost_vouchers = list(result.cost_vouchers)
         self._trial_balance = result.trial_balance
         self._trial_balance_error = result.trial_balance_error
@@ -459,7 +469,7 @@ class SaftDatasetStore:
         if self._credit_notes is None or self._credit_notes.empty:
             return []
 
-        rows: List[Tuple[str, str, str, str, float]] = []
+        rows: List[Tuple[str, str, str, str, str, float]] = []
         for _, row in self._credit_notes.iterrows():
             date_value = row.get("Dato")
             if isinstance(date_value, datetime):
@@ -525,6 +535,147 @@ class SaftDatasetStore:
 
         return rows
 
+    @property
+    def sales_with_receivable_total(self) -> Optional[float]:
+        correlation = self._sales_ar_correlation
+        if correlation is None:
+            return None
+        return float(correlation.with_receivable_total)
+
+    @property
+    def sales_without_receivable_total(self) -> Optional[float]:
+        correlation = self._sales_ar_correlation
+        if correlation is None:
+            return None
+        return float(correlation.without_receivable_total)
+
+    @property
+    def receivable_sales_counter_total(self) -> Optional[float]:
+        analysis = self._receivable_analysis
+        if analysis is None:
+            return None
+        return float(analysis.sales_counter_total)
+
+    def sales_without_receivable_rows(
+        self,
+    ) -> List[Tuple[str, str, str, str, str, float]]:
+        correlation = self._sales_ar_correlation
+        if correlation is None:
+            return []
+
+        missing_sales = correlation.missing_sales
+        if missing_sales is None or missing_sales.empty:
+            return []
+
+        rows: List[Tuple[str, str, str, str, float]] = []
+        for _, row in missing_sales.iterrows():
+            date_value = row.get("Dato")
+            if isinstance(date_value, datetime):
+                date_text = date_value.strftime("%d.%m.%Y")
+            elif isinstance(date_value, date):
+                date_text = date_value.strftime("%d.%m.%Y")
+            elif date_value:
+                date_text = str(date_value)
+            else:
+                date_text = "—"
+
+            rows.append(
+                (
+                    date_text,
+                    str(row.get("Bilagsnr", "—")),
+                    str(row.get("Beskrivelse", "—")),
+                    str(row.get("Kontoer", "—")),
+                    str(row.get("Motkontoer", "—")),
+                    self.safe_float(row.get("Beløp")),
+                )
+            )
+
+        return rows
+
+    @property
+    def receivable_analysis(
+        self,
+    ) -> Optional["saft_customers.ReceivablePostingAnalysis"]:
+        return self._receivable_analysis
+
+    @property
+    def bank_analysis(self) -> Optional["saft_customers.BankPostingAnalysis"]:
+        return self._bank_analysis
+
+    def bank_mismatch_rows(
+        self,
+    ) -> List[Tuple[str, str, str, float, float, float, str, str]]:
+        analysis = self._bank_analysis
+        if analysis is None:
+            return []
+
+        df = analysis.mismatched_rows
+        if df is None or df.empty:
+            return []
+
+        rows: List[Tuple[str, str, str, float, float, float, str, str]] = []
+        for _, row in df.iterrows():
+            date_value = row.get("Dato")
+            if isinstance(date_value, datetime):
+                date_text = date_value.strftime("%d.%m.%Y")
+            elif isinstance(date_value, date):
+                date_text = date_value.strftime("%d.%m.%Y")
+            elif date_value:
+                date_text = str(date_value)
+            else:
+                date_text = "—"
+
+            rows.append(
+                (
+                    date_text,
+                    str(row.get("Bilagsnr", "—")),
+                    str(row.get("Beskrivelse", "—")),
+                    self.safe_float(row.get("Bank")),
+                    self.safe_float(row.get("Kundefordringer")),
+                    self.safe_float(row.get("Differanse")),
+                    str(row.get("Bankkontoer", "—")),
+                    str(row.get("Kundefordringskontoer", "—")),
+                )
+            )
+
+        return rows
+
+    def receivable_unclassified_rows(
+        self,
+    ) -> List[Tuple[str, str, str, str, str, float]]:
+        analysis = self._receivable_analysis
+        if analysis is None:
+            return []
+
+        df = analysis.unclassified_rows
+        if df is None or df.empty:
+            return []
+
+        rows: List[Tuple[str, str, str, str, str, float]] = []
+        for _, row in df.iterrows():
+            date_value = row.get("Dato")
+            if isinstance(date_value, datetime):
+                date_text = date_value.strftime("%d.%m.%Y")
+            elif isinstance(date_value, date):
+                date_text = date_value.strftime("%d.%m.%Y")
+            elif date_value:
+                date_text = str(date_value)
+            else:
+                date_text = "—"
+
+            rows.append(
+                (
+                    date_text,
+                    str(row.get("Bilagsnr", "—")),
+                    str(row.get("Beskrivelse", "—")),
+                    str(row.get("Kontoer", "—")),
+                    str(row.get("Motkontoer", "—")),
+                    self.safe_float(row.get("Beløp")),
+                )
+            )
+
+        return rows
+
     # endregion
 
     # region Interne hjelpere
@@ -543,6 +694,9 @@ class SaftDatasetStore:
         self._customer_sales = None
         self._supplier_purchases = None
         self._credit_notes = None
+        self._sales_ar_correlation = None
+        self._receivable_analysis = None
+        self._bank_analysis = None
         self._cost_vouchers = []
         self._trial_balance = None
         self._trial_balance_error = None

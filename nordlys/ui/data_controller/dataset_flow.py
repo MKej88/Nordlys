@@ -201,6 +201,19 @@ class DatasetFlowController:
             pages.sales_ar_page.set_credit_notes(
                 store.credit_note_rows(), store.credit_note_monthly_summary()
             )
+            pages.sales_ar_page.set_sales_correlation(
+                store.sales_with_receivable_total,
+                store.sales_without_receivable_total,
+                store.sales_without_receivable_rows(),
+                store.receivable_sales_counter_total,
+            )
+            pages.sales_ar_page.set_receivable_overview(
+                store.receivable_analysis,
+                store.receivable_unclassified_rows(),
+            )
+            pages.sales_ar_page.set_bank_overview(
+                store.bank_analysis, store.bank_mismatch_rows()
+            )
         if pages.purchases_ap_page:
             pages.purchases_ap_page.set_controls_enabled(store.has_supplier_data)
             pages.purchases_ap_page.clear_top_suppliers()
@@ -278,7 +291,10 @@ class DatasetFlowController:
             pages.sales_ar_page.set_controls_enabled(False)
             pages.sales_ar_page.update_sales_reconciliation(None, None)
             pages.sales_ar_page.clear_top_customers()
+            pages.sales_ar_page.clear_sales_correlation()
             pages.sales_ar_page.clear_credit_notes()
+            pages.sales_ar_page.clear_receivable_overview()
+            pages.sales_ar_page.set_bank_overview(None, [])
         if pages.purchases_ap_page:
             pages.purchases_ap_page.set_controls_enabled(False)
             pages.purchases_ap_page.clear_top_suppliers()
