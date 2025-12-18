@@ -131,14 +131,21 @@ class NordlysWindow(QMainWindow):
     def _update_header_fields(self) -> None:
         if self._dataset_store is None:
             header = None
+            industry = None
+            industry_error = None
         else:
             header = self._dataset_store.header
+            industry = self._dataset_store.industry
+            industry_error = self._dataset_store.industry_error
         company = header.company_name if header else None
         orgnr = header.orgnr if header else None
         period = format_header_period(header) if header else None
         self.lbl_company.setText(f"Selskap: {company or '–'}")
         self.lbl_orgnr.setText(f"Org.nr: {orgnr or '–'}")
         self.lbl_period.setText(f"Periode: {period or '–'}")
+        self.header_bar.set_industry(
+            industry.group if industry else None, industry_error
+        )
 
     def _ensure_import_controller(self) -> ImportExportController:
         self._ensure_startup_completed()

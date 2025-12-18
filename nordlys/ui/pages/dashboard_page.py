@@ -76,9 +76,9 @@ class DashboardPage(QWidget):
 
         self.liquidity_card = CardFrame(
             "Likviditet",
-            "Kontantstrøm- og arbeidskapitalindikatorer på vei.",
+            "Sammendrag basert på beregninger fra nøkkeltallene.",
         )
-        self.liquidity_label = QLabel("Ingen likviditetsanalyse er tilgjengelig ennå.")
+        self.liquidity_label = QLabel("Likviditet kan ikke vurderes uten data.")
         self.liquidity_label.setObjectName("statusLabel")
         self.liquidity_label.setWordWrap(True)
         self.liquidity_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
@@ -87,9 +87,9 @@ class DashboardPage(QWidget):
 
         self.soliditet_card = CardFrame(
             "Soliditet",
-            "Viser egenkapitalandel og gearing når data foreligger.",
+            "Vurderer egenkapitalandel basert på regnskapssammendraget.",
         )
-        self.soliditet_label = QLabel("Importer SAF-T for å analysere soliditet.")
+        self.soliditet_label = QLabel("Egenkapitalandel er ikke beregnet ennå.")
         self.soliditet_label.setObjectName("statusLabel")
         self.soliditet_label.setWordWrap(True)
         self.soliditet_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
@@ -109,16 +109,13 @@ class DashboardPage(QWidget):
         self.bransje_card.add_widget(self.bransje_label)
         grid.addWidget(self.bransje_card, 1, 0)
 
-        self.trend_card = CardFrame(
-            "Uvanlige trender",
-            "Flagger uvanlige endringer i perioden når data er tilgjengelig.",
-        )
-        self.trend_label = QLabel("Ingen uvanlige trender er analysert ennå.")
-        self.trend_label.setObjectName("statusLabel")
-        self.trend_label.setWordWrap(True)
-        self.trend_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
-        self.trend_card.add_widget(self.trend_label)
-        grid.addWidget(self.trend_card, 1, 1)
+        self.voucher_card = CardFrame("Antall bilag")
+        self.voucher_label = QLabel("Ingen bilag er importert ennå.")
+        self.voucher_label.setObjectName("statusLabel")
+        self.voucher_label.setWordWrap(True)
+        self.voucher_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        self.voucher_card.add_widget(self.voucher_label)
+        grid.addWidget(self.voucher_card, 1, 1)
 
         self.summary_card = CardFrame(
             "Fokus for revisjonen",
@@ -142,12 +139,17 @@ class DashboardPage(QWidget):
 
         layout.addStretch(1)
 
-    def update_summary(self, summary: Optional[Dict[str, float]]) -> None:
+    def update_summary(
+        self, summary: Optional[Dict[str, float]], voucher_count: Optional[int] = None
+    ) -> None:
         if not summary:
             self.summary_table.setRowCount(0)
             self.summary_table.hide()
             self.summary_empty_state.show()
             self._update_kpis(None)
+            self._update_liquidity(None)
+            self._update_soliditet(None)
+            self._update_voucher_count(voucher_count)
             return
         self.summary_empty_state.hide()
         self.summary_table.show()
@@ -167,6 +169,9 @@ class DashboardPage(QWidget):
         ]
         populate_table(self.summary_table, ["Nøkkel", "Beløp"], rows, money_cols={1})
         self._update_kpis(summary)
+        self._update_liquidity(summary)
+        self._update_soliditet(summary)
+        self._update_voucher_count(voucher_count)
 
     def _update_kpis(self, summary: Optional[Dict[str, float]]) -> None:
         def set_badge(key: str, value: Optional[str]) -> None:
@@ -201,3 +206,88 @@ class DashboardPage(QWidget):
         set_badge("ebitda_margin", percent(ebitda))
         set_badge("ebit_margin", percent(ebit))
         set_badge("result_margin", percent(result))
+
+    def _update_liquidity(self, summary: Optional[Dict[str, float]]) -> None:
+        if not summary:
+            self.liquidity_label.setText(
+                self._summary_html(
+                    "Likviditet", "Importer en SAF-T-fil for å vurdere kontantstrøm."
+                )
+            )
+            return
+
+        assets = self._get_numeric(summary, "eiendeler_UB")
+        debt = self._get_numeric(summary, "gjeld_UB")
+        if assets is not None and debt is not None and abs(debt) > 1e-6:
+            liquidity_ratio = assets / debt
+            liquidity_text = (
+                f"Likviditetsindikator (eiendeler/gjeld) på {liquidity_ratio:.1f} "
+                "tyder på at eiendelene dekker kortsiktige forpliktelser."
+            )
+        else:
+            liquidity_text = (
+                "Likviditet kan ikke vurderes uten tall for eiendeler og gjeld."
+            )
+
+        self.liquidity_label.setText(
+            self._summary_html(
+                "Likviditet",
+                liquidity_text,
+            )
+        )
+
+    def _update_soliditet(self, summary: Optional[Dict[str, float]]) -> None:
+        if not summary:
+            self.soliditet_label.setText(
+                self._summary_html(
+                    "Soliditet", "Ingen beregning uten eiendeler og egenkapital."
+                )
+            )
+            return
+
+        assets = self._get_numeric(summary, "eiendeler_UB")
+        equity = self._get_numeric(summary, "egenkapital_UB")
+        equity_ratio = self._ratio(equity, assets)
+        if equity_ratio is None:
+            solid_text = "Egenkapitalandel kan ikke beregnes uten eiendeler."
+        elif equity_ratio < 25:
+            solid_text = f"Lav egenkapitalandel på {self._format_percent(equity_ratio)} må følges opp."
+        else:
+            solid_text = f"Egenkapitalandel på {self._format_percent(equity_ratio)} vurderes som betryggende."
+        self.soliditet_label.setText(self._summary_html("Soliditet", solid_text))
+
+    def _update_voucher_count(self, voucher_count: Optional[int]) -> None:
+        if voucher_count is None:
+            self.voucher_label.setText("Importer SAF-T for å se antall bilag.")
+            return
+        if voucher_count == 0:
+            text = "Ingen bilag ble funnet i datasettet."
+        elif voucher_count == 1:
+            text = "1 bilag er tilgjengelig i datasettet."
+        else:
+            text = f"{voucher_count} bilag er tilgjengelige i datasettet."
+        self.voucher_label.setText(text)
+
+    def _ratio(
+        self, numerator: Optional[float], denominator: Optional[float]
+    ) -> Optional[float]:
+        if numerator is None or denominator is None or abs(denominator) < 1e-6:
+            return None
+        return (numerator / denominator) * 100
+
+    def _format_percent(self, value: Optional[float]) -> str:
+        if value is None:
+            return "—"
+        return f"{value:.1f} %"
+
+    def _summary_html(self, title: str, body: str) -> str:
+        return f"<b>{title}</b><br>{body}"
+
+    def _get_numeric(self, summary: Dict[str, float], key: str) -> Optional[float]:
+        value = summary.get(key)
+        if value is None:
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
