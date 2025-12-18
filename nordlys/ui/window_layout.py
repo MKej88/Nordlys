@@ -32,6 +32,7 @@ class WindowComponents:
     lbl_company: QLabel
     lbl_orgnr: QLabel
     lbl_period: QLabel
+    lbl_industry: QLabel
     stack: QStackedWidget
     status_bar: QStatusBar
     progress_label: QLabel
@@ -68,9 +69,11 @@ def setup_main_window(window: QMainWindow) -> WindowComponents:
     lbl_company = QLabel("Selskap: –")
     lbl_orgnr = QLabel("Org.nr: –")
     lbl_period = QLabel("Periode: –")
+    lbl_industry = QLabel("Bransje: –")
     info_grid.addWidget(lbl_company, 0, 0)
     info_grid.addWidget(lbl_orgnr, 0, 1)
     info_grid.addWidget(lbl_period, 0, 2)
+    info_grid.addWidget(lbl_industry, 0, 3)
     info_card.add_layout(info_grid)
     content_layout.addWidget(info_card)
 
@@ -100,6 +103,7 @@ def setup_main_window(window: QMainWindow) -> WindowComponents:
         lbl_company=lbl_company,
         lbl_orgnr=lbl_orgnr,
         lbl_period=lbl_period,
+        lbl_industry=lbl_industry,
         stack=stack,
         status_bar=status_bar,
         progress_label=progress_label,

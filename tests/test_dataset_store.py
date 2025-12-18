@@ -114,7 +114,7 @@ def test_dataset_label_includes_company_name_first() -> None:
 
     store.apply_batch([result])
 
-    assert store.dataset_label(result) == "Test AS 2024"
+    assert store.dataset_label(result) == "Test AS - 2024"
 
 
 def test_current_year_text_prefers_analysis_year() -> None:

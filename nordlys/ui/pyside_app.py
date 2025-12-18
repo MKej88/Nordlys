@@ -73,6 +73,7 @@ class NordlysWindow(QMainWindow):
         self.lbl_company = components.lbl_company
         self.lbl_orgnr = components.lbl_orgnr
         self.lbl_period = components.lbl_period
+        self.lbl_industry = components.lbl_industry
         self.stack = components.stack
         self._status_progress_label = components.progress_label
         self._status_progress_bar = components.progress_bar
@@ -122,7 +123,7 @@ class NordlysWindow(QMainWindow):
         self.stack.setCurrentWidget(widget)
         self.header_bar.set_title(current.text(0))
         if hasattr(self, "info_card"):
-            self.info_card.setVisible(key in {"dashboard", "import"})
+            self.info_card.setVisible(True)
         self._responsive.schedule_update()
 
     # endregion
@@ -136,9 +137,22 @@ class NordlysWindow(QMainWindow):
         company = header.company_name if header else None
         orgnr = header.orgnr if header else None
         period = format_header_period(header) if header else None
+        industry = None
+        industry_error = None
+        if self._dataset_store:
+            industry = self._dataset_store.industry
+            industry_error = self._dataset_store.industry_error
         self.lbl_company.setText(f"Selskap: {company or '–'}")
         self.lbl_orgnr.setText(f"Org.nr: {orgnr or '–'}")
         self.lbl_period.setText(f"Periode: {period or '–'}")
+        if industry_error:
+            self.lbl_industry.setText(f"Bransje: ikke tilgjengelig ({industry_error})")
+        elif industry and industry.group:
+            self.lbl_industry.setText(f"Bransje: {industry.group}")
+        elif industry:
+            self.lbl_industry.setText("Bransje: Ukjent bransje")
+        else:
+            self.lbl_industry.setText("Bransje: —")
 
     def _ensure_import_controller(self) -> ImportExportController:
         self._ensure_startup_completed()

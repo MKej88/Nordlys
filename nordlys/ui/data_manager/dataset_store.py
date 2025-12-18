@@ -216,7 +216,7 @@ class SaftDatasetStore:
             year_text = fiscal_year or None
 
         if company and year_text:
-            return f"{company} {year_text}"
+            return f"{company} - {year_text}"
         if company:
             return company
         if year_text:
