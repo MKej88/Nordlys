@@ -225,7 +225,9 @@ class DashboardPage(QWidget):
                 "tyder på at eiendelene dekker kortsiktige forpliktelser."
             )
         else:
-            liquidity_text = "Likviditet kan ikke vurderes uten tall for eiendeler og gjeld."
+            liquidity_text = (
+                "Likviditet kan ikke vurderes uten tall for eiendeler og gjeld."
+            )
 
         self.liquidity_label.setText(
             self._summary_html(
@@ -249,13 +251,9 @@ class DashboardPage(QWidget):
         if equity_ratio is None:
             solid_text = "Egenkapitalandel kan ikke beregnes uten eiendeler."
         elif equity_ratio < 25:
-            solid_text = (
-                f"Lav egenkapitalandel på {self._format_percent(equity_ratio)} må følges opp."
-            )
+            solid_text = f"Lav egenkapitalandel på {self._format_percent(equity_ratio)} må følges opp."
         else:
-            solid_text = (
-                f"Egenkapitalandel på {self._format_percent(equity_ratio)} vurderes som betryggende."
-            )
+            solid_text = f"Egenkapitalandel på {self._format_percent(equity_ratio)} vurderes som betryggende."
         self.soliditet_label.setText(self._summary_html("Soliditet", solid_text))
 
     def _update_voucher_count(self, voucher_count: Optional[int]) -> None:
