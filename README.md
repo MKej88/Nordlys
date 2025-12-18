@@ -7,21 +7,22 @@ Brønnøysundregistrene.
 
 ## Hva er nytt nå
 
-- Import av én eller flere SAF-T-filer kjører i bakgrunnen via `TaskRunner`,
-  med tydelig fremdrift og statusmeldinger i GUI-et.
-- Trådantallet under import begrenses automatisk til to når filene er store,
-  slik at minnebruken holder seg moderat.
-- Mulighet for strømming av hovedboken med miljøvariabelen
-  `NORDLYS_SAFT_STREAMING=1`, slik at prøvebalansen sjekkes før hele filen er
-  lest. Sett `NORDLYS_SAFT_STREAMING_VALIDATE=1` hvis du vil validere samtidig
+- Import kjører i bakgrunnen via `TaskRunner`, med fremdriftslinje og tydelige
+  meldinger på hvilke filer som behandles akkurat nå.
+- Store SAF-T-filer strømmes når du slår på `NORDLYS_SAFT_STREAMING=1`, slik at
+  prøvebalanse beregnes mens filen leses. Sett
+  `NORDLYS_SAFT_STREAMING_VALIDATE=1` for å validere mot XSD samtidig
   (krever `xmlschema`).
-- Eksport til PDF rett fra toppmenyen, med nøkkeltall, toppkunder/-leverandører
-  og et lite utvalg kostnadsbilag.
-- Excel-eksporten inkluderer nå også leverandørkjøp og kostnadsbilag i egne ark.
-- Brønnøysund-oppslag og bransjeklassifisering skjer parallelt og caches etter
-  organisasjonsnummer, slik at samme selskap går raskere å slå opp neste gang.
-- Excel-eksport samler saldobalanse, NS4102-sammendrag, kundeomsetning og
-  Brønnøysund-data i én fil via `xlsxwriter`.
+- Datasett fra samme selskap legges i en tidslinje, og "forrige år" hentes
+  automatisk når to filer hører til samme organisasjonsnummer. Nytt selskap
+  nullstiller tidslinjen slik at tall ikke blandes.
+- Brønnøysund-oppslag, bransjeklassifisering og nøkkeltall skjer parallelt og
+  caches, med klar feilmelding dersom tjenesten er nede.
+- Eksport til Excel og PDF er aktivert direkte i toppmenyen. Excel-filen
+  inneholder saldobalanse, NS4102-sammendrag, kunde- og leverandørtabeller samt
+  Brønnøysund-data. PDF-en gir et kort sammendrag med nøkkeltall og topplister.
+- En enkel kommandolinje (`python -m nordlys.industry_groups_cli`) gjør at du
+  kan teste bransjeklassifisering uten å åpne GUI-et.
 
 ## Hovedfunksjoner
 
@@ -30,13 +31,15 @@ Brønnøysundregistrene.
 - 🔄 Automatisk kobling mot «forrige år» når to SAF-T-filer har samme
   organisasjonsnummer. Kontoer fra tidligere år vises som egne kolonner i
   regnearket i tillegg til en egen «forrige»-kolonne.
-- 📊 Dashboard med nøkkeltall (driftsinntekter, EBITDA/EBIT/resultatmargin) og
-  NS4102-sammendrag for raskt overblikk.
-- 🧾 Kunde- og leverandøranalyse med topplister og transaksjonsantall. Viser
-  også et tilfeldig utvalg av kostnadsbilag for manuell kontroll.
+- 📊 Dashboard med nøkkeltall (driftsinntekter, EBITDA/EBIT/resultatmargin),
+  NS4102-sammendrag og status for data- og valideringsfeil.
+- 🧾 Kunde- og leverandøranalyse med topplister, transaksjonsantall og
+  stikkprøver av kostnadsbilag for manuell kontroll.
 - 🧭 Integrasjon mot Brønnøysundregistrene med mapping av nøkkeltall og
-  bransjeidentifisering som kan gjenbrukes i appen.
-- 💾 Ett-klikks eksport av analyser til Excel, inkludert eventuelle
+  bransjeklassifisering som kan gjenbrukes i appen og ved eksport.
+- 📐 Variasjonsanalyse over flere år (standardavvik) for å flagge uvanlige
+  endringer i utvalgte nøkkeltall.
+- 💾 Ett-klikks eksport til Excel og PDF, inkludert eventuelle
   Brønnøysund-resultater.
 
 ## Forutsetninger
@@ -57,7 +60,7 @@ Alle avhengigheter ligger i `requirements.txt` og kan installeres med
 - `PySide6` – driver det grafiske grensesnittet.
 - `requests` og `requests-cache` – henter og cacher Brønnøysund-data.
 - `xlsxwriter` og `openpyxl` – Excel-eksport.
-- `reportlab` – generering av PDF-rapport (ikke aktivert i GUI-et ennå).
+- `reportlab` – generering av PDF-rapport rett fra GUI-et.
 - `pytest` – enhetstester som genererer nødvendige SAF-T-data ved kjøring.
 - `ruff`, `black` og `mypy` – utviklerverktøy for linting, formatering og
   statisk typekontroll.
@@ -78,6 +81,16 @@ Alle avhengigheter ligger i `requirements.txt` og kan installeres med
    python main.py
    ```
 
+## Kommandolinje (frivillig)
+
+Vil du bare sjekke bransje uten å starte GUI-et, kan du kjøre:
+
+```bash
+python -m nordlys.industry_groups_cli --orgnr 123456789
+```
+
+Bruk `--saft sti/til/fil.xml` om du vil hente bransje rett fra en SAF-T-fil.
+
 ## Navigasjon i appen
 
 - **Import**: velg én eller flere SAF-T-filer. Importen kjøres i bakgrunnen og
@@ -94,7 +107,8 @@ Alle avhengigheter ligger i `requirements.txt` og kan installeres med
   kundefordringer (salg), leverandørgjeld (innkjøp) og bilagsutvalg på
   kostnadskontoer.
 - **Eksport**: tilgjengelig fra toppfeltet. Skriver en Excel-rapport med
-  saldobalanse, sammendrag, kundeomsetning og Brønnøysund-data.
+  saldobalanse, sammendrag, kunde-/leverandørtabeller og Brønnøysund-data,
+  eller en PDF med korte sammendrag.
 
 ## Streaming og validering
 
@@ -123,6 +137,7 @@ Kort oversikt over viktige moduler:
 Nordlys/
 ├── main.py                  # Starter PySide6-applikasjonen
 ├── nordlys/
+│   ├── core/                # TaskRunner som kjører tunge jobber i bakgrunnen
 │   ├── constants.py         # Felles konstanter og URL-mal
 │   ├── settings.py          # Miljøvariabler for streaming
 │   ├── helpers/             # Formatering, lazy imports, XML-hjelpere
