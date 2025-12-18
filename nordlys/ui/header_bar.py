@@ -62,6 +62,13 @@ class HeaderBar(QWidget):
         self.dataset_combo.currentIndexChanged.connect(self._emit_dataset_change)
         layout.addWidget(self.dataset_combo)
 
+        self.industry_label = QLabel("Bransje: —")
+        self.industry_label.setObjectName("datasetLabel")
+        self.industry_label.setToolTip(
+            "Bransje hentet fra Brønnøysundregistrene når org.nr. er tilgjengelig."
+        )
+        layout.addWidget(self.industry_label)
+
         self.btn_open = QPushButton("Åpne SAF-T XML …")
         self.btn_open.clicked.connect(self.open_requested)
         layout.addWidget(self.btn_open)
@@ -89,6 +96,9 @@ class HeaderBar(QWidget):
 
     def set_dataset_enabled(self, enabled: bool) -> None:
         self.dataset_combo.setEnabled(enabled)
+
+    def set_industry(self, label: str | None) -> None:
+        self.industry_label.setText(label or "Bransje: —")
 
     def set_dataset_items(
         self, entries: Sequence[DatasetEntry], current_key: str | None

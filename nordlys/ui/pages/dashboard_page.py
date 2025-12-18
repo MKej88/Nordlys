@@ -6,6 +6,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QGridLayout,
     QLabel,
+    QTableWidget,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -74,26 +75,30 @@ class DashboardPage(QWidget):
 
         grid.addWidget(self.kpi_card, 0, 0)
 
-        self.liquidity_card = CardFrame(
+        (
+            self.liquidity_card,
+            self.liquidity_empty_state,
+            self.liquidity_table,
+        ) = self._create_metrics_card(
             "Likviditet",
-            "Kontantstrøm- og arbeidskapitalindikatorer på vei.",
+            "Kontantstrøm- og arbeidskapitalindikatorer basert på SAF-T.",
+            "Ingen nøkkeltall å vise ennå",
+            "Importer en SAF-T-fil for å se nøkkeltall for likviditet.",
+            icon="💧",
         )
-        self.liquidity_label = QLabel("Ingen likviditetsanalyse er tilgjengelig ennå.")
-        self.liquidity_label.setObjectName("statusLabel")
-        self.liquidity_label.setWordWrap(True)
-        self.liquidity_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
-        self.liquidity_card.add_widget(self.liquidity_label)
         grid.addWidget(self.liquidity_card, 0, 1)
 
-        self.soliditet_card = CardFrame(
+        (
+            self.soliditet_card,
+            self.soliditet_empty_state,
+            self.soliditet_table,
+        ) = self._create_metrics_card(
             "Soliditet",
-            "Viser egenkapitalandel og gearing når data foreligger.",
+            "Viser egenkapitalandel og gearing basert på SAF-T.",
+            "Ingen nøkkeltall å vise ennå",
+            "Importer en SAF-T-fil for å se nøkkeltall for soliditet.",
+            icon="🏦",
         )
-        self.soliditet_label = QLabel("Importer SAF-T for å analysere soliditet.")
-        self.soliditet_label.setObjectName("statusLabel")
-        self.soliditet_label.setWordWrap(True)
-        self.soliditet_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
-        self.soliditet_card.add_widget(self.soliditet_label)
         grid.addWidget(self.soliditet_card, 0, 2)
 
         self.bransje_card = CardFrame(
@@ -110,47 +115,51 @@ class DashboardPage(QWidget):
         grid.addWidget(self.bransje_card, 1, 0)
 
         self.trend_card = CardFrame(
-            "Uvanlige trender",
-            "Flagger uvanlige endringer i perioden når data er tilgjengelig.",
+            "Antall bilag",
+            "Tilgjengelige inngående fakturaer for stikkprøver.",
         )
-        self.trend_label = QLabel("Ingen uvanlige trender er analysert ennå.")
+        self.trend_label = QLabel("Importer en SAF-T-fil for å se antall bilag.")
         self.trend_label.setObjectName("statusLabel")
         self.trend_label.setWordWrap(True)
         self.trend_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
         self.trend_card.add_widget(self.trend_label)
         grid.addWidget(self.trend_card, 1, 1)
 
-        self.summary_card = CardFrame(
+        (
+            self.summary_card,
+            self.summary_empty_state,
+            self.summary_table,
+        ) = self._create_metrics_card(
             "Fokus for revisjonen",
             "Oppsummerte nøkkeltall fra SAF-T som peker ut fokusområder.",
-        )
-        self.summary_empty_state = EmptyStateWidget(
             "Ingen nøkkeltall å vise ennå",
             "Importer en SAF-T-fil for å se oppsummerte hovedtall her.",
             icon="📊",
         )
-        self.summary_empty_state.setSizePolicy(
-            QSizePolicy.Expanding, QSizePolicy.Expanding
-        )
-        self.summary_table = create_table_widget()
-        self.summary_table.setColumnCount(2)
-        self.summary_table.setHorizontalHeaderLabels(["Nøkkel", "Beløp"])
-        self.summary_table.hide()
-        self.summary_card.add_widget(self.summary_empty_state)
-        self.summary_card.add_widget(self.summary_table)
         grid.addWidget(self.summary_card, 1, 2)
+
+        self._metric_sections = (
+            (self.summary_table, self.summary_empty_state),
+            (self.liquidity_table, self.liquidity_empty_state),
+            (self.soliditet_table, self.soliditet_empty_state),
+        )
 
         layout.addStretch(1)
 
-    def update_summary(self, summary: Optional[Dict[str, float]]) -> None:
+    def update_summary(
+        self, summary: Optional[Dict[str, float]], voucher_count: Optional[int] = None
+    ) -> None:
+        self._update_voucher_count(voucher_count)
         if not summary:
-            self.summary_table.setRowCount(0)
-            self.summary_table.hide()
-            self.summary_empty_state.show()
+            for table, empty_state in self._metric_sections:
+                table.setRowCount(0)
+                table.hide()
+                empty_state.show()
             self._update_kpis(None)
             return
-        self.summary_empty_state.hide()
-        self.summary_table.show()
+        for table, empty_state in self._metric_sections:
+            empty_state.hide()
+            table.show()
         rows = [
             ("Driftsinntekter (3xxx)", summary.get("driftsinntekter")),
             ("Varekostnad (4xxx)", summary.get("varekostnad")),
@@ -165,8 +174,29 @@ class DashboardPage(QWidget):
             ("Eiendeler (UB)", summary.get("eiendeler_UB")),
             ("Gjeld (UB)", summary.get("gjeld_UB")),
         ]
-        populate_table(self.summary_table, ["Nøkkel", "Beløp"], rows, money_cols={1})
+        for table, _ in self._metric_sections:
+            populate_table(table, ["Nøkkel", "Beløp"], rows, money_cols={1})
         self._update_kpis(summary)
+
+    def _create_metrics_card(
+        self,
+        title: str,
+        subtitle: str,
+        empty_title: str,
+        empty_description: str,
+        *,
+        icon: str,
+    ) -> tuple[CardFrame, EmptyStateWidget, QTableWidget]:
+        card = CardFrame(title, subtitle)
+        empty_state = EmptyStateWidget(empty_title, empty_description, icon=icon)
+        empty_state.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        table = create_table_widget()
+        table.setColumnCount(2)
+        table.setHorizontalHeaderLabels(["Nøkkel", "Beløp"])
+        table.hide()
+        card.add_widget(empty_state)
+        card.add_widget(table)
+        return card, empty_state, table
 
     def _update_kpis(self, summary: Optional[Dict[str, float]]) -> None:
         def set_badge(key: str, value: Optional[str]) -> None:
@@ -201,3 +231,14 @@ class DashboardPage(QWidget):
         set_badge("ebitda_margin", percent(ebitda))
         set_badge("ebit_margin", percent(ebit))
         set_badge("result_margin", percent(result))
+
+    def _update_voucher_count(self, count: Optional[int]) -> None:
+        if count is None:
+            message = "Importer en SAF-T-fil for å se antall bilag."
+        elif count == 0:
+            message = "Ingen inngående fakturaer tilgjengelig i dette datasettet."
+        elif count == 1:
+            message = "1 inngående faktura klar for kontroll."
+        else:
+            message = f"{count} inngående fakturaer klare for kontroll."
+        self.trend_label.setText(message)

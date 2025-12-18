@@ -79,7 +79,9 @@ class PageStateHandler:
             self.revision_pages[key] = widget
         if key == "dashboard" and isinstance(widget, DashboardPage):
             self.dashboard_page = widget
-            widget.update_summary(self._dataset_store.saft_summary)
+            widget.update_summary(
+                self._dataset_store.saft_summary, len(self._dataset_store.cost_vouchers)
+            )
         elif key == "plan.saldobalanse" and isinstance(widget, DataFramePage):
             self.saldobalanse_page = widget
             widget.set_dataframe(self._dataset_store.saft_df)

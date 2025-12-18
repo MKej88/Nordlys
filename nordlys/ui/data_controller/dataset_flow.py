@@ -15,6 +15,7 @@ from .context import ControllerContext
 from .messaging import ImportMessenger
 
 if TYPE_CHECKING:
+    from ...industry_groups import IndustryClassification
     from ...saft.loader import SaftLoadResult
 
 
@@ -90,11 +91,14 @@ class DatasetFlowController:
         if saft_df is None:
             saft_df = result.dataframe
         self._context.update_header_fields()
+        self._update_header_industry(store.industry, store.industry_error)
         if pages.saldobalanse_page:
             pages.saldobalanse_page.set_dataframe(saft_df)
         pages.clear_comparison_tables()
         if pages.dashboard_page:
-            pages.dashboard_page.update_summary(store.saft_summary)
+            pages.dashboard_page.update_summary(
+                store.saft_summary, len(store.cost_vouchers)
+            )
 
         header = store.header
         company = header.company_name if header else None
@@ -256,6 +260,7 @@ class DatasetFlowController:
         header_bar.set_dataset_enabled(False)
         self._context.update_header_fields()
         self._context.status_bar.showMessage("Ingen datasett aktivt.")
+        self._update_header_industry(store.industry, store.industry_error)
 
         if pages.import_page:
             pages.import_page.update_status("Ingen SAF-T fil er lastet inn ennå.")
@@ -273,7 +278,7 @@ class DatasetFlowController:
         pages.clear_comparison_tables()
 
         if pages.dashboard_page:
-            pages.dashboard_page.update_summary(None)
+            pages.dashboard_page.update_summary(None, None)
         if pages.saldobalanse_page:
             pages.saldobalanse_page.set_dataframe(None)
         if pages.regnskap_page:
@@ -315,6 +320,21 @@ class DatasetFlowController:
         ]
         header_bar.set_dataset_items(entries, store.current_key)
         header_bar.set_dataset_enabled(True)
+
+    def _update_header_industry(
+        self,
+        industry: Optional["IndustryClassification"],
+        error: Optional[str],
+    ) -> None:
+        if error:
+            label = f"Bransje: ikke tilgjengelig ({error})"
+        elif industry and industry.group:
+            label = f"Bransje: {industry.group}"
+        elif industry:
+            label = "Bransje: Ukjent bransje"
+        else:
+            label = "Bransje: —"
+        self._context.header_bar.set_industry(label)
 
     def _process_brreg_result(self, result: SaftLoadResult) -> str:
         store = self._context.dataset_store
