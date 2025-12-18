@@ -9,8 +9,6 @@ from threading import Lock
 from typing import Dict, Optional
 
 from .integrations.brreg_service import fetch_enhetsregister
-from .saft import parse_saft_header
-from .saft_customers import parse_saft
 
 
 @dataclass
@@ -241,6 +239,9 @@ def classify_from_orgnr(
 
 def classify_from_saft_path(path: str | Path) -> IndustryClassification:
     """Leser en SAF-T-fil og klassifiserer selskapet automatisk."""
+
+    from .saft import parse_saft_header
+    from .saft_customers import parse_saft
 
     tree, _ = parse_saft(str(path))
     header = parse_saft_header(tree.getroot())
