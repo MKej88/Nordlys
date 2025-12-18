@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Sequence, Tuple
+from typing import Optional, Sequence, Tuple
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
@@ -41,6 +41,10 @@ class HeaderBar(QWidget):
         title_font.setFamily(PRIMARY_UI_FONT_FAMILY)
         self.title_label.setFont(title_font)
         layout.addWidget(self.title_label, 1)
+
+        self.industry_label = QLabel("Bransje: –")
+        self.industry_label.setObjectName("industryLabel")
+        layout.addWidget(self.industry_label)
 
         self.dataset_label = QLabel("Datasett")
         self.dataset_label.setObjectName("datasetLabel")
@@ -89,6 +93,15 @@ class HeaderBar(QWidget):
 
     def set_dataset_enabled(self, enabled: bool) -> None:
         self.dataset_combo.setEnabled(enabled)
+
+    def set_industry(self, industry: Optional[str], error: Optional[str]) -> None:
+        if industry:
+            text = f"Bransje: {industry}"
+        elif error:
+            text = f"Bransje: ikke tilgjengelig ({error})"
+        else:
+            text = "Bransje: —"
+        self.industry_label.setText(text)
 
     def set_dataset_items(
         self, entries: Sequence[DatasetEntry], current_key: str | None
