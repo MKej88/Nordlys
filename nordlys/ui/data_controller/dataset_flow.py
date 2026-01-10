@@ -94,7 +94,9 @@ class DatasetFlowController:
             pages.saldobalanse_page.set_dataframe(saft_df)
         pages.clear_comparison_tables()
         if pages.dashboard_page:
-            pages.dashboard_page.update_summary(store.saft_summary)
+            pages.dashboard_page.update_summary(
+                store.saft_summary, len(store.cost_vouchers)
+            )
 
         header = store.header
         company = header.company_name if header else None
@@ -273,7 +275,7 @@ class DatasetFlowController:
         pages.clear_comparison_tables()
 
         if pages.dashboard_page:
-            pages.dashboard_page.update_summary(None)
+            pages.dashboard_page.update_summary(None, 0)
         if pages.saldobalanse_page:
             pages.saldobalanse_page.set_dataframe(None)
         if pages.regnskap_page:
