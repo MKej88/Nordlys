@@ -187,9 +187,14 @@ class CostVoucherReviewPage(QWidget):
         self.detail_card = CardFrame("Gjennomgang av bilag")
         self.detail_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
+        left_container = QWidget()
+        left_layout = QVBoxLayout(left_container)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(3)
+
         self.lbl_progress = QLabel("Ingen bilag valgt.")
         self.lbl_progress.setObjectName("statusLabel")
-        self.detail_card.add_widget(self.lbl_progress)
+        left_layout.addWidget(self.lbl_progress)
 
         meta_grid = QGridLayout()
         meta_grid.setContentsMargins(0, 0, 0, 0)
@@ -221,12 +226,12 @@ class CostVoucherReviewPage(QWidget):
         meta_section_layout.setContentsMargins(0, 0, 0, 0)
         meta_section_layout.setSpacing(8)
         meta_section_layout.addLayout(meta_grid)
-        self.detail_card.add_widget(meta_section)
+        left_layout.addWidget(meta_section)
 
         divider = QFrame()
         divider.setObjectName("analysisDivider")
         divider.setFixedHeight(4)
-        self.detail_card.add_widget(divider)
+        left_layout.addWidget(divider)
 
         self.value_status = cast(QLabel, getattr(self, "value_status"))
         self._update_status_display(None)
@@ -250,11 +255,11 @@ class CostVoucherReviewPage(QWidget):
         self.table_lines.horizontalHeader().setSectionResizeMode(
             5, QHeaderView.ResizeToContents
         )
-        self.detail_card.add_widget(self.table_lines)
+        left_layout.addWidget(self.table_lines)
 
         comment_label = QLabel("Kommentar (frivillig):")
         comment_label.setObjectName("infoLabel")
-        self.detail_card.add_widget(comment_label)
+        left_layout.addWidget(comment_label)
 
         self.txt_comment = QPlainTextEdit()
         self.txt_comment.setObjectName("commentInput")
@@ -272,7 +277,7 @@ class CostVoucherReviewPage(QWidget):
         self.txt_comment.setAutoFillBackground(True)
         self.txt_comment.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.txt_comment.setFixedHeight(100)
-        self.detail_card.add_widget(self.txt_comment)
+        left_layout.addWidget(self.txt_comment)
 
         button_row = QHBoxLayout()
         button_row.setSpacing(12)
@@ -294,9 +299,7 @@ class CostVoucherReviewPage(QWidget):
         self.btn_next.setObjectName("navButton")
         self.btn_next.clicked.connect(self._on_next_clicked)
         button_row.addWidget(self.btn_next)
-        self.detail_card.add_layout(button_row)
-
-        selection_content_row.addWidget(self.detail_card, 1)
+        left_layout.addLayout(button_row)
 
         stats_column_layout = QVBoxLayout()
         stats_column_layout.setContentsMargins(0, 0, 0, 0)
@@ -324,7 +327,15 @@ class CostVoucherReviewPage(QWidget):
         selection_stats_layout.addWidget(self.selection_badge_coverage)
         stats_column_layout.addLayout(selection_stats_layout)
         stats_column_layout.addStretch(1)
-        selection_content_row.addLayout(stats_column_layout)
+
+        detail_row = QHBoxLayout()
+        detail_row.setContentsMargins(0, 0, 0, 0)
+        detail_row.setSpacing(24)
+        detail_row.addWidget(left_container, 1)
+        detail_row.addLayout(stats_column_layout)
+        self.detail_card.add_layout(detail_row)
+
+        selection_content_row.addWidget(self.detail_card, 1)
 
         selection_layout.addLayout(selection_content_row)
 
