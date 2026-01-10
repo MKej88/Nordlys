@@ -39,6 +39,7 @@ def determine_analysis_year(
     header: Optional["saft.SaftHeader"],
     root: ET.Element,
     ns: MutableMapping[str, object],
+    transaction_span: Optional[Tuple[Optional[date], Optional[date]]] = None,
 ) -> Tuple[Optional[int], Optional[Dict[ET.Element, Optional[ET.Element]]]]:
     """Finn analyseår og parent-map basert på SAF-T-data."""
 
@@ -65,19 +66,12 @@ def determine_analysis_year(
         if parsed_end:
             return parsed_end.year, None
 
-    ns_et = {
-        key: value
-        for key, value in ns.items()
-        if isinstance(key, str) and isinstance(value, str)
-    }
-    for tx in root.findall(
-        ".//n1:GeneralLedgerEntries/n1:Journal/n1:Transaction", ns_et or None
-    ):
-        date_element = tx.find("n1:TransactionDate", ns_et or None)
-        if date_element is not None and date_element.text:
-            parsed = _parse_date(date_element.text)
-            if parsed:
-                return parsed.year, None
+    if transaction_span:
+        observed_start, observed_end = transaction_span
+        if observed_end:
+            return observed_end.year, None
+        if observed_start:
+            return observed_start.year, None
     return None, None
 
 
@@ -88,7 +82,10 @@ def build_customer_supplier_analysis(
 ) -> CustomerSupplierAnalysis:
     """Analyser kunder og leverandører, og returner et samlet resultat."""
 
-    analysis_year, parent_map = determine_analysis_year(header, root, ns)
+    observed_start, observed_end = _detect_transaction_span(root, ns)
+    analysis_year, parent_map = determine_analysis_year(
+        header, root, ns, transaction_span=(observed_start, observed_end)
+    )
     customer_sales: Optional["pd.DataFrame"] = None
     supplier_purchases: Optional["pd.DataFrame"] = None
     cost_vouchers: List["saft_customers.CostVoucher"] = []
@@ -96,7 +93,6 @@ def build_customer_supplier_analysis(
 
     period_start = _parse_date(header.period_start) if header else None
     period_end = _parse_date(header.period_end) if header else None
-    observed_start, observed_end = _detect_transaction_span(root, ns)
     has_transaction_dates = observed_start is not None or observed_end is not None
     effective_start = period_start
     if observed_start is not None:

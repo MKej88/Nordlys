@@ -22,6 +22,10 @@ def parse_saft_date(value: Optional[str]) -> Optional[date]:
         return date.fromisoformat(text)
     except ValueError:
         pass
+    try:
+        return datetime.fromisoformat(text).date()
+    except ValueError:
+        pass
 
     formats = (
         "%Y-%m-%d",
