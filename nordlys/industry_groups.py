@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import json
+import logging
+import os
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
 from typing import Dict, Optional
 
 from .integrations.brreg_service import fetch_enhetsregister
+
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass
@@ -24,7 +29,38 @@ class IndustryClassification:
     source: str
 
 
-CACHE_PATH: Path = Path(__file__).resolve().parent / "brreg_cache.json"
+def _resolve_cache_path() -> Optional[Path]:
+    candidates: list[Path] = []
+    env_cache_dir = os.environ.get("NORDLYS_CACHE_DIR")
+    if env_cache_dir:
+        candidates.append(Path(env_cache_dir).expanduser())
+    xdg_cache_home = os.environ.get("XDG_CACHE_HOME")
+    if xdg_cache_home:
+        candidates.append(Path(xdg_cache_home).expanduser() / "nordlys")
+    try:
+        candidates.append(Path.home() / ".cache" / "nordlys")
+    except RuntimeError:
+        pass
+    candidates.append(Path(tempfile.gettempdir()) / "nordlys_cache")
+    seen: set[Path] = set()
+    for candidate in candidates:
+        resolved = candidate.expanduser().resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        try:
+            resolved.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            continue
+        if os.access(resolved, os.W_OK):
+            return resolved / "brreg_cache.json"
+    _LOGGER.warning(
+        "Fant ingen skrivbar katalog for bransjecache. Lagring er deaktivert."
+    )
+    return None
+
+
+CACHE_PATH: Optional[Path] = _resolve_cache_path()
 _CACHE_LOCK = Lock()
 
 
@@ -36,7 +72,7 @@ def _normalize_orgnr(orgnr: str) -> str:
 
 
 def _load_cache() -> Dict[str, Dict[str, object]]:
-    if not CACHE_PATH.exists():
+    if CACHE_PATH is None or not CACHE_PATH.exists():
         return {}
     with _CACHE_LOCK:
         try:
@@ -50,6 +86,8 @@ def _load_cache() -> Dict[str, Dict[str, object]]:
 
 
 def _save_cache(cache: Dict[str, Dict[str, object]]) -> None:
+    if CACHE_PATH is None:
+        return
     with _CACHE_LOCK:
         try:
             with CACHE_PATH.open("w", encoding="utf-8") as fh:
