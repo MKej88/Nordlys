@@ -255,6 +255,7 @@ class CostVoucherReviewPage(QWidget):
         self.table_lines.horizontalHeader().setSectionResizeMode(
             5, QHeaderView.ResizeToContents
         )
+        self.table_lines.horizontalHeader().setStretchLastSection(True)
         left_layout.addWidget(self.table_lines)
 
         comment_label = QLabel("Kommentar (frivillig):")
