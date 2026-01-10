@@ -190,7 +190,6 @@ class CostVoucherReviewPage(QWidget):
         selection_stats_layout = QHBoxLayout()
         selection_stats_layout.setContentsMargins(0, 0, 0, 0)
         selection_stats_layout.setSpacing(12)
-        selection_stats_layout.addStretch(1)
         self.selection_badge_total_amount = StatBadge(
             "Sum inngående faktura",
             "Beløp fra innlastet fil",
@@ -206,6 +205,7 @@ class CostVoucherReviewPage(QWidget):
         selection_stats_layout.addWidget(self.selection_badge_total_amount)
         selection_stats_layout.addWidget(self.selection_badge_reviewed_amount)
         selection_stats_layout.addWidget(self.selection_badge_coverage)
+        selection_stats_layout.addStretch(1)
         self.detail_card.add_layout(selection_stats_layout)
 
         self.lbl_progress = QLabel("Ingen bilag valgt.")
