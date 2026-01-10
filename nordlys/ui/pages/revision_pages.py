@@ -187,27 +187,6 @@ class CostVoucherReviewPage(QWidget):
         self.detail_card = CardFrame("Gjennomgang av bilag")
         self.detail_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
-        selection_stats_layout = QHBoxLayout()
-        selection_stats_layout.setContentsMargins(0, 0, 0, 0)
-        selection_stats_layout.setSpacing(12)
-        self.selection_badge_total_amount = StatBadge(
-            "Sum inngående faktura",
-            "Beløp fra innlastet fil",
-        )
-        self.selection_badge_reviewed_amount = StatBadge(
-            "Sum kontrollert",
-            "Kostnad på vurderte bilag",
-        )
-        self.selection_badge_coverage = StatBadge(
-            "Dekning",
-            "Andel av sum som er kontrollert",
-        )
-        selection_stats_layout.addWidget(self.selection_badge_total_amount)
-        selection_stats_layout.addWidget(self.selection_badge_reviewed_amount)
-        selection_stats_layout.addWidget(self.selection_badge_coverage)
-        selection_stats_layout.addStretch(1)
-        self.detail_card.add_layout(selection_stats_layout)
-
         self.lbl_progress = QLabel("Ingen bilag valgt.")
         self.lbl_progress.setObjectName("statusLabel")
         self.detail_card.add_widget(self.lbl_progress)
@@ -318,6 +297,34 @@ class CostVoucherReviewPage(QWidget):
         self.detail_card.add_layout(button_row)
 
         selection_content_row.addWidget(self.detail_card, 1)
+
+        stats_column_layout = QVBoxLayout()
+        stats_column_layout.setContentsMargins(0, 0, 0, 0)
+        stats_column_layout.setSpacing(12)
+        stats_column_layout.setAlignment(Qt.AlignTop)
+
+        selection_stats_layout = QHBoxLayout()
+        selection_stats_layout.setContentsMargins(0, 0, 0, 0)
+        selection_stats_layout.setSpacing(12)
+        selection_stats_layout.addStretch(1)
+        self.selection_badge_total_amount = StatBadge(
+            "Sum inngående faktura",
+            "Beløp fra innlastet fil",
+        )
+        self.selection_badge_reviewed_amount = StatBadge(
+            "Sum kontrollert",
+            "Kostnad på vurderte bilag",
+        )
+        self.selection_badge_coverage = StatBadge(
+            "Dekning",
+            "Andel av sum som er kontrollert",
+        )
+        selection_stats_layout.addWidget(self.selection_badge_total_amount)
+        selection_stats_layout.addWidget(self.selection_badge_reviewed_amount)
+        selection_stats_layout.addWidget(self.selection_badge_coverage)
+        stats_column_layout.addLayout(selection_stats_layout)
+        stats_column_layout.addStretch(1)
+        selection_content_row.addLayout(stats_column_layout)
 
         selection_layout.addLayout(selection_content_row)
 
