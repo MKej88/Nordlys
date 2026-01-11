@@ -19,8 +19,9 @@ Brønnøysundregistrene.
 - Brønnøysund-oppslag, bransjeklassifisering og nøkkeltall skjer parallelt og
   caches, med klar feilmelding dersom tjenesten er nede.
 - Eksport til Excel og PDF er aktivert direkte i toppmenyen. Excel-filen
-  inneholder saldobalanse, NS4102-sammendrag, kunde- og leverandørtabeller samt
-  Brønnøysund-data. PDF-en gir et kort sammendrag med nøkkeltall og topplister.
+  inneholder saldobalanse, NS4102-sammendrag, kunde- og leverandørtabeller,
+  Brønnøysund-data (både rådata og felttolkning) samt et ark med utvalgte
+  kostnadsbilag. PDF-en gir et kort sammendrag med nøkkeltall og topplister.
 - En enkel kommandolinje (`python -m nordlys.industry_groups_cli`) gjør at du
   kan teste bransjeklassifisering uten å åpne GUI-et.
 
