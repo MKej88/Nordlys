@@ -1213,8 +1213,7 @@ class _CostVoucherReviewModule(QWidget):
                     supplier_text,
                     self._format_amount(voucher.amount),
                     result.status,
-                    (result.comment or "").replace("
-", " "),
+                    (result.comment or "").replace("\n", " "),
                 ]
             )
 
