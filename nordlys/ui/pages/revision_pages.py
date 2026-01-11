@@ -112,11 +112,19 @@ class ChecklistPage(QWidget):
             QListWidgetItem(item, self.list_widget)
 
 
-class CostVoucherReviewPage(QWidget):
-    """Interaktiv side for bilagskontroll av kostnader."""
+class _CostVoucherReviewModule(QWidget):
+    """Håndterer én modul for bilagskontroll (random eller spesifikk)."""
 
-    def __init__(self, title: str, subtitle: str) -> None:
-        super().__init__()
+    def __init__(
+        self,
+        parent: QWidget,
+        title: str,
+        subtitle: str,
+        *,
+        is_specific: bool,
+    ) -> None:
+        super().__init__(parent)
+        self._is_specific = is_specific
         self._vouchers: List["saft_customers.CostVoucher"] = []
         self._sample: List["saft_customers.CostVoucher"] = []
         self._results: List[Optional[VoucherReviewResult]] = []
@@ -129,9 +137,30 @@ class CostVoucherReviewPage(QWidget):
         layout.setSpacing(24)
 
         self.tab_widget = QTabWidget()
-        self.tab_widget.setObjectName("costTabs")
+        self.tab_widget.setObjectName("costModuleTabs")
         layout.addWidget(self.tab_widget)
 
+        input_container = (
+            self._build_specific_input_tab(title)
+            if self._is_specific
+            else self._build_random_input_tab(title, subtitle)
+        )
+        self.tab_widget.addTab(input_container, "Inndata")
+
+        selection_container = self._build_selection_tab()
+        self.tab_widget.addTab(selection_container, "Utvalg")
+
+        summary_container = self._build_summary_tab()
+        self.tab_widget.addTab(summary_container, "Oppsummering")
+
+        self.tab_widget.setTabEnabled(1, False)
+        self.tab_widget.setTabEnabled(2, False)
+        self.tab_widget.setCurrentIndex(0)
+
+        self.detail_card.setEnabled(False)
+        self._update_coverage_badges()
+
+    def _build_random_input_tab(self, title: str, subtitle: str) -> QWidget:
         input_container = QWidget()
         input_layout = QVBoxLayout(input_container)
         input_layout.setContentsMargins(0, 0, 0, 0)
@@ -168,18 +197,82 @@ class CostVoucherReviewPage(QWidget):
 
         input_layout.addWidget(self.control_card, 0, Qt.AlignTop)
         input_layout.addStretch(1)
+        return input_container
 
-        self.tab_widget.addTab(input_container, "Inndata")
-        self.tab_widget.setTabToolTip(
-            0, "Velg hvor mange bilag du vil trekke og start kontrollen."
+    def _build_specific_input_tab(self, title: str) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(24)
+
+        card = CardFrame(
+            title,
+            "Velg bilag basert på regler som er relevante for revisjonen.",
         )
+        card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
 
-        specific_container = self._build_specific_selection_tab()
-        self.tab_widget.addTab(specific_container, "Spesifikt utvalg")
-        self.tab_widget.setTabToolTip(
-            1, "Velg et utvalg basert på terskel eller de største beløpene."
+        intro = QLabel(
+            "Her kan du velge bilag basert på terskel, størrelse eller enkle "
+            "avviksmønstre."
         )
+        intro.setWordWrap(True)
+        card.add_widget(intro)
 
+        threshold_layout = QHBoxLayout()
+        threshold_layout.setSpacing(12)
+        threshold_layout.addWidget(QLabel("Terskel (kr):"))
+        self.spin_threshold = QSpinBox()
+        self.spin_threshold.setRange(0, 1_000_000_000)
+        self.spin_threshold.setSingleStep(1_000)
+        self.spin_threshold.setValue(100_000)
+        self.spin_threshold.setSuffix(" kr")
+        threshold_layout.addWidget(self.spin_threshold)
+        threshold_layout.addStretch(1)
+        self.btn_specific_threshold = QPushButton("Velg alle over terskel")
+        self.btn_specific_threshold.clicked.connect(self._on_specific_threshold)
+        threshold_layout.addWidget(self.btn_specific_threshold)
+        card.add_layout(threshold_layout)
+
+        top_layout = QHBoxLayout()
+        top_layout.setSpacing(12)
+        top_layout.addWidget(QLabel("Topp (antall):"))
+        self.spin_top = QSpinBox()
+        self.spin_top.setRange(1, 5000)
+        self.spin_top.setValue(10)
+        top_layout.addWidget(self.spin_top)
+        top_layout.addStretch(1)
+        self.btn_specific_top = QPushButton("Velg topp beløp")
+        self.btn_specific_top.clicked.connect(self._on_specific_top)
+        top_layout.addWidget(self.btn_specific_top)
+        card.add_layout(top_layout)
+
+        extra_layout = QHBoxLayout()
+        extra_layout.setSpacing(12)
+        self.btn_specific_round = QPushButton("Velg runde beløp")
+        self.btn_specific_round.clicked.connect(self._on_specific_round)
+        extra_layout.addWidget(self.btn_specific_round)
+        self.btn_specific_missing_desc = QPushButton("Mangler beskrivelse")
+        self.btn_specific_missing_desc.clicked.connect(self._on_specific_missing_desc)
+        extra_layout.addWidget(self.btn_specific_missing_desc)
+        self.btn_specific_no_ap = QPushButton("Uten leverandørgjeld")
+        self.btn_specific_no_ap.clicked.connect(self._on_specific_no_ap)
+        extra_layout.addWidget(self.btn_specific_no_ap)
+        extra_layout.addStretch(1)
+        card.add_layout(extra_layout)
+
+        self.lbl_specific_available = QLabel("Ingen bilag tilgjengelig.")
+        self.lbl_specific_available.setObjectName("infoLabel")
+        card.add_widget(self.lbl_specific_available)
+
+        self.lbl_specific_result = QLabel("Ingen utvalg gjort ennå.")
+        self.lbl_specific_result.setObjectName("infoLabel")
+        card.add_widget(self.lbl_specific_result)
+
+        layout.addWidget(card, 0, Qt.AlignTop)
+        layout.addStretch(1)
+        return page
+
+    def _build_selection_tab(self) -> QWidget:
         selection_container = QWidget()
         selection_layout = QVBoxLayout(selection_container)
         selection_layout.setContentsMargins(0, 0, 0, 0)
@@ -332,12 +425,9 @@ class CostVoucherReviewPage(QWidget):
         selection_content_row.addLayout(stats_column_layout)
 
         selection_layout.addLayout(selection_content_row)
+        return selection_container
 
-        self.tab_widget.addTab(selection_container, "Utvalg")
-        self.tab_widget.setTabToolTip(
-            2, "Jobb deg gjennom bilagene og registrer vurderinger."
-        )
-
+    def _build_summary_tab(self) -> QWidget:
         summary_container = QWidget()
         summary_layout = QVBoxLayout(summary_container)
         summary_layout.setContentsMargins(0, 0, 0, 0)
@@ -404,91 +494,7 @@ class CostVoucherReviewPage(QWidget):
         self.summary_card.add_widget(self.btn_export_pdf)
 
         summary_layout.addWidget(self.summary_card, 1)
-
-        self.tab_widget.addTab(summary_container, "Oppsummering")
-        self.tab_widget.setTabToolTip(
-            3, "Se status og eksporter arbeidspapir når du er ferdig."
-        )
-
-        self.tab_widget.setTabEnabled(2, False)
-        self.tab_widget.setTabEnabled(3, False)
-        self.tab_widget.setCurrentIndex(0)
-
-        self.detail_card.setEnabled(False)
-        self._update_coverage_badges()
-
-    def _build_specific_selection_tab(self) -> QWidget:
-        page = QWidget()
-        layout = QVBoxLayout(page)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(24)
-
-        card = CardFrame(
-            "Spesifikt utvalg",
-            "Velg bilag basert på terskel eller de største beløpene.",
-        )
-        card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
-
-        intro = QLabel(
-            "Her kan du velge bilag som er over en bestemt sum, eller de største "
-            "bilagene i perioden."
-        )
-        intro.setWordWrap(True)
-        card.add_widget(intro)
-
-        threshold_layout = QHBoxLayout()
-        threshold_layout.setSpacing(12)
-        threshold_layout.addWidget(QLabel("Terskel (kr):"))
-        self.spin_threshold = QSpinBox()
-        self.spin_threshold.setRange(0, 1_000_000_000)
-        self.spin_threshold.setSingleStep(1_000)
-        self.spin_threshold.setValue(100_000)
-        self.spin_threshold.setSuffix(" kr")
-        threshold_layout.addWidget(self.spin_threshold)
-        threshold_layout.addStretch(1)
-        self.btn_specific_threshold = QPushButton("Velg alle over terskel")
-        self.btn_specific_threshold.clicked.connect(self._on_specific_threshold)
-        threshold_layout.addWidget(self.btn_specific_threshold)
-        card.add_layout(threshold_layout)
-
-        top_layout = QHBoxLayout()
-        top_layout.setSpacing(12)
-        top_layout.addWidget(QLabel("Topp (antall):"))
-        self.spin_top = QSpinBox()
-        self.spin_top.setRange(1, 5000)
-        self.spin_top.setValue(10)
-        top_layout.addWidget(self.spin_top)
-        top_layout.addStretch(1)
-        self.btn_specific_top = QPushButton("Velg topp beløp")
-        self.btn_specific_top.clicked.connect(self._on_specific_top)
-        top_layout.addWidget(self.btn_specific_top)
-        card.add_layout(top_layout)
-
-        self.lbl_specific_available = QLabel("Ingen bilag tilgjengelig.")
-        self.lbl_specific_available.setObjectName("infoLabel")
-        card.add_widget(self.lbl_specific_available)
-
-        self.lbl_specific_result = QLabel("Ingen utvalg gjort ennå.")
-        self.lbl_specific_result.setObjectName("infoLabel")
-        card.add_widget(self.lbl_specific_result)
-
-        layout.addWidget(card, 0, Qt.AlignTop)
-        layout.addStretch(1)
-        return page
-
-    def _update_specific_available_label(self, count: int) -> None:
-        if count:
-            self.lbl_specific_available.setText(
-                f"Tilgjengelige bilag: {count} kostnadsbilag klare for utvalg."
-            )
-            self.btn_specific_threshold.setEnabled(True)
-            self.btn_specific_top.setEnabled(True)
-        else:
-            self.lbl_specific_available.setText(
-                "Ingen kostnadsbilag tilgjengelig i valgt periode."
-            )
-            self.btn_specific_threshold.setEnabled(False)
-            self.btn_specific_top.setEnabled(False)
+        return summary_container
 
     def set_vouchers(self, vouchers: Sequence["saft_customers.CostVoucher"]) -> None:
         self._vouchers = list(vouchers)
@@ -498,26 +504,27 @@ class CostVoucherReviewPage(QWidget):
         self._current_index = -1
         self._sample_started_at = None
         self.detail_card.setEnabled(False)
-        self.btn_start_sample.setText("Start bilagskontroll")
-        self.lbl_specific_result.setText("Ingen utvalg gjort ennå.")
         self._clear_current_display()
         self._refresh_summary_table(force_rebuild=True)
-        self._update_total_amount_label()
         self.tab_widget.setCurrentIndex(0)
+        self.tab_widget.setTabEnabled(1, False)
         self.tab_widget.setTabEnabled(2, False)
-        self.tab_widget.setTabEnabled(3, False)
-        count = len(self._vouchers)
-        if count:
-            self.lbl_available.setText(
-                f"Tilgjengelige inngående fakturaer: {count} bilag klar for kontroll."
-            )
-            self.btn_start_sample.setEnabled(True)
+        if self._is_specific:
+            self._update_specific_available_label(len(self._vouchers))
+            self.lbl_specific_result.setText("Ingen utvalg gjort ennå.")
         else:
-            self.lbl_available.setText(
-                "Ingen kostnadsbilag tilgjengelig i valgt periode."
-            )
-            self.btn_start_sample.setEnabled(False)
-        self._update_specific_available_label(count)
+            self._update_total_amount_label()
+            count = len(self._vouchers)
+            if count:
+                self.lbl_available.setText(
+                    f"Tilgjengelige inngående fakturaer: {count} bilag klar for kontroll."
+                )
+                self.btn_start_sample.setEnabled(True)
+            else:
+                self.lbl_available.setText(
+                    "Ingen kostnadsbilag tilgjengelig i valgt periode."
+                )
+                self.btn_start_sample.setEnabled(False)
         self._update_navigation_state()
 
     def _on_start_sample(self) -> None:
@@ -539,12 +546,7 @@ class CostVoucherReviewPage(QWidget):
         self._start_review(random.sample(self._vouchers, sample_size))
 
     def _on_specific_threshold(self) -> None:
-        if not self._vouchers:
-            QMessageBox.information(
-                self,
-                "Ingen bilag",
-                "Det finnes ingen inngående fakturaer å velge ut.",
-            )
+        if not self._ensure_specific_vouchers():
             return
 
         threshold = int(self.spin_threshold.value())
@@ -575,12 +577,7 @@ class CostVoucherReviewPage(QWidget):
         self._start_review(selected)
 
     def _on_specific_top(self) -> None:
-        if not self._vouchers:
-            QMessageBox.information(
-                self,
-                "Ingen bilag",
-                "Det finnes ingen inngående fakturaer å velge ut.",
-            )
+        if not self._ensure_specific_vouchers():
             return
 
         requested = int(self.spin_top.value())
@@ -611,6 +608,98 @@ class CostVoucherReviewPage(QWidget):
         )
         self._start_review(selected)
 
+    def _on_specific_round(self) -> None:
+        if not self._ensure_specific_vouchers():
+            return
+
+        selected = [
+            voucher for voucher in self._vouchers if self._is_round_amount(voucher)
+        ]
+        if not selected:
+            QMessageBox.information(
+                self,
+                "Ingen treff",
+                "Fant ingen bilag med runde beløp.",
+            )
+            return
+
+        self.lbl_specific_result.setText(
+            f"Valgt {len(selected)} bilag med runde beløp."
+        )
+        self._start_review(selected)
+
+    def _on_specific_missing_desc(self) -> None:
+        if not self._ensure_specific_vouchers():
+            return
+
+        selected = [
+            voucher
+            for voucher in self._vouchers
+            if not (voucher.description or "").strip()
+        ]
+        if not selected:
+            QMessageBox.information(
+                self,
+                "Ingen treff",
+                "Fant ingen bilag uten beskrivelse.",
+            )
+            return
+
+        self.lbl_specific_result.setText(
+            f"Valgt {len(selected)} bilag uten beskrivelse."
+        )
+        self._start_review(selected)
+
+    def _on_specific_no_ap(self) -> None:
+        if not self._ensure_specific_vouchers():
+            return
+
+        selected = [
+            voucher for voucher in self._vouchers if not self._has_ap_line(voucher)
+        ]
+        if not selected:
+            QMessageBox.information(
+                self,
+                "Ingen treff",
+                "Fant ingen bilag uten føring mot leverandørgjeld.",
+            )
+            return
+
+        self.lbl_specific_result.setText(
+            f"Valgt {len(selected)} bilag uten føring mot leverandørgjeld."
+        )
+        self._start_review(selected)
+
+    def _ensure_specific_vouchers(self) -> bool:
+        if not self._vouchers:
+            QMessageBox.information(
+                self,
+                "Ingen bilag",
+                "Det finnes ingen inngående fakturaer å velge ut.",
+            )
+            return False
+        return True
+
+    def _update_specific_available_label(self, count: int) -> None:
+        if count:
+            self.lbl_specific_available.setText(
+                f"Tilgjengelige bilag: {count} kostnadsbilag klare for utvalg."
+            )
+            self.btn_specific_threshold.setEnabled(True)
+            self.btn_specific_top.setEnabled(True)
+            self.btn_specific_round.setEnabled(True)
+            self.btn_specific_missing_desc.setEnabled(True)
+            self.btn_specific_no_ap.setEnabled(True)
+        else:
+            self.lbl_specific_available.setText(
+                "Ingen kostnadsbilag tilgjengelig i valgt periode."
+            )
+            self.btn_specific_threshold.setEnabled(False)
+            self.btn_specific_top.setEnabled(False)
+            self.btn_specific_round.setEnabled(False)
+            self.btn_specific_missing_desc.setEnabled(False)
+            self.btn_specific_no_ap.setEnabled(False)
+
     def _start_review(self, vouchers: Sequence["saft_customers.CostVoucher"]) -> None:
         if not vouchers:
             QMessageBox.information(
@@ -628,10 +717,11 @@ class CostVoucherReviewPage(QWidget):
         self.summary_table.setVisible(False)
         self.btn_export_pdf.setEnabled(False)
         self.lbl_summary.setText("Ingen bilag kontrollert ennå.")
-        self.btn_start_sample.setText("Start nytt utvalg")
-        self.tab_widget.setTabEnabled(2, True)
-        self.tab_widget.setTabEnabled(3, False)
-        self.tab_widget.setCurrentIndex(2)
+        if not self._is_specific:
+            self.btn_start_sample.setText("Start nytt utvalg")
+        self.tab_widget.setTabEnabled(1, True)
+        self.tab_widget.setTabEnabled(2, False)
+        self.tab_widget.setCurrentIndex(1)
         self._update_status_display(None)
         self._refresh_summary_table(force_rebuild=True)
         self._show_current_voucher()
@@ -772,8 +862,8 @@ class CostVoucherReviewPage(QWidget):
         )
         self.summary_table.setVisible(True)
         self.btn_export_pdf.setEnabled(True)
-        self.tab_widget.setTabEnabled(3, True)
-        self.tab_widget.setCurrentIndex(3)
+        self.tab_widget.setTabEnabled(2, True)
+        self.tab_widget.setCurrentIndex(2)
         self._update_navigation_state()
 
     def _refresh_summary_table(
@@ -787,7 +877,7 @@ class CostVoucherReviewPage(QWidget):
             self.summary_table.setVisible(False)
             self.btn_export_pdf.setEnabled(False)
             self.lbl_summary.setText("Ingen bilag kontrollert ennå.")
-            self.tab_widget.setTabEnabled(3, False)
+            self.tab_widget.setTabEnabled(2, False)
             self._update_coverage_badges()
             return
 
@@ -805,7 +895,7 @@ class CostVoucherReviewPage(QWidget):
             self.lbl_summary.setText(f"{completed_count} av {row_count} bilag vurdert.")
         else:
             self.lbl_summary.setText(f"Alle {row_count} bilag er kontrollert.")
-        self.tab_widget.setTabEnabled(3, True)
+        self.tab_widget.setTabEnabled(2, True)
 
         if needs_rebuild or changed_row is None:
             rows_to_update: Iterable[int] = range(row_count)
@@ -888,15 +978,13 @@ class CostVoucherReviewPage(QWidget):
         else:
             state = "pending"
             text = "Ikke vurdert"
+        self.value_status.setProperty("status", state)
         self.value_status.setText(text)
-        self.value_status.setProperty("statusState", state)
         self.value_status.style().unpolish(self.value_status)
         self.value_status.style().polish(self.value_status)
 
     def _expand_rows_for_multiline_comments(self, table: QTableWidget) -> None:
         header = table.verticalHeader()
-        if header is None:
-            return
         minimum_height = compact_row_base_height(table)
         row_count = table.rowCount()
         if row_count == 0:
@@ -907,7 +995,8 @@ class CostVoucherReviewPage(QWidget):
             if item is None:
                 continue
             text = item.text().strip()
-            if "\n" not in text:
+            if "
+" not in text:
                 continue
             header.setSectionResizeMode(row, QHeaderView.ResizeToContents)
             table.resizeRowToContents(row)
@@ -993,6 +1082,19 @@ class CostVoucherReviewPage(QWidget):
             return 0.0
         return numeric
 
+    def _is_round_amount(self, voucher: "saft_customers.CostVoucher") -> bool:
+        amount = round(abs(self._extract_amount(voucher.amount)), 2)
+        if amount < 1000:
+            return False
+        return amount % 1000 == 0
+
+    @staticmethod
+    def _has_ap_line(voucher: "saft_customers.CostVoucher") -> bool:
+        for line in voucher.lines:
+            if line.account and line.account.startswith("24"):
+                return True
+        return False
+
     def _update_coverage_badges(self) -> None:
         total_available = self._total_available_amount
         reviewed = self._sum_reviewed_amount()
@@ -1018,7 +1120,8 @@ class CostVoucherReviewPage(QWidget):
             self.selection_badge_coverage,
         ):
             badge.set_value(coverage_text)
-        self._update_total_amount_label()
+        if not self._is_specific:
+            self._update_total_amount_label()
 
     def _on_export_pdf(self) -> None:
         if not self._results or any(result is None for result in self._results):
@@ -1111,7 +1214,8 @@ class CostVoucherReviewPage(QWidget):
                     supplier_text,
                     self._format_amount(voucher.amount),
                     result.status,
-                    (result.comment or "").replace("\n", " "),
+                    (result.comment or "").replace("
+", " "),
                 ]
             )
 
@@ -1224,6 +1328,40 @@ class CostVoucherReviewPage(QWidget):
             "Arbeidspapir lagret",
             f"Arbeidspapiret ble lagret til {file_path}.",
         )
+
+
+class CostVoucherReviewPage(QWidget):
+    """Interaktiv side for bilagskontroll av kostnader."""
+
+    def __init__(self, title: str, subtitle: str) -> None:
+        super().__init__()
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(24)
+
+        self.module_tabs = QTabWidget()
+        self.module_tabs.setObjectName("costModules")
+        layout.addWidget(self.module_tabs)
+
+        self.random_module = _CostVoucherReviewModule(
+            self,
+            title,
+            subtitle,
+            is_specific=False,
+        )
+        self.module_tabs.addTab(self.random_module, "Tilfeldig utvalg")
+
+        self.specific_module = _CostVoucherReviewModule(
+            self,
+            "Spesifikt utvalg",
+            "",
+            is_specific=True,
+        )
+        self.module_tabs.addTab(self.specific_module, "Spesifikt utvalg")
+
+    def set_vouchers(self, vouchers: Sequence["saft_customers.CostVoucher"]) -> None:
+        self.random_module.set_vouchers(vouchers)
+        self.specific_module.set_vouchers(vouchers)
 
 
 class FixedAssetsPage(QWidget):
