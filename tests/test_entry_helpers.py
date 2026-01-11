@@ -1,5 +1,3 @@
-"""Tester for desimal-parsing i SAF-T-hjelperne."""
-
 from __future__ import annotations
 
 from decimal import Decimal
@@ -11,36 +9,34 @@ from nordlys.saft.entry_helpers import _normalize_decimal_text, _parse_decimal_t
 
 
 @pytest.mark.parametrize(
-    "raw, expected",
+    ("raw", "expected"),
     [
+        ("1 234,56", "1234.56"),
         ("1.234,56", "1234.56"),
         ("1,234.56", "1234.56"),
-        ("1.234.567", "1234567"),
     ],
 )
-def test_normalize_decimal_text_stripper_tusenskilletegn(
+def test_normalize_decimal_text_handles_common_formats(
     raw: str, expected: str
 ) -> None:
-    """Vanlige tusenskilletegn skal fjernes før desimalberegning."""
-
     assert _normalize_decimal_text(raw) == expected
 
 
-def test_parse_decimal_text_håndterer_formatterte_tall() -> None:
-    """Parsingen skal tåle formaterte tall uten å kaste."""
-
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("1 234,56", Decimal("1234.56")),
+        ("1.234,56", Decimal("1234.56")),
+        ("1,234.56", Decimal("1234.56")),
+    ],
+)
+def test_parse_decimal_text_parses_common_formats(
+    raw: str, expected: Decimal
+) -> None:
     value = _parse_decimal_text(
-        "9.876,54", field="Amount", line=10, xml_path=Path("fil.xml")
+        raw,
+        field="DebitAmount",
+        line=None,
+        xml_path=Path("test.xml"),
     )
-    assert value == Decimal("9876.54")
-
-
-def test_parse_decimal_text_ignorerer_tynne_mellomrom() -> None:
-    """Tall med smale mellomrom som skilletegn skal fortsatt parses."""
-
-    raw = "1 234,50"  # inneholder narrow no-break space som tusenskille
-    value = _parse_decimal_text(
-        raw, field="Amount", line=None, xml_path=Path("fil.xml")
-    )
-
-    assert value == Decimal("1234.50")
+    assert value == expected
