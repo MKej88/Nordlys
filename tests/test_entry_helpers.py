@@ -17,7 +17,8 @@ from nordlys.saft.entry_helpers import _normalize_decimal_text, _parse_decimal_t
     ],
 )
 def test_normalize_decimal_text_handles_common_formats(
-    raw: str, expected: str
+    raw: str,
+    expected: str,
 ) -> None:
     assert _normalize_decimal_text(raw) == expected
 
@@ -31,7 +32,8 @@ def test_normalize_decimal_text_handles_common_formats(
     ],
 )
 def test_parse_decimal_text_parses_common_formats(
-    raw: str, expected: Decimal
+    raw: str,
+    expected: Decimal,
 ) -> None:
     value = _parse_decimal_text(
         raw,
