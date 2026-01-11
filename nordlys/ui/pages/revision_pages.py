@@ -995,8 +995,7 @@ class _CostVoucherReviewModule(QWidget):
             if item is None:
                 continue
             text = item.text().strip()
-            if "
-" not in text:
+            if "\n" not in text:
                 continue
             header.setSectionResizeMode(row, QHeaderView.ResizeToContents)
             table.resizeRowToContents(row)
