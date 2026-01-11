@@ -996,7 +996,7 @@ class _CostVoucherReviewModule(QWidget):
         else:
             state = "pending"
             text = "Ikke vurdert"
-        self.value_status.setProperty("status", state)
+        self.value_status.setProperty("statusState", state)
         self.value_status.setText(text)
         self.value_status.style().unpolish(self.value_status)
         self.value_status.style().polish(self.value_status)
