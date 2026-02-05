@@ -2,28 +2,14 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from typing import Optional, Tuple, TYPE_CHECKING
-
-import os
 
 from PySide6.QtCore import QTimer, Qt, QtMsgType, qInstallMessageHandler
 from PySide6.QtWidgets import QApplication, QMainWindow, QTreeWidgetItem
 
 from ..saft.periods import format_header_period
-from .styles import build_stylesheet
-from .window_layout import WindowComponents
-from .window_initializers import (
-    configure_window_geometry,
-    create_data_controller,
-    create_dataset_services,
-    create_import_controller,
-    create_responsive_controller,
-    ScreenProfile,
-    initialize_pages,
-    populate_navigation,
-    setup_components,
-)
 
 if TYPE_CHECKING:  # pragma: no cover - kun for typekontroll
     from ..core.task_runner import TaskRunner
@@ -32,6 +18,8 @@ if TYPE_CHECKING:  # pragma: no cover - kun for typekontroll
     from .import_export import ImportExportController
     from .page_manager import PageManager
     from .page_registry import PageRegistry
+    from .window_initializers import ScreenProfile
+    from .window_layout import WindowComponents
 
 
 class NordlysWindow(QMainWindow):
@@ -39,7 +27,13 @@ class NordlysWindow(QMainWindow):
 
     def __init__(self) -> None:
         super().__init__()
-        self._screen_profile: ScreenProfile = configure_window_geometry(self)
+        from .window_initializers import (
+            configure_window_geometry,
+            create_responsive_controller,
+            setup_components,
+        )
+
+        self._screen_profile: "ScreenProfile" = configure_window_geometry(self)
         self._dataset_store: Optional[SaftDatasetStore] = None
         self._analytics: Optional[SaftAnalytics] = None
         self._task_runner: Optional[TaskRunner] = None
@@ -64,7 +58,7 @@ class NordlysWindow(QMainWindow):
         self.header_bar.export_requested.connect(self._handle_export_requested)
         self.header_bar.export_pdf_requested.connect(self._handle_export_pdf_requested)
 
-    def _bind_components(self, components: WindowComponents) -> None:
+    def _bind_components(self, components: "WindowComponents") -> None:
         self.nav_panel = components.nav_panel
         self._content_layout = components.content_layout
         self.header_bar = components.header_bar
@@ -79,6 +73,8 @@ class NordlysWindow(QMainWindow):
 
     # region UI
     def _apply_styles(self) -> None:
+        from .styles import build_stylesheet
+
         self.setStyleSheet(build_stylesheet(self._screen_profile.scale_factor))
 
     def showEvent(self, event) -> None:  # type: ignore[override]
@@ -156,6 +152,8 @@ class NordlysWindow(QMainWindow):
                 or self._data_controller is None
             ):
                 raise RuntimeError("Importkontrolleren kan ikke opprettes ennå.")
+            from .window_initializers import create_import_controller
+
             controller = create_import_controller(
                 self,
                 self._dataset_store,
@@ -204,6 +202,13 @@ class NordlysWindow(QMainWindow):
         if self._startup_timer is not None and self._startup_timer.isActive():
             self._startup_timer.stop()
         try:
+            from .window_initializers import (
+                create_data_controller,
+                create_dataset_services,
+                initialize_pages,
+                populate_navigation,
+            )
+
             (
                 self._dataset_store,
                 self._analytics,
