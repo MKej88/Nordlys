@@ -48,11 +48,7 @@ REVISION_TASKS: Dict[str, List[str]] = {
         "Bekreft vesentlige kontrakter",
         "Test cut-off rundt periodeslutt",
     ],
-    "rev.mva": [
-        "Stem av mva-koder mot innleverte oppgaver",
-        "Kontroller mva-grunnlag",
-        "Verifiser justeringer og korrigeringer",
-    ],
+    "rev.mva": [],
 }
 
 NAV_ICON_FILENAMES: Dict[str, str] = {

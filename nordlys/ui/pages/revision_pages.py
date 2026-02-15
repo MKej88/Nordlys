@@ -51,6 +51,7 @@ from ...regnskap.driftsmidler import (
     find_possible_disposals,
     summarize_asset_accessions_by_account,
 )
+from ...regnskap.mva import find_vat_deviations
 from ...saft.models import CostVoucher
 from ..tables import (
     apply_compact_row_heights,
@@ -70,6 +71,7 @@ __all__ = [
     "CostVoucherReviewPage",
     "SalesArPage",
     "PurchasesApPage",
+    "MvaDeviationPage",
 ]
 
 
@@ -110,6 +112,143 @@ class ChecklistPage(QWidget):
         self.list_widget.clear()
         for item in items:
             QListWidgetItem(item, self.list_widget)
+
+
+class MvaDeviationPage(QWidget):
+    """Viser bilag med avvikende mva-behandling per konto."""
+
+    def __init__(self, title: str, subtitle: str) -> None:
+        super().__init__()
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(24)
+
+        self.card = CardFrame(title, subtitle)
+        self.card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+        intro = QLabel(
+            "Siden viser bilag der mva-koden avviker fra den vanligste koden "
+            "på samme konto."
+        )
+        intro.setWordWrap(True)
+        self.card.add_widget(intro)
+
+        self.status_label = QLabel("Ingen bilag tilgjengelig.")
+        self.status_label.setObjectName("infoLabel")
+        self.card.add_widget(self.status_label)
+
+        self.empty_state = EmptyStateWidget(
+            "Ingen avvik funnet",
+            "Importer en SAF-T-fil for å se avvikende mva-behandling.",
+            icon="✅",
+        )
+        self.empty_state.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.MinimumExpanding
+        )
+
+        self.table = create_table_widget()
+        self.table.setColumnCount(10)
+        self.table.setHorizontalHeaderLabels(
+            [
+                "Konto",
+                "Kontonavn",
+                "Vanlig mva-kode",
+                "Bilagets mva-kode",
+                "Bilag",
+                "Dato",
+                "Leverandor",
+                "Bilagssum",
+                "Treff",
+                "Beskrivelse",
+            ]
+        )
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(5, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(6, QHeaderView.Stretch)
+        header.setSectionResizeMode(7, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(8, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(9, QHeaderView.Stretch)
+        self.table.hide()
+
+        self.card.add_widget(self.empty_state)
+        self.card.add_widget(self.table)
+        layout.addWidget(self.card, 1)
+
+    def set_vouchers(self, vouchers: Sequence[CostVoucher]) -> None:
+        if not vouchers:
+            self.status_label.setText(
+                "Ingen kostnadsbilag tilgjengelig i valgt periode."
+            )
+            self.table.setRowCount(0)
+            self._toggle_table(False)
+            return
+
+        deviations = find_vat_deviations(vouchers)
+        if not deviations:
+            self.status_label.setText("Fant ingen avvikende mva-behandling per konto.")
+            self.table.setRowCount(0)
+            self._toggle_table(False)
+            return
+
+        rows = [
+            (
+                item.account,
+                item.account_name,
+                item.expected_vat_code,
+                item.observed_vat_code,
+                item.voucher_number,
+                self._format_date(item.transaction_date),
+                item.supplier,
+                item.voucher_amount,
+                f"{item.expected_count}/{item.total_count}",
+                item.description or "—",
+            )
+            for item in deviations
+        ]
+        populate_table(
+            self.table,
+            [
+                "Konto",
+                "Kontonavn",
+                "Vanlig mva-kode",
+                "Bilagets mva-kode",
+                "Bilag",
+                "Dato",
+                "Leverandor",
+                "Bilagssum",
+                "Treff",
+                "Beskrivelse",
+            ],
+            rows,
+            money_cols={7},
+        )
+        self.status_label.setText(
+            f"Fant {self._format_count(len(deviations))} bilag med avvikende mva-kode."
+        )
+        self._toggle_table(True)
+
+    @staticmethod
+    def _format_date(value: Optional[date]) -> str:
+        if value is None:
+            return "—"
+        return value.strftime("%d.%m.%Y")
+
+    @staticmethod
+    def _format_count(value: int) -> str:
+        return f"{value:,}".replace(",", " ")
+
+    def _toggle_table(self, show_table: bool) -> None:
+        if show_table:
+            self.empty_state.hide()
+            self.table.show()
+            return
+        self.table.hide()
+        self.empty_state.show()
 
 
 class _CostVoucherReviewModule(QWidget):

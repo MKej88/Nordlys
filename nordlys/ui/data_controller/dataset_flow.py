@@ -223,6 +223,8 @@ class DatasetFlowController:
             pages.cost_review_page.set_vouchers(store.cost_vouchers)
         if pages.fixed_assets_page:
             pages.fixed_assets_page.update_data(store.saft_df, store.cost_vouchers)
+        if pages.mva_page:
+            pages.mva_page.set_vouchers(store.cost_vouchers)
 
         if pages.vesentlig_page:
             pages.vesentlig_page.update_summary(
@@ -304,6 +306,8 @@ class DatasetFlowController:
             pages.cost_review_page.set_vouchers([])
         if pages.fixed_assets_page:
             pages.fixed_assets_page.clear()
+        if pages.mva_page:
+            pages.mva_page.set_vouchers([])
 
     def _update_dataset_selector(self) -> None:
         store = self._context.dataset_store
