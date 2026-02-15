@@ -1,156 +1,143 @@
 # Nordlys
 
-Nordlys er et skrivebordsprogram i Python som hjelper revisorer og controllere
-med å lese, validere og analysere SAF-T-filer. Programmet bruker PySide6 for et
-enkelt grensesnitt og kombinerer egen analyse med data fra
-Brønnøysundregistrene.
+Nordlys er et skrivebordsprogram i Python for gjennomgang av SAF-T-regnskap.
+Programmet hjelper deg med import, kontroll og enkel analyse i ett og samme
+vindu.
 
-## Hva er nytt nå
+## Hva programmet gjør nå
 
-- Import kjører i bakgrunnen via `TaskRunner`, med fremdriftslinje og tydelige
-  meldinger på hvilke filer som behandles akkurat nå.
-- Store SAF-T-filer strømmes når du slår på `NORDLYS_SAFT_STREAMING=1`, slik at
-  prøvebalanse beregnes mens filen leses. Sett
-  `NORDLYS_SAFT_STREAMING_VALIDATE=1` for å validere mot XSD samtidig
-  (krever `xmlschema`).
-- Datasett fra samme selskap legges i en tidslinje, og "forrige år" hentes
-  automatisk når to filer hører til samme organisasjonsnummer. Nytt selskap
-  nullstiller tidslinjen slik at tall ikke blandes.
-- Brønnøysund-oppslag, bransjeklassifisering og nøkkeltall skjer parallelt og
-  caches, med klar feilmelding dersom tjenesten er nede.
-- Eksport til Excel og PDF er aktivert direkte i toppmenyen. Excel-filen
-  inneholder saldobalanse, NS4102-sammendrag, kunde- og leverandørtabeller,
-  Brønnøysund-data (både rådata og felttolkning) samt et ark med utvalgte
-  kostnadsbilag. PDF-en gir et kort sammendrag med nøkkeltall og topplister.
-- En enkel kommandolinje (`python -m nordlys.industry_groups_cli`) gjør at du
-  kan teste bransjeklassifisering uten å åpne GUI-et.
+- Leser én eller flere SAF-T XML-filer.
+- Kjører import i bakgrunnen med fremdriftslinje.
+- Viser saldobalanse, nøkkeltall og sammenstillinger.
+- Bygger kunde-/leverandøranalyser og utvalg av kostnadsbilag.
+- Henter Brønnøysund-data og foreslår bransjegruppe når org.nr finnes.
+- Eksporterer data til Excel og PDF.
+- Støtter sammenligning med forrige år når filer hører til samme selskap.
 
-## Hovedfunksjoner
+## Navigasjon i appen
 
-- 📂 Last inn flere SAF-T-filer i samme operasjon. Datasettene lagres og kan
-  byttes mellom via toppfeltet.
-- 🔄 Automatisk kobling mot «forrige år» når to SAF-T-filer har samme
-  organisasjonsnummer. Kontoer fra tidligere år vises som egne kolonner i
-  regnearket i tillegg til en egen «forrige»-kolonne.
-- 📊 Dashboard med nøkkeltall (driftsinntekter, EBITDA/EBIT/resultatmargin),
-  NS4102-sammendrag og status for data- og valideringsfeil.
-- 🧾 Kunde- og leverandøranalyse med topplister, transaksjonsantall og
-  stikkprøver av kostnadsbilag for manuell kontroll.
-- 🧭 Integrasjon mot Brønnøysundregistrene med mapping av nøkkeltall og
-  bransjeklassifisering som kan gjenbrukes i appen og ved eksport.
-- 📐 Variasjonsanalyse over flere år (standardavvik) for å flagge uvanlige
-  endringer i utvalgte nøkkeltall.
-- 💾 Ett-klikks eksport til Excel og PDF, inkludert eventuelle
-  Brønnøysund-resultater.
+Menyen i venstre side består av:
 
-## Forutsetninger
+- **Import**
+- **Dashboard**
+- **Planlegging**
+  - Saldobalanse
+  - Kontroll IB
+  - Regnskapsanalyse
+  - Vesentlighetsvurdering
+  - Sammenstillingsanalyse
+- **Revisjon**
+  - Innkjøp og leverandørgjeld
+  - Lønn
+  - Kostnad
+  - Driftsmidler
+  - Finans og likvid
+  - Varelager og varekjøp
+  - Salg og kundefordringer
+  - MVA
 
-- Python 3.11 anbefales (samme versjon som brukes for linting og formatering).
-- Operativsystem med støtte for PySide6 (Windows, macOS eller Linux med X11
-  eller Wayland).
-- Tilgang til internett dersom Brønnøysund-data skal hentes.
-- `xmlschema` er valgfritt og trengs kun hvis du vil XSD-validere SAF-T-filer
-  under import eller streaming.
+## Krav
 
-## Avhengigheter og teknologi
+- Python **3.11**
+- Operativsystem med støtte for PySide6
+- Internett hvis du vil hente data fra Brønnøysundregistrene
 
-Alle avhengigheter ligger i `requirements.txt` og kan installeres med
-`pip install -r requirements.txt`.
+## Installering
 
-- `pandas` – behandling av saldobalanse og analyseresultater.
-- `PySide6` – driver det grafiske grensesnittet.
-- `requests` og `requests-cache` – henter og cacher Brønnøysund-data.
-- `xlsxwriter` og `openpyxl` – Excel-eksport.
-- `reportlab` – generering av PDF-rapport rett fra GUI-et.
-- `pytest` – enhetstester som genererer nødvendige SAF-T-data ved kjøring.
-- `ruff`, `black` og `mypy` – utviklerverktøy for linting, formatering og
-  statisk typekontroll.
+1. Opprett virtuelt miljø:
 
-## Komme i gang
-
-1. **Opprett og aktiver et virtuelt miljø** (anbefalt):
    ```bash
    python -m venv .venv
-   source .venv/bin/activate  # Windows: .venv\Scripts\activate
+   source .venv/bin/activate
    ```
-2. **Installer avhengigheter**:
+
+   På Windows:
+
+   ```bash
+   .venv\Scripts\activate
+   ```
+
+2. Installer avhengigheter:
+
    ```bash
    pip install -r requirements.txt
    ```
-3. **Start Nordlys**:
-   ```bash
-   python main.py
-   ```
 
-## Kommandolinje (frivillig)
+## Starte programmet
 
-Vil du bare sjekke bransje uten å starte GUI-et, kan du kjøre:
+```bash
+python main.py
+```
+
+## Valgfrie miljøvariabler
+
+Disse kan settes før oppstart:
+
+- `NORDLYS_SAFT_STREAMING=1`  
+  Slår på streaming av hovedbok/prøvebalanse for store filer.
+- `NORDLYS_SAFT_STREAMING_VALIDATE=1`  
+  Validerer SAF-T under streaming (krever `xmlschema`).
+- `NORDLYS_SAFT_HEAVY_PARALLEL=1`  
+  Gir mer parallell behandling av tunge filer.
+- `NORDLYS_NAV_WIDTH=<tall>`  
+  Overstyrer bredden på venstremenyen.
+
+## Kommandolinje for bransjeoppslag
+
+Du kan bruke bransjeklassifisering uten å starte GUI:
 
 ```bash
 python -m nordlys.industry_groups_cli --orgnr 123456789
 ```
 
-Bruk `--saft sti/til/fil.xml` om du vil hente bransje rett fra en SAF-T-fil.
+Du kan også lese direkte fra SAF-T-fil:
 
-## Navigasjon i appen
+```bash
+python -m nordlys.industry_groups_cli --saft sti/til/fil.xml
+```
 
-- **Import**: velg én eller flere SAF-T-filer. Importen kjøres i bakgrunnen og
-  fremdrift vises nederst i vinduet.
-- **Dashboard**: viser sammendrag av NS4102-nøkkeltall og KPI-er.
-- **Planlegging**:
-  - *Saldobalanse*: tabellvisning av alle kontoer.
-  - *Kontroll IB*: sammenligner mot Brønnøysund-rapporterte tall når de finnes.
-  - *Regnskapsanalyse*: viser sentrale nøkkeltall for inneværende år og forrige
-    år når tilgjengelig.
-  - *Vesentlighetsvurdering*: kort som hjelper med terskelverdier.
-  - *Sammenstillingsanalyse*: kontroll av endringer per konto.
-- **Revisjon**: sjekklister for hvert revisjonsområde samt egne sider for
-  kundefordringer (salg), leverandørgjeld (innkjøp) og bilagsutvalg på
-  kostnadskontoer.
-- **Eksport**: tilgjengelig fra toppfeltet. Skriver en Excel-rapport med
-  saldobalanse, sammendrag, kunde-/leverandørtabeller og Brønnøysund-data,
-  eller en PDF med korte sammendrag.
+Eller overstyre navn i oppslag:
 
-## Streaming og validering
+```bash
+python -m nordlys.industry_groups_cli --orgnr 123456789 --navn "Eksempel AS"
+```
 
-- Sett `NORDLYS_SAFT_STREAMING=1` hvis du vil at Nordlys skal strømme hovedboken
-  og beregne prøvebalanse før hele filen lastes inn.
-- Sett også `NORDLYS_SAFT_STREAMING_VALIDATE=1` hvis du har installert
-  `xmlschema` og ønsker XSD-validering i samme slengen.
-- Eventuelle avvik i prøvebalansen vises som feilmelding etter importen.
+## Eksport
 
-## Testing
+Fra appen kan du eksportere:
 
-Kjør testene lokalt med:
+- **Excel** med blant annet:
+  - Saldobalanse
+  - NS4102-sammendrag
+  - Salg per kunde
+  - Innkjøp per leverandør
+  - Brønnøysund-data (rå JSON + mapping)
+  - Utvalgte kostnadsbilag
+- **PDF** med kort sammendrag:
+  - Hovedtall
+  - Toppkunder
+  - Topp leverandører
+  - Utvalgte kostnadsbilag
+
+## Test
+
+Kjør tester med:
 
 ```bash
 pytest
 ```
 
-Testene lager alle nødvendige SAF-T-filer og datastrukturer selv, så du trenger
-ikke å laste ned eksempler på forhånd.
-
-## Struktur
-
-Kort oversikt over viktige moduler:
+## Struktur (kort)
 
 ```text
 Nordlys/
-├── main.py                  # Starter PySide6-applikasjonen
+├── main.py
 ├── nordlys/
-│   ├── core/                # TaskRunner som kjører tunge jobber i bakgrunnen
-│   ├── constants.py         # Felles konstanter og URL-mal
-│   ├── settings.py          # Miljøvariabler for streaming
-│   ├── helpers/             # Formatering, lazy imports, XML-hjelpere
-│   ├── saft/                # Parsing, streaming og XSD-validering av SAF-T
-│   │   ├── loader.py        # Laster SAF-T-filer i bakgrunnen
-│   │   ├── entry_stream.py  # Strømmer hovedboken og beregner prøvebalanse
-│   │   ├── trial_balance.py # Pakkefunksjon for streaming og feilrapportering
-│   │   └── brreg_enrichment.py # Henter Brønnøysund-data og bransjeinfo
-│   ├── saft_customers.py    # Bygger kunde-/leverandørtabeller og bilagsutvalg
-│   ├── industry_groups.py   # Bransjeklassifisering og cache
-│   ├── integrations/        # HTTP-klient, cache og modeller mot Brønnøysund
-│   ├── regnskap/            # Beregning av nøkkeltall for NS4102
-│   └── ui/                  # PySide6-grensesnitt, sider og eksport
-└── tests/                   # Pytest-suite som dekker parsing og analyser
+│   ├── core/          # Bakgrunnsjobber (TaskRunner)
+│   ├── integrations/  # Brønnøysund-klient, cache og modeller
+│   ├── regnskap/      # Regnskapsanalyse (bl.a. driftsmidler og MVA)
+│   ├── saft/          # Parsing, validering og SAF-T-analyse
+│   ├── ui/            # PySide6-vinduer, sider og eksport
+│   └── settings.py    # Miljøvariabler
+└── tests/
 ```
