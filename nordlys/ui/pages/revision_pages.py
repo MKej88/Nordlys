@@ -104,6 +104,7 @@ class _MvaAccountVoucherRow:
     transaction_date: Optional[date]
     supplier: str
     observed_vat_code: str
+    counter_accounts: str
     voucher_amount: float
     description: str
     is_deviation: bool
@@ -155,21 +156,22 @@ class _MvaAccountDetailsDialog(QDialog):
         intro = QLabel(
             "Konto: "
             f"{account} ({account_name or 'Ukjent konto'})\n"
-            f"Vanlig mva-kode: {expected_vat_code}\n"
+            f"Vanlig MVA-kode: {expected_vat_code}\n"
             f"Avvikende bilag: {len(rows)}"
         )
         intro.setWordWrap(True)
         layout.addWidget(intro)
 
         table = create_table_widget()
-        table.setColumnCount(6)
+        table.setColumnCount(7)
         table.setHorizontalHeaderLabels(
             [
                 "Bilag",
                 "Dato",
-                "Leverandor",
-                "Mva-kode",
-                "Belop",
+                "Leverandør",
+                "MVA-kode",
+                "Motkonto",
+                "Beløp",
                 "Beskrivelse",
             ]
         )
@@ -179,13 +181,15 @@ class _MvaAccountDetailsDialog(QDialog):
         header.setSectionResizeMode(2, QHeaderView.Stretch)
         header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(5, QHeaderView.Stretch)
+        header.setSectionResizeMode(5, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(6, QHeaderView.Stretch)
         table_rows = [
             (
                 item.voucher_number,
                 self._format_date(item.transaction_date),
                 item.supplier,
                 item.observed_vat_code,
+                item.counter_accounts,
                 item.voucher_amount,
                 item.description or "—",
             )
@@ -196,13 +200,14 @@ class _MvaAccountDetailsDialog(QDialog):
             [
                 "Bilag",
                 "Dato",
-                "Leverandor",
-                "Mva-kode",
-                "Belop",
+                "Leverandør",
+                "MVA-kode",
+                "Motkonto",
+                "Beløp",
                 "Beskrivelse",
             ],
             table_rows,
-            money_cols={4},
+            money_cols={5},
         )
         layout.addWidget(table, 1)
 
@@ -263,15 +268,15 @@ class MvaDeviationPage(QWidget):
         summary_row.setSpacing(12)
         self.badge_accounts = StatBadge(
             "Kontoer med avvik",
-            "Antall kontoer med avvikende mva-behandling",
+            "Antall kontoer med avvikende MVA-behandling",
         )
         self.badge_vouchers = StatBadge(
             "Avvikende bilag",
-            "Antall bilag som avviker fra vanlig mva-kode",
+            "Antall bilag som avviker fra vanlig MVA-kode",
         )
         self.badge_amount = StatBadge(
             "Sum alle kontoer",
-            "Samlet belop for avvikende bilag",
+            "Samlet beløp for avvikende bilag",
         )
         summary_row.addWidget(self.badge_accounts)
         summary_row.addWidget(self.badge_vouchers)
@@ -294,7 +299,7 @@ class MvaDeviationPage(QWidget):
             [
                 "Konto",
                 "Kontonavn",
-                "Vanlig mva-kode",
+                "Vanlig MVA-kode",
                 "Avvikende bilag",
                 "Sum avvik",
                 "Antall bilag",
@@ -326,9 +331,7 @@ class MvaDeviationPage(QWidget):
         self._vouchers = list(vouchers)
 
         if not vouchers:
-            self.status_label.setText(
-                "Ingen kostnadsbilag tilgjengelig i valgt periode."
-            )
+            self.status_label.setText("Ingen bilag tilgjengelig i valgt periode.")
             self.table.setRowCount(0)
             self._set_summary_values(0, 0, 0.0)
             self._toggle_table(False)
@@ -337,7 +340,7 @@ class MvaDeviationPage(QWidget):
         deviations = find_vat_deviations(vouchers)
         summaries = summarize_vat_deviations(deviations)
         if not summaries:
-            self.status_label.setText("Fant ingen avvikende mva-behandling per konto.")
+            self.status_label.setText("Fant ingen avvikende MVA-behandling per konto.")
             self.table.setRowCount(0)
             self._set_summary_values(0, 0, 0.0)
             self._toggle_table(False)
@@ -373,7 +376,7 @@ class MvaDeviationPage(QWidget):
             self.table.setRowHeight(row, 40)
 
         self.status_label.setText(
-            f"Fant {self._format_count(len(summaries))} kontoer med mva-avvik."
+            f"Fant {self._format_count(len(summaries))} kontoer med MVA-avvik."
         )
         total_amount = sum(item.deviation_amount for item in summaries)
         self._set_summary_values(len(summaries), len(deviations), total_amount)
@@ -412,9 +415,14 @@ class MvaDeviationPage(QWidget):
         rows: list[_MvaAccountVoucherRow] = []
         for voucher in self._vouchers:
             vat_codes: set[str] = set()
+            counter_accounts: set[str] = set()
             has_account = False
+            account_amount = 0.0
             for line in voucher.lines:
-                if (line.account or "").strip() != account:
+                line_account = (line.account or "").strip()
+                if line_account != account:
+                    if line_account:
+                        counter_accounts.add(line_account)
                     continue
                 has_account = True
                 vat_code = (line.vat_code or "").strip()
@@ -424,9 +432,15 @@ class MvaDeviationPage(QWidget):
                     )
                 else:
                     vat_codes.add("Ingen")
+                account_amount += self._safe_amount(line.debit) - self._safe_amount(
+                    line.credit
+                )
             if not has_account:
                 continue
             observed_vat_code = ", ".join(sorted(vat_codes)) if vat_codes else "Ingen"
+            counter_text = (
+                ", ".join(sorted(counter_accounts)) if counter_accounts else "—"
+            )
             rows.append(
                 _MvaAccountVoucherRow(
                     voucher_number=(
@@ -438,10 +452,11 @@ class MvaDeviationPage(QWidget):
                     supplier=(
                         (voucher.supplier_name or "").strip()
                         or (voucher.supplier_id or "").strip()
-                        or "Ukjent leverandor"
+                        or "Ukjent leverandør"
                     ),
                     observed_vat_code=observed_vat_code,
-                    voucher_amount=self._safe_amount(voucher.amount),
+                    counter_accounts=counter_text,
+                    voucher_amount=abs(account_amount),
                     description=(voucher.description or "").strip(),
                     is_deviation=observed_vat_code != expected_vat_code,
                 )

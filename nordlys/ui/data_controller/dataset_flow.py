@@ -224,7 +224,7 @@ class DatasetFlowController:
         if pages.fixed_assets_page:
             pages.fixed_assets_page.update_data(store.saft_df, store.cost_vouchers)
         if pages.mva_page:
-            pages.mva_page.set_vouchers(store.cost_vouchers)
+            pages.mva_page.set_vouchers(store.all_vouchers)
 
         if pages.vesentlig_page:
             pages.vesentlig_page.update_summary(

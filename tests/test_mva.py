@@ -236,3 +236,99 @@ def test_summarize_vat_deviations_groups_per_account() -> None:
     assert second.deviation_count == 1
     assert second.deviation_amount == 1000.0
     assert second.expected_vat_code == "3"
+
+
+def test_find_vat_deviations_uses_account_line_amount_not_voucher_total() -> None:
+    vouchers = [
+        CostVoucher(
+            transaction_id="1",
+            document_number="B1",
+            transaction_date=date(2025, 5, 1),
+            supplier_id="LEV-Nord",
+            supplier_name="Nord AS",
+            description="Bilag B1",
+            amount=0.0,
+            lines=[
+                VoucherLine(
+                    account="3000",
+                    account_name="Salg",
+                    description="Salg",
+                    vat_code="1",
+                    debit=0.0,
+                    credit=1000.0,
+                ),
+                VoucherLine(
+                    account="1500",
+                    account_name="Kundefordringer",
+                    description="Motpost",
+                    vat_code=None,
+                    debit=1000.0,
+                    credit=0.0,
+                ),
+            ],
+        ),
+        CostVoucher(
+            transaction_id="2",
+            document_number="B2",
+            transaction_date=date(2025, 5, 2),
+            supplier_id="LEV-Vest",
+            supplier_name="Vest AS",
+            description="Bilag B2",
+            amount=0.0,
+            lines=[
+                VoucherLine(
+                    account="3000",
+                    account_name="Salg",
+                    description="Salg",
+                    vat_code="1",
+                    debit=0.0,
+                    credit=1200.0,
+                ),
+                VoucherLine(
+                    account="1500",
+                    account_name="Kundefordringer",
+                    description="Motpost",
+                    vat_code=None,
+                    debit=1200.0,
+                    credit=0.0,
+                ),
+            ],
+        ),
+        CostVoucher(
+            transaction_id="3",
+            document_number="B3",
+            transaction_date=date(2025, 5, 3),
+            supplier_id="LEV-Sor",
+            supplier_name="Sor AS",
+            description="Bilag B3",
+            amount=0.0,
+            lines=[
+                VoucherLine(
+                    account="3000",
+                    account_name="Salg",
+                    description="Salg",
+                    vat_code="2",
+                    debit=0.0,
+                    credit=900.0,
+                ),
+                VoucherLine(
+                    account="1500",
+                    account_name="Kundefordringer",
+                    description="Motpost",
+                    vat_code=None,
+                    debit=900.0,
+                    credit=0.0,
+                ),
+            ],
+        ),
+    ]
+
+    deviations = find_vat_deviations(vouchers)
+    summaries = summarize_vat_deviations(deviations)
+
+    assert len(deviations) == 1
+    sales_deviation = next(item for item in deviations if item.account == "3000")
+    assert sales_deviation.voucher_amount == 900.0
+
+    sales_summary = next(item for item in summaries if item.account == "3000")
+    assert sales_summary.deviation_amount == 900.0

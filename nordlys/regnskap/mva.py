@@ -55,6 +55,7 @@ class _LineAccumulator:
     account_name: str = ""
     description: str = ""
     vat_codes: set[str] = field(default_factory=set)
+    amount: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -163,19 +164,20 @@ def _collect_voucher_account_entries(
             if not accumulator.description:
                 accumulator.description = _normalize_text(line.description)
             accumulator.vat_codes.add(_normalize_vat_code(line.vat_code))
+            accumulator.amount += _safe_amount(line.debit) - _safe_amount(line.credit)
 
         if not per_account:
             continue
 
         voucher_number = _voucher_number(voucher)
         supplier = _voucher_supplier(voucher)
-        voucher_amount = _safe_amount(voucher.amount)
         voucher_description = _normalize_text(voucher.description)
 
         for account, accumulator in per_account.items():
             observed_vat = " + ".join(sorted(accumulator.vat_codes))
             account_name = accumulator.account_name or "Ukjent konto"
             description = voucher_description or accumulator.description
+            account_amount = abs(accumulator.amount)
             entries.append(
                 _VoucherAccountVat(
                     account=account,
@@ -184,7 +186,7 @@ def _collect_voucher_account_entries(
                     voucher_number=voucher_number,
                     transaction_date=voucher.transaction_date,
                     supplier=supplier,
-                    voucher_amount=voucher_amount,
+                    voucher_amount=account_amount,
                     description=description,
                 )
             )
@@ -221,7 +223,7 @@ def _voucher_supplier(voucher: CostVoucher) -> str:
     return (
         _normalize_text(voucher.supplier_name)
         or _normalize_text(voucher.supplier_id)
-        or "Ukjent leverandor"
+        or "Ukjent leverandør"
     )
 
 

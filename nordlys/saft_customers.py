@@ -17,6 +17,7 @@ from .saft.analytics import (
     compute_purchases_per_supplier,
     compute_sales_per_customer,
     extract_credit_notes,
+    extract_all_vouchers,
     extract_cost_vouchers,
 )
 from .saft.export import save_outputs
@@ -46,6 +47,7 @@ __all__ = [
     "CostVoucher",
     "VoucherLine",
     "extract_cost_vouchers",
+    "extract_all_vouchers",
     "ReceivablePostingAnalysis",
     "BankPostingAnalysis",
     "analyze_receivable_postings",

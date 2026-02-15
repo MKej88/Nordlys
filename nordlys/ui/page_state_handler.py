@@ -155,7 +155,7 @@ class PageStateHandler:
             )
         elif key == "rev.mva" and isinstance(widget, MvaDeviationPage):
             self.mva_page = widget
-            widget.set_vouchers(self._dataset_store.cost_vouchers)
+            widget.set_vouchers(self._dataset_store.all_vouchers)
         elif key in self._revision_tasks and isinstance(widget, ChecklistPage):
             widget.set_items(list(self._revision_tasks.get(key, [])))
         self._schedule_responsive_update()

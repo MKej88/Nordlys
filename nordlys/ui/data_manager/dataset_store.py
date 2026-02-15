@@ -72,6 +72,7 @@ class SaftDatasetStore:
         ] = None
         self._bank_analysis: Optional["saft_customers.BankPostingAnalysis"] = None
         self._cost_vouchers: List["saft_customers.CostVoucher"] = []
+        self._all_vouchers: List["saft_customers.CostVoucher"] = []
         self._trial_balance: Optional[Dict[str, object]] = None
         self._trial_balance_error: Optional[str] = None
         self._trial_balance_checked: bool = False
@@ -181,6 +182,11 @@ class SaftDatasetStore:
         self._receivable_analysis = result.receivable_analysis
         self._bank_analysis = result.bank_analysis
         self._cost_vouchers = list(result.cost_vouchers)
+        self._all_vouchers = (
+            list(result.all_vouchers)
+            if getattr(result, "all_vouchers", None) is not None
+            else list(result.cost_vouchers)
+        )
         self._trial_balance = result.trial_balance
         self._trial_balance_error = result.trial_balance_error
         self._trial_balance_checked = bool(
@@ -280,6 +286,10 @@ class SaftDatasetStore:
     @property
     def cost_vouchers(self) -> List["saft_customers.CostVoucher"]:
         return self._cost_vouchers
+
+    @property
+    def all_vouchers(self) -> List["saft_customers.CostVoucher"]:
+        return self._all_vouchers
 
     @property
     def trial_balance(self) -> Optional[Dict[str, object]]:
@@ -698,6 +708,7 @@ class SaftDatasetStore:
         self._receivable_analysis = None
         self._bank_analysis = None
         self._cost_vouchers = []
+        self._all_vouchers = []
         self._trial_balance = None
         self._trial_balance_error = None
         self._trial_balance_checked = False
