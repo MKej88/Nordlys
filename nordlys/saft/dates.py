@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from functools import lru_cache
 from datetime import date, datetime
 from typing import Optional
 
@@ -17,6 +18,13 @@ def parse_saft_date(value: Optional[str]) -> Optional[date]:
     text = value.strip()
     if not text:
         return None
+
+    return _parse_saft_date_cached(text)
+
+
+@lru_cache(maxsize=4096)
+def _parse_saft_date_cached(text: str) -> Optional[date]:
+    """Tolk en dato-streng med enkel cache for raskere masseimport."""
 
     try:
         return date.fromisoformat(text)
