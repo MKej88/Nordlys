@@ -19,3 +19,15 @@ def test_zero_values_are_preserved() -> None:
     scaled = build_stylesheet(0.9)
 
     assert "padding-bottom: 0px;" in scaled
+
+
+def test_build_stylesheet_includes_secondary_button_style() -> None:
+    stylesheet = build_stylesheet()
+
+    assert "QPushButton[secondary='true']" in stylesheet
+
+
+def test_build_stylesheet_includes_invalid_input_state() -> None:
+    stylesheet = build_stylesheet()
+
+    assert "QLineEdit[invalid='true']" in stylesheet

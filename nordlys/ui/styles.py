@@ -28,11 +28,22 @@ QTreeWidget::item:focus { outline: none; }
 #navTree::item { height: 34px; padding: 6px 8px 6px 6px; border-radius: 10px; margin: 1px 0; }
 #navTree::item:selected { background-color: rgba(59, 130, 246, 0.35); color: #f8fafc; font-weight: 600; }
 #navTree::item:hover { background-color: rgba(59, 130, 246, 0.18); }
-QPushButton { background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 #2563eb, stop:1 #1d4ed8); color: #f8fafc; border-radius: 10px; padding: 10px 20px; font-weight: 600; letter-spacing: 0.2px; }
+QPushButton { background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 #2563eb, stop:1 #1d4ed8); color: #f8fafc; border-radius: 10px; padding: 10px 20px; font-weight: 600; letter-spacing: 0.2px; border: 1px solid rgba(30, 64, 175, 0.45); }
 QPushButton:focus { outline: none; }
 QPushButton:disabled { background-color: #94a3b8; color: #e5e7eb; }
 QPushButton:hover:!disabled { background-color: #1e40af; }
 QPushButton:pressed { background-color: #1d4ed8; }
+QPushButton[secondary='true'] {
+    background: #f8fafc;
+    color: #1d4ed8;
+    border: 1px solid rgba(37, 99, 235, 0.35);
+}
+QPushButton[secondary='true']:hover:!disabled {
+    background: #eff6ff;
+}
+QPushButton[secondary='true']:pressed {
+    background: #dbeafe;
+}
 QPushButton#approveButton { background-color: #16a34a; }
 QPushButton#approveButton:hover:!disabled { background-color: #15803d; }
 QPushButton#approveButton:pressed { background-color: #166534; }
@@ -110,6 +121,7 @@ QLabel#statusLabel[statusState='pending'] {
 QTableWidget { background-color: transparent; alternate-background-color: #f8fafc; }
 QTableWidget::item { padding: 1px 8px; }
 QTableWidget::item:selected { background-color: rgba(37, 99, 235, 0.22); color: #0f172a; }
+QTableWidget::item:hover { background-color: rgba(37, 99, 235, 0.1); }
 QHeaderView::section { background-color: rgba(148, 163, 184, 0.12); border: none; font-weight: 700; color: #0f172a; padding: 10px 6px; text-transform: uppercase; letter-spacing: 0.8px; }
 QHeaderView::section:horizontal { border-bottom: 2px solid rgba(37, 99, 235, 0.35); }
 QListWidget#checklist { border: none; }
@@ -149,6 +161,10 @@ QLineEdit, QPlainTextEdit, QTextEdit {
 QLineEdit:focus, QPlainTextEdit:focus, QTextEdit:focus {
     border-color: #2563eb;
     background-color: #ffffff;
+}
+QLineEdit[invalid='true'], QPlainTextEdit[invalid='true'], QTextEdit[invalid='true'] {
+    border-color: #dc2626;
+    background-color: #fff1f2;
 }
 QPlainTextEdit#commentInput {
     min-height: 100px;
