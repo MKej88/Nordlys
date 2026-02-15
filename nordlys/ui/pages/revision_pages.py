@@ -20,6 +20,8 @@ from PySide6.QtGui import QColor, QPalette, QTextOption
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
+    QCheckBox,
+    QDoubleSpinBox,
     QFileDialog,
     QFrame,
     QGridLayout,
@@ -55,6 +57,7 @@ from ...regnskap.driftsmidler import (
 )
 from ...regnskap.mva import (
     VatDeviation,
+    VatDeviationAccountSummary,
     find_vat_deviations,
     summarize_vat_deviations,
 )
@@ -244,6 +247,8 @@ class MvaDeviationPage(QWidget):
         self._account_names: dict[str, str] = {}
         self._expected_vat_by_account: dict[str, str] = {}
         self._vouchers: list[CostVoucher] = []
+        self._all_deviations: list[VatDeviation] = []
+        self._all_summaries: list[VatDeviationAccountSummary] = []
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -262,6 +267,27 @@ class MvaDeviationPage(QWidget):
         self.status_label = QLabel("Ingen bilag tilgjengelig.")
         self.status_label.setObjectName("infoLabel")
         self.card.add_widget(self.status_label)
+
+        filter_row = QHBoxLayout()
+        filter_row.setContentsMargins(0, 0, 0, 0)
+        filter_row.setSpacing(10)
+        self.chk_min_amount = QCheckBox("Vis kun avvik over sum:")
+        self.chk_min_amount.toggled.connect(self._on_filter_toggled)
+        self.spin_min_amount = QDoubleSpinBox()
+        self.spin_min_amount.setRange(0, 1_000_000_000)
+        self.spin_min_amount.setDecimals(0)
+        self.spin_min_amount.setSingleStep(1000)
+        self.spin_min_amount.setValue(10000)
+        self.spin_min_amount.setSuffix(" kr")
+        self.spin_min_amount.setGroupSeparatorShown(True)
+        self.spin_min_amount.setEnabled(False)
+        self.spin_min_amount.valueChanged.connect(
+            lambda _value: self._apply_summary_filter()
+        )
+        filter_row.addWidget(self.chk_min_amount)
+        filter_row.addWidget(self.spin_min_amount)
+        filter_row.addStretch(1)
+        self.card.add_layout(filter_row)
 
         summary_row = QHBoxLayout()
         summary_row.setContentsMargins(0, 0, 0, 0)
@@ -329,21 +355,29 @@ class MvaDeviationPage(QWidget):
         self._account_names = {}
         self._expected_vat_by_account = {}
         self._vouchers = list(vouchers)
+        self._all_deviations = []
+        self._all_summaries = []
 
         if not vouchers:
             self.status_label.setText("Ingen bilag tilgjengelig i valgt periode.")
             self.table.setRowCount(0)
             self._set_summary_values(0, 0, 0.0)
             self._toggle_table(False)
+            self.chk_min_amount.setEnabled(False)
+            self.spin_min_amount.setEnabled(False)
             return
 
         deviations = find_vat_deviations(vouchers)
         summaries = summarize_vat_deviations(deviations)
+        self._all_deviations = list(deviations)
+        self._all_summaries = list(summaries)
         if not summaries:
             self.status_label.setText("Fant ingen avvikende MVA-behandling per konto.")
             self.table.setRowCount(0)
             self._set_summary_values(0, 0, 0.0)
             self._toggle_table(False)
+            self.chk_min_amount.setEnabled(False)
+            self.spin_min_amount.setEnabled(False)
             return
 
         for item in deviations:
@@ -354,8 +388,47 @@ class MvaDeviationPage(QWidget):
             self._account_names[account] = item.account_name
             self._expected_vat_by_account[account] = item.expected_vat_code
 
-        self.table.setRowCount(len(summaries))
-        for row, summary in enumerate(summaries):
+        self.chk_min_amount.setEnabled(True)
+        self.spin_min_amount.setEnabled(self.chk_min_amount.isChecked())
+        self._apply_summary_filter()
+
+    def _on_filter_toggled(self, checked: bool) -> None:
+        self.spin_min_amount.setEnabled(checked)
+        self._apply_summary_filter()
+
+    def _apply_summary_filter(self) -> None:
+        if not self._vouchers:
+            return
+        if not self._all_summaries:
+            self.status_label.setText("Fant ingen avvikende MVA-behandling per konto.")
+            self.table.setRowCount(0)
+            self._set_summary_values(0, 0, 0.0)
+            self._toggle_table(False)
+            return
+
+        if self.chk_min_amount.isChecked():
+            minimum_sum = float(self.spin_min_amount.value())
+            visible_summaries = [
+                summary
+                for summary in self._all_summaries
+                if summary.deviation_amount >= minimum_sum
+            ]
+        else:
+            minimum_sum = 0.0
+            visible_summaries = list(self._all_summaries)
+
+        if not visible_summaries:
+            self.table.setRowCount(0)
+            self._set_summary_values(0, 0, 0.0)
+            self._toggle_table(False)
+            self.status_label.setText(
+                "Ingen kontoer med avvik over valgt beløpsgrense "
+                f"({format_currency(minimum_sum)})."
+            )
+            return
+
+        self.table.setRowCount(len(visible_summaries))
+        for row, summary in enumerate(visible_summaries):
             self._set_text_item(row, 0, summary.account)
             self._set_text_item(row, 1, summary.account_name)
             self._set_text_item(row, 2, summary.expected_vat_code)
@@ -375,11 +448,23 @@ class MvaDeviationPage(QWidget):
             self.table.setCellWidget(row, 6, button)
             self.table.setRowHeight(row, 40)
 
-        self.status_label.setText(
-            f"Fant {self._format_count(len(summaries))} kontoer med MVA-avvik."
+        total_amount = sum(item.deviation_amount for item in visible_summaries)
+        total_deviation_vouchers = sum(
+            item.deviation_count for item in visible_summaries
         )
-        total_amount = sum(item.deviation_amount for item in summaries)
-        self._set_summary_values(len(summaries), len(deviations), total_amount)
+        self._set_summary_values(
+            len(visible_summaries), total_deviation_vouchers, total_amount
+        )
+        if self.chk_min_amount.isChecked():
+            self.status_label.setText(
+                "Viser "
+                f"{self._format_count(len(visible_summaries))} kontoer med MVA-avvik "
+                f"over {format_currency(minimum_sum)}."
+            )
+        else:
+            self.status_label.setText(
+                f"Fant {self._format_count(len(visible_summaries))} kontoer med MVA-avvik."
+            )
         self._toggle_table(True)
 
     def _set_summary_values(
