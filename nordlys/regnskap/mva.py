@@ -12,7 +12,12 @@ from ..saft.models import CostVoucher
 
 _MISSING_VAT_CODE = "Ingen"
 
-__all__ = ["VatDeviation", "find_vat_deviations"]
+__all__ = [
+    "VatDeviation",
+    "VatDeviationAccountSummary",
+    "find_vat_deviations",
+    "summarize_vat_deviations",
+]
 
 
 @dataclass(frozen=True)
@@ -28,6 +33,19 @@ class VatDeviation:
     supplier: str
     voucher_amount: float
     description: str
+    expected_count: int
+    total_count: int
+
+
+@dataclass(frozen=True)
+class VatDeviationAccountSummary:
+    """Summary per account for deviating VAT treatment."""
+
+    account: str
+    account_name: str
+    expected_vat_code: str
+    deviation_count: int
+    deviation_amount: float
     expected_count: int
     total_count: int
 
@@ -99,6 +117,33 @@ def find_vat_deviations(
             )
 
     return sorted(deviations, key=_deviation_sort_key)
+
+
+def summarize_vat_deviations(
+    deviations: Sequence[VatDeviation],
+) -> List[VatDeviationAccountSummary]:
+    """Aggregate deviation rows to one summary per account."""
+
+    grouped: Dict[tuple[str, str], List[VatDeviation]] = defaultdict(list)
+    for item in deviations:
+        grouped[(item.account, item.expected_vat_code)].append(item)
+
+    summaries: List[VatDeviationAccountSummary] = []
+    for (account, expected_vat_code), items in grouped.items():
+        first = items[0]
+        summaries.append(
+            VatDeviationAccountSummary(
+                account=account,
+                account_name=first.account_name,
+                expected_vat_code=expected_vat_code,
+                deviation_count=len(items),
+                deviation_amount=sum(entry.voucher_amount for entry in items),
+                expected_count=first.expected_count,
+                total_count=first.total_count,
+            )
+        )
+
+    return sorted(summaries, key=lambda item: item.account)
 
 
 def _collect_voucher_account_entries(

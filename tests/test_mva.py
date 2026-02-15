@@ -1,6 +1,6 @@
 from datetime import date
 
-from nordlys.regnskap.mva import find_vat_deviations
+from nordlys.regnskap.mva import find_vat_deviations, summarize_vat_deviations
 from nordlys.saft.models import CostVoucher, VoucherLine
 
 
@@ -166,3 +166,73 @@ def test_find_vat_deviations_aggregates_multiple_lines_per_voucher_account() -> 
     deviation = deviations[0]
     assert deviation.voucher_number == "B3"
     assert deviation.observed_vat_code == "1 + 2"
+
+
+def test_summarize_vat_deviations_groups_per_account() -> None:
+    vouchers = [
+        _voucher(
+            tx_id="1",
+            doc="B1",
+            tx_date=date(2025, 4, 1),
+            supplier="Nord AS",
+            vat_code="1",
+            account="6320",
+        ),
+        _voucher(
+            tx_id="2",
+            doc="B2",
+            tx_date=date(2025, 4, 2),
+            supplier="Vest AS",
+            vat_code="1",
+            account="6320",
+        ),
+        _voucher(
+            tx_id="3",
+            doc="B3",
+            tx_date=date(2025, 4, 3),
+            supplier="Sor AS",
+            vat_code="2",
+            account="6320",
+        ),
+        _voucher(
+            tx_id="4",
+            doc="B4",
+            tx_date=date(2025, 4, 4),
+            supplier="Ost AS",
+            vat_code="3",
+            account="6340",
+        ),
+        _voucher(
+            tx_id="5",
+            doc="B5",
+            tx_date=date(2025, 4, 5),
+            supplier="Midt AS",
+            vat_code="3",
+            account="6340",
+        ),
+        _voucher(
+            tx_id="6",
+            doc="B6",
+            tx_date=date(2025, 4, 6),
+            supplier="Syd AS",
+            vat_code="4",
+            account="6340",
+        ),
+    ]
+
+    deviations = find_vat_deviations(vouchers)
+    summaries = summarize_vat_deviations(deviations)
+
+    assert len(summaries) == 2
+    first = summaries[0]
+    second = summaries[1]
+
+    assert first.account == "6320"
+    assert first.deviation_count == 1
+    assert first.deviation_amount == 1000.0
+    assert first.expected_vat_code == "1"
+
+    assert second.account == "6340"
+    assert second.deviation_count == 1
+    assert second.deviation_amount == 1000.0
+    assert second.expected_vat_code == "3"

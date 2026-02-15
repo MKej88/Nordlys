@@ -18,6 +18,8 @@ from typing import (
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPalette, QTextOption
 from PySide6.QtWidgets import (
+    QDialog,
+    QDialogButtonBox,
     QFileDialog,
     QFrame,
     QGridLayout,
@@ -51,7 +53,11 @@ from ...regnskap.driftsmidler import (
     find_possible_disposals,
     summarize_asset_accessions_by_account,
 )
-from ...regnskap.mva import find_vat_deviations
+from ...regnskap.mva import (
+    VatDeviation,
+    find_vat_deviations,
+    summarize_vat_deviations,
+)
 from ...saft.models import CostVoucher
 from ..tables import (
     apply_compact_row_heights,
@@ -92,6 +98,17 @@ class VoucherReviewResult:
     comment: str
 
 
+@dataclass(frozen=True)
+class _MvaAccountVoucherRow:
+    voucher_number: str
+    transaction_date: Optional[date]
+    supplier: str
+    observed_vat_code: str
+    voucher_amount: float
+    description: str
+    is_deviation: bool
+
+
 class ChecklistPage(QWidget):
     """Enkel sjekkliste for revisjonsområder."""
 
@@ -114,11 +131,115 @@ class ChecklistPage(QWidget):
             QListWidgetItem(item, self.list_widget)
 
 
+class _MvaAccountDetailsDialog(QDialog):
+    """Detaljvindu for avvikende bilag på én konto."""
+
+    def __init__(
+        self,
+        *,
+        account: str,
+        account_name: str,
+        expected_vat_code: str,
+        rows: Sequence[_MvaAccountVoucherRow],
+        parent: Optional[QWidget] = None,
+    ) -> None:
+        super().__init__(parent)
+        self.setWindowTitle(f"MVA-avvik {account}")
+        self.setModal(True)
+        self.resize(1000, 620)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
+
+        intro = QLabel(
+            "Konto: "
+            f"{account} ({account_name or 'Ukjent konto'})\n"
+            f"Vanlig mva-kode: {expected_vat_code}\n"
+            f"Avvikende bilag: {len(rows)}"
+        )
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+
+        table = create_table_widget()
+        table.setColumnCount(6)
+        table.setHorizontalHeaderLabels(
+            [
+                "Bilag",
+                "Dato",
+                "Leverandor",
+                "Mva-kode",
+                "Belop",
+                "Beskrivelse",
+            ]
+        )
+        header = table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.Stretch)
+        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(5, QHeaderView.Stretch)
+        table_rows = [
+            (
+                item.voucher_number,
+                self._format_date(item.transaction_date),
+                item.supplier,
+                item.observed_vat_code,
+                item.voucher_amount,
+                item.description or "—",
+            )
+            for item in sorted(rows, key=_mva_account_row_sort_key)
+        ]
+        populate_table(
+            table,
+            [
+                "Bilag",
+                "Dato",
+                "Leverandor",
+                "Mva-kode",
+                "Belop",
+                "Beskrivelse",
+            ],
+            table_rows,
+            money_cols={4},
+        )
+        layout.addWidget(table, 1)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Close)
+        buttons.rejected.connect(self.reject)
+        buttons.accepted.connect(self.accept)
+        layout.addWidget(buttons)
+
+    @staticmethod
+    def _format_date(value: Optional[date]) -> str:
+        if value is None:
+            return "—"
+        return value.strftime("%d.%m.%Y")
+
+
+def _mva_deviation_sort_key(item: VatDeviation) -> tuple[int, date, str]:
+    has_no_date = 1 if item.transaction_date is None else 0
+    sort_date = item.transaction_date or date.min
+    return (has_no_date, sort_date, item.voucher_number)
+
+
+def _mva_account_row_sort_key(item: _MvaAccountVoucherRow) -> tuple[int, date, str]:
+    has_no_date = 1 if item.transaction_date is None else 0
+    sort_date = item.transaction_date or date.min
+    return (has_no_date, sort_date, item.voucher_number)
+
+
 class MvaDeviationPage(QWidget):
-    """Viser bilag med avvikende mva-behandling per konto."""
+    """Viser oppsummering av avvikende mva-behandling per konto."""
 
     def __init__(self, title: str, subtitle: str) -> None:
         super().__init__()
+        self._deviations_by_account: dict[str, list[VatDeviation]] = {}
+        self._account_names: dict[str, str] = {}
+        self._expected_vat_by_account: dict[str, str] = {}
+        self._vouchers: list[CostVoucher] = []
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(24)
@@ -127,8 +248,8 @@ class MvaDeviationPage(QWidget):
         self.card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         intro = QLabel(
-            "Siden viser bilag der mva-koden avviker fra den vanligste koden "
-            "på samme konto."
+            "Siden viser oppsummering per konto med antall avvikende bilag og sum. "
+            "Trykk 'Vis bilag' for detaljer."
         )
         intro.setWordWrap(True)
         self.card.add_widget(intro)
@@ -136,6 +257,27 @@ class MvaDeviationPage(QWidget):
         self.status_label = QLabel("Ingen bilag tilgjengelig.")
         self.status_label.setObjectName("infoLabel")
         self.card.add_widget(self.status_label)
+
+        summary_row = QHBoxLayout()
+        summary_row.setContentsMargins(0, 0, 0, 0)
+        summary_row.setSpacing(12)
+        self.badge_accounts = StatBadge(
+            "Kontoer med avvik",
+            "Antall kontoer med avvikende mva-behandling",
+        )
+        self.badge_vouchers = StatBadge(
+            "Avvikende bilag",
+            "Antall bilag som avviker fra vanlig mva-kode",
+        )
+        self.badge_amount = StatBadge(
+            "Sum alle kontoer",
+            "Samlet belop for avvikende bilag",
+        )
+        summary_row.addWidget(self.badge_accounts)
+        summary_row.addWidget(self.badge_vouchers)
+        summary_row.addWidget(self.badge_amount)
+        summary_row.addStretch(1)
+        self.card.add_layout(summary_row)
 
         self.empty_state = EmptyStateWidget(
             "Ingen avvik funnet",
@@ -147,19 +289,16 @@ class MvaDeviationPage(QWidget):
         )
 
         self.table = create_table_widget()
-        self.table.setColumnCount(10)
+        self.table.setColumnCount(7)
         self.table.setHorizontalHeaderLabels(
             [
                 "Konto",
                 "Kontonavn",
                 "Vanlig mva-kode",
-                "Bilagets mva-kode",
-                "Bilag",
-                "Dato",
-                "Leverandor",
-                "Bilagssum",
-                "Treff",
-                "Beskrivelse",
+                "Avvikende bilag",
+                "Sum avvik",
+                "Antall bilag",
+                "Detaljer",
             ]
         )
         header = self.table.horizontalHeader()
@@ -169,74 +308,158 @@ class MvaDeviationPage(QWidget):
         header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(5, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(6, QHeaderView.Stretch)
-        header.setSectionResizeMode(7, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(8, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(9, QHeaderView.Stretch)
+        header.setSectionResizeMode(6, QHeaderView.Fixed)
+        self.table.setColumnWidth(6, 132)
+        self.table.verticalHeader().setMinimumSectionSize(40)
+        self.table.verticalHeader().setDefaultSectionSize(40)
         self.table.hide()
 
         self.card.add_widget(self.empty_state)
         self.card.add_widget(self.table)
         layout.addWidget(self.card, 1)
+        self._set_summary_values(0, 0, 0.0)
 
     def set_vouchers(self, vouchers: Sequence[CostVoucher]) -> None:
+        self._deviations_by_account = {}
+        self._account_names = {}
+        self._expected_vat_by_account = {}
+        self._vouchers = list(vouchers)
+
         if not vouchers:
             self.status_label.setText(
                 "Ingen kostnadsbilag tilgjengelig i valgt periode."
             )
             self.table.setRowCount(0)
+            self._set_summary_values(0, 0, 0.0)
             self._toggle_table(False)
             return
 
         deviations = find_vat_deviations(vouchers)
-        if not deviations:
+        summaries = summarize_vat_deviations(deviations)
+        if not summaries:
             self.status_label.setText("Fant ingen avvikende mva-behandling per konto.")
             self.table.setRowCount(0)
+            self._set_summary_values(0, 0, 0.0)
             self._toggle_table(False)
             return
 
-        rows = [
-            (
-                item.account,
-                item.account_name,
-                item.expected_vat_code,
-                item.observed_vat_code,
-                item.voucher_number,
-                self._format_date(item.transaction_date),
-                item.supplier,
-                item.voucher_amount,
-                f"{item.expected_count}/{item.total_count}",
-                item.description or "—",
+        for item in deviations:
+            account = item.account
+            if account not in self._deviations_by_account:
+                self._deviations_by_account[account] = []
+            self._deviations_by_account[account].append(item)
+            self._account_names[account] = item.account_name
+            self._expected_vat_by_account[account] = item.expected_vat_code
+
+        self.table.setRowCount(len(summaries))
+        for row, summary in enumerate(summaries):
+            self._set_text_item(row, 0, summary.account)
+            self._set_text_item(row, 1, summary.account_name)
+            self._set_text_item(row, 2, summary.expected_vat_code)
+            self._set_text_item(row, 3, self._format_count(summary.deviation_count))
+            self._set_text_item(row, 4, format_currency(summary.deviation_amount))
+            self._set_text_item(row, 5, self._format_count(summary.total_count))
+
+            button = QPushButton("Vis bilag")
+            button.setObjectName("tableActionButton")
+            button.setMinimumWidth(108)
+            button.setMinimumHeight(30)
+            button.clicked.connect(
+                lambda _checked=False, account=summary.account: self._show_details(
+                    account
+                )
             )
-            for item in deviations
-        ]
-        populate_table(
-            self.table,
-            [
-                "Konto",
-                "Kontonavn",
-                "Vanlig mva-kode",
-                "Bilagets mva-kode",
-                "Bilag",
-                "Dato",
-                "Leverandor",
-                "Bilagssum",
-                "Treff",
-                "Beskrivelse",
-            ],
-            rows,
-            money_cols={7},
-        )
+            self.table.setCellWidget(row, 6, button)
+            self.table.setRowHeight(row, 40)
+
         self.status_label.setText(
-            f"Fant {self._format_count(len(deviations))} bilag med avvikende mva-kode."
+            f"Fant {self._format_count(len(summaries))} kontoer med mva-avvik."
         )
+        total_amount = sum(item.deviation_amount for item in summaries)
+        self._set_summary_values(len(summaries), len(deviations), total_amount)
         self._toggle_table(True)
 
+    def _set_summary_values(
+        self, account_count: int, voucher_count: int, total_amount: float
+    ) -> None:
+        self.badge_accounts.set_value(self._format_count(account_count))
+        self.badge_vouchers.set_value(self._format_count(voucher_count))
+        self.badge_amount.set_value(format_currency(total_amount))
+
+    def _show_details(self, account: str) -> None:
+        expected_vat = self._expected_vat_by_account.get(account)
+        if not expected_vat:
+            return
+        rows = [
+            row
+            for row in self._collect_account_rows(account, expected_vat)
+            if row.is_deviation
+        ]
+        if not rows:
+            return
+        dialog = _MvaAccountDetailsDialog(
+            account=account,
+            account_name=self._account_names.get(account, ""),
+            expected_vat_code=expected_vat,
+            rows=rows,
+            parent=self,
+        )
+        dialog.exec()
+
+    def _collect_account_rows(
+        self, account: str, expected_vat_code: str
+    ) -> list[_MvaAccountVoucherRow]:
+        rows: list[_MvaAccountVoucherRow] = []
+        for voucher in self._vouchers:
+            vat_codes: set[str] = set()
+            has_account = False
+            for line in voucher.lines:
+                if (line.account or "").strip() != account:
+                    continue
+                has_account = True
+                vat_code = (line.vat_code or "").strip()
+                if vat_code:
+                    vat_codes.update(
+                        part.strip() for part in vat_code.split(",") if part.strip()
+                    )
+                else:
+                    vat_codes.add("Ingen")
+            if not has_account:
+                continue
+            observed_vat_code = ", ".join(sorted(vat_codes)) if vat_codes else "Ingen"
+            rows.append(
+                _MvaAccountVoucherRow(
+                    voucher_number=(
+                        (voucher.document_number or "").strip()
+                        or (voucher.transaction_id or "").strip()
+                        or "Uten bilagsnummer"
+                    ),
+                    transaction_date=voucher.transaction_date,
+                    supplier=(
+                        (voucher.supplier_name or "").strip()
+                        or (voucher.supplier_id or "").strip()
+                        or "Ukjent leverandor"
+                    ),
+                    observed_vat_code=observed_vat_code,
+                    voucher_amount=self._safe_amount(voucher.amount),
+                    description=(voucher.description or "").strip(),
+                    is_deviation=observed_vat_code != expected_vat_code,
+                )
+            )
+        return rows
+
     @staticmethod
-    def _format_date(value: Optional[date]) -> str:
-        if value is None:
-            return "—"
-        return value.strftime("%d.%m.%Y")
+    def _safe_amount(value: Optional[float]) -> float:
+        try:
+            return float(value) if value is not None else 0.0
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _set_text_item(self, row: int, column: int, text: str) -> None:
+        item = QTableWidgetItem(text)
+        if column in {3, 4, 5}:
+            item.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
+        self.table.setItem(row, column, item)
 
     @staticmethod
     def _format_count(value: int) -> str:
