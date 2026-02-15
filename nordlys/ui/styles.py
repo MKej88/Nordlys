@@ -56,6 +56,21 @@ QPushButton#navButton:pressed { background-color: #0369a1; }
 QPushButton#exportPdfButton { background-color: #f97316; }
 QPushButton#exportPdfButton:hover:!disabled { background-color: #ea580c; }
 QPushButton#exportPdfButton:pressed { background-color: #c2410c; }
+QPushButton#tableActionButton {
+    background: #eff6ff;
+    color: #1d4ed8;
+    border: 1px solid rgba(37, 99, 235, 0.45);
+    border-radius: 10px;
+    padding: 3px 8px;
+    font-size: 12px;
+    font-weight: 700;
+}
+QPushButton#tableActionButton:hover:!disabled {
+    background: #dbeafe;
+}
+QPushButton#tableActionButton:pressed {
+    background: #bfdbfe;
+}
 #card { background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 #ffffff, stop:1 #f8fbff); border-radius: 20px; border: 1px solid rgba(148, 163, 184, 0.32); }
 #cardTitle { font-size: 20px; font-weight: 700; color: #0f172a; letter-spacing: 0.2px; }
 #cardSubtitle { color: #475569; font-size: 13px; line-height: 1.5; }

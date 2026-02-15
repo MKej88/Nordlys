@@ -19,6 +19,7 @@ from .reporting import (
     analyze_receivable_postings,
     analyze_bank_postings,
     extract_credit_notes,
+    extract_all_vouchers,
     extract_cost_vouchers,
 )
 
@@ -37,5 +38,6 @@ __all__ = [
     "analyze_receivable_postings",
     "analyze_bank_postings",
     "extract_cost_vouchers",
+    "extract_all_vouchers",
     "extract_credit_notes",
 ]

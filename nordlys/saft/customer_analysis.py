@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from typing import Dict, List, MutableMapping, Optional, Tuple, TYPE_CHECKING
 import xml.etree.ElementTree as ET
@@ -28,6 +28,7 @@ class CustomerSupplierAnalysis:
     customer_sales: Optional["pd.DataFrame"]
     supplier_purchases: Optional["pd.DataFrame"]
     cost_vouchers: List["saft_customers.CostVoucher"]
+    all_vouchers: List["saft_customers.CostVoucher"] = field(default_factory=list)
     credit_notes: Optional["pd.DataFrame"] = None
     sales_ar_correlation: Optional["saft_customers.SalesReceivableCorrelation"] = None
     receivable_analysis: Optional["saft_customers.ReceivablePostingAnalysis"] = None
@@ -89,6 +90,7 @@ def build_customer_supplier_analysis(
     customer_sales: Optional["pd.DataFrame"] = None
     supplier_purchases: Optional["pd.DataFrame"] = None
     cost_vouchers: List["saft_customers.CostVoucher"] = []
+    all_vouchers: List["saft_customers.CostVoucher"] = []
     credit_notes: Optional["pd.DataFrame"] = None
 
     period_start = _parse_date(header.period_start) if header else None
@@ -123,6 +125,13 @@ def build_customer_supplier_analysis(
                 date_to=effective_end,
                 parent_map=parent_map,
             )
+            all_vouchers = saft_customers.extract_all_vouchers(
+                root,
+                ns,
+                date_from=effective_start,
+                date_to=effective_end,
+                parent_map=parent_map,
+            )
         elif analysis_year is not None:
             customer_sales, supplier_purchases = (
                 saft_customers.compute_customer_supplier_totals(
@@ -133,6 +142,12 @@ def build_customer_supplier_analysis(
                 )
             )
             cost_vouchers = saft_customers.extract_cost_vouchers(
+                root,
+                ns,
+                year=analysis_year,
+                parent_map=parent_map,
+            )
+            all_vouchers = saft_customers.extract_all_vouchers(
                 root,
                 ns,
                 year=analysis_year,
@@ -153,6 +168,12 @@ def build_customer_supplier_analysis(
             )
         )
         cost_vouchers = saft_customers.extract_cost_vouchers(
+            root,
+            ns,
+            year=analysis_year,
+            parent_map=parent_map,
+        )
+        all_vouchers = saft_customers.extract_all_vouchers(
             root,
             ns,
             year=analysis_year,
@@ -180,6 +201,7 @@ def build_customer_supplier_analysis(
         customer_sales=customer_sales,
         supplier_purchases=supplier_purchases,
         cost_vouchers=cost_vouchers,
+        all_vouchers=all_vouchers,
         credit_notes=credit_notes,
         sales_ar_correlation=sales_ar_correlation,
         analysis_start_date=effective_start,

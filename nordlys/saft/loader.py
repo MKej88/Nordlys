@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import os
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
 from threading import Lock
@@ -62,6 +62,7 @@ class SaftLoadResult:
     analysis_year: Optional[int]
     summary: Optional[Dict[str, float]]
     validation: "saft.SaftValidationResult"
+    all_vouchers: List["saft_customers.CostVoucher"] = field(default_factory=list)
     trial_balance: Optional[Dict[str, Decimal]] = None
     trial_balance_error: Optional[str] = None
     brreg_json: Optional[Dict[str, object]] = None
@@ -263,6 +264,7 @@ def load_saft_file(
         customer_sales = analysis.customer_sales
         supplier_purchases = analysis.supplier_purchases
         cost_vouchers = analysis.cost_vouchers
+        all_vouchers = analysis.all_vouchers
         credit_notes = analysis.credit_notes
         sales_ar_correlation = analysis.sales_ar_correlation
 
@@ -313,6 +315,7 @@ def load_saft_file(
         sales_ar_correlation=sales_ar_correlation,
         receivable_analysis=receivable_analysis,
         cost_vouchers=cost_vouchers,
+        all_vouchers=all_vouchers,
         analysis_year=analysis_year,
         summary=summary,
         trial_balance=trial_balance,

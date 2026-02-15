@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from .reporting_accounts import build_account_name_map, extract_cost_vouchers
+from .reporting_accounts import (
+    build_account_name_map,
+    extract_all_vouchers,
+    extract_cost_vouchers,
+)
 from .reporting_customers import (
     BankPostingAnalysis,
     SalesReceivableCorrelation,
@@ -28,5 +32,6 @@ __all__ = [
     "analyze_receivable_postings",
     "analyze_bank_postings",
     "extract_cost_vouchers",
+    "extract_all_vouchers",
     "build_account_name_map",
 ]

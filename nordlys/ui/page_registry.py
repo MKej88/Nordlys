@@ -22,6 +22,7 @@ if TYPE_CHECKING:  # pragma: no cover - kun for typekontroll
         ChecklistPage,
         CostVoucherReviewPage,
         FixedAssetsPage,
+        MvaDeviationPage,
         PurchasesApPage,
         SalesArPage,
     )
@@ -57,7 +58,7 @@ REVISION_DEFINITIONS: Dict[str, Tuple[str, str]] = {
     ),
     "rev.mva": (
         "MVA",
-        "Kontroll av avgiftsbehandling og rapportering.",
+        "Finn bilag med avvikende mva-behandling per konto.",
     ),
 }
 
@@ -138,6 +139,14 @@ class PageRegistry:
                     ),
                     attr="fixed_assets_page",
                 )
+            elif key == "rev.mva":
+                self._manager.register_lazy_page(
+                    key,
+                    lambda title=title, subtitle=subtitle: self._build_mva_page(
+                        title, subtitle
+                    ),
+                    attr="mva_page",
+                )
             else:
                 self._manager.register_lazy_page(
                     key,
@@ -210,6 +219,11 @@ class PageRegistry:
         from .pages.revision_pages import FixedAssetsPage
 
         return FixedAssetsPage(title, subtitle)
+
+    def _build_mva_page(self, title: str, subtitle: str) -> "MvaDeviationPage":
+        from .pages.revision_pages import MvaDeviationPage
+
+        return MvaDeviationPage(title, subtitle)
 
     def _build_checklist_page(
         self, _key: str, title: str, subtitle: str
