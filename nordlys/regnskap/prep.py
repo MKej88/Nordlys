@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import weakref
 from dataclasses import dataclass
 from typing import Callable, Iterable, Optional, TYPE_CHECKING
 
@@ -11,6 +12,11 @@ if TYPE_CHECKING:  # pragma: no cover - kun for typekontroll
     import pandas as pd
 
 pd = lazy_pandas()
+
+
+_PREFIX_HELPER_CACHE: dict[
+    int, tuple["weakref.ReferenceType[pd.DataFrame]", "_PrefixSumHelper"]
+] = {}
 
 
 def prepare_regnskap_dataframe(df: "pd.DataFrame") -> "pd.DataFrame":
@@ -113,7 +119,7 @@ class _PrefixSumHelper:
         series = value_provider(column)
 
         cached = self._column_cache.get(column)
-        if cached is None or cached.source is not series:
+        if cached is None:
             numeric = pd.to_numeric(series, errors="coerce").fillna(0.0)
             cached = _CachedColumn(source=series, numeric=numeric)
             self._column_cache[column] = cached
@@ -133,11 +139,7 @@ def sum_column_by_prefix(
 ) -> float:
     """Summerer verdier i en kolonne basert på kontonummer-prefikser."""
 
-    helper = prepared.attrs.get("_prefix_sum_helper")
-    if not isinstance(helper, _PrefixSumHelper) or not helper.is_compatible(prepared):
-        konto_series = prepared.get("konto", pd.Series("", index=prepared.index))
-        helper = _PrefixSumHelper(konto_series.astype(str).str.strip())
-        prepared.attrs["_prefix_sum_helper"] = helper
+    helper = _get_prefix_helper(prepared)
 
     def _provider(col: str) -> "pd.Series":
         if col in prepared.columns:
@@ -145,6 +147,28 @@ def sum_column_by_prefix(
         return helper.zero_series()
 
     return helper.sum(column, prefixes, _provider)
+
+
+def _get_prefix_helper(prepared: "pd.DataFrame") -> _PrefixSumHelper:
+    """Henter eller oppretter en helper som kan gjenbrukes for samme DataFrame."""
+
+    cache_key = id(prepared)
+    cached_entry = _PREFIX_HELPER_CACHE.get(cache_key)
+    if cached_entry is not None:
+        prepared_ref, helper = cached_entry
+        if prepared_ref() is prepared and helper.is_compatible(prepared):
+            return helper
+        _PREFIX_HELPER_CACHE.pop(cache_key, None)
+
+    konto_series = prepared.get("konto", pd.Series("", index=prepared.index))
+    helper = _PrefixSumHelper(konto_series.astype(str).str.strip())
+
+    def _cleanup(_: object) -> None:
+        _PREFIX_HELPER_CACHE.pop(cache_key, None)
+
+    _PREFIX_HELPER_CACHE[cache_key] = (weakref.ref(prepared, _cleanup), helper)
+
+    return helper
 
 
 __all__ = ["prepare_regnskap_dataframe", "sum_column_by_prefix"]

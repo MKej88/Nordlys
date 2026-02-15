@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import copy
+
 import pandas as pd
 import pytest
 
@@ -10,6 +12,7 @@ from nordlys.regnskap import (
     prepare_regnskap_dataframe,
 )
 from nordlys.regnskap.analysis import _clean_value
+from nordlys.regnskap import prep as prep_module
 from nordlys.regnskap.prep import sum_column_by_prefix
 
 
@@ -290,7 +293,7 @@ def test_sum_inntekter_includes_bade_salg_og_annen_inntekt():
     assert sum_inntekter.current == pytest.approx(150.0)
 
 
-def test_sum_column_by_prefix_reuses_cached_masks():
+def test_sum_column_by_prefix_fungerer_uten_tunge_attrs_cache():
     df = pd.DataFrame(
         [
             {"Konto": "1000", "IB Debet": 90.0, "UB Debet": 100.0},
@@ -302,17 +305,43 @@ def test_sum_column_by_prefix_reuses_cached_masks():
     prepared = prepare_regnskap_dataframe(df)
 
     first_sum = sum_column_by_prefix(prepared, "UB", ["10"])
-    helper = prepared.attrs.get("_prefix_sum_helper")
-    assert helper is not None
-
-    cached_mask = helper._mask_cache.get(("10",))
-    assert cached_mask is not None
-
     second_sum = sum_column_by_prefix(prepared, "IB", ["10"])
-    assert helper._mask_cache.get(("10",)) is cached_mask
+
+    copied = copy.deepcopy(prepared)
 
     assert first_sum == pytest.approx(110.0)
     assert second_sum == pytest.approx(98.0)
+    assert copied.shape == prepared.shape
+
+
+def test_sum_column_by_prefix_gjenbruker_cache_for_samme_dataframe(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    df = pd.DataFrame(
+        [
+            {"Konto": "1000", "UB Debet": 100.0},
+            {"Konto": "1005", "UB Debet": 10.0},
+            {"Konto": "2000", "UB Debet": 5.0},
+        ]
+    )
+
+    prepared = prepare_regnskap_dataframe(df)
+    original_to_numeric = prep_module.pd.to_numeric
+    calls = 0
+
+    def counting_to_numeric(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return original_to_numeric(*args, **kwargs)
+
+    monkeypatch.setattr(prep_module.pd, "to_numeric", counting_to_numeric)
+
+    first_sum = sum_column_by_prefix(prepared, "UB", ["10"])
+    second_sum = sum_column_by_prefix(prepared, "UB", ["10"])
+
+    assert first_sum == pytest.approx(110.0)
+    assert second_sum == pytest.approx(110.0)
+    assert calls == 1
 
 
 def test_clean_value_rounds_negative_numbers_to_nearest_integer():
