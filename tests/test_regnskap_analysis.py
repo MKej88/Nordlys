@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import copy
+
 import pandas as pd
 import pytest
 
@@ -290,7 +292,7 @@ def test_sum_inntekter_includes_bade_salg_og_annen_inntekt():
     assert sum_inntekter.current == pytest.approx(150.0)
 
 
-def test_sum_column_by_prefix_reuses_cached_masks():
+def test_sum_column_by_prefix_fungerer_uten_tunge_attrs_cache():
     df = pd.DataFrame(
         [
             {"Konto": "1000", "IB Debet": 90.0, "UB Debet": 100.0},
@@ -302,17 +304,13 @@ def test_sum_column_by_prefix_reuses_cached_masks():
     prepared = prepare_regnskap_dataframe(df)
 
     first_sum = sum_column_by_prefix(prepared, "UB", ["10"])
-    helper = prepared.attrs.get("_prefix_sum_helper")
-    assert helper is not None
-
-    cached_mask = helper._mask_cache.get(("10",))
-    assert cached_mask is not None
-
     second_sum = sum_column_by_prefix(prepared, "IB", ["10"])
-    assert helper._mask_cache.get(("10",)) is cached_mask
+
+    copied = copy.deepcopy(prepared)
 
     assert first_sum == pytest.approx(110.0)
     assert second_sum == pytest.approx(98.0)
+    assert copied.shape == prepared.shape
 
 
 def test_clean_value_rounds_negative_numbers_to_nearest_integer():

@@ -133,11 +133,8 @@ def sum_column_by_prefix(
 ) -> float:
     """Summerer verdier i en kolonne basert på kontonummer-prefikser."""
 
-    helper = prepared.attrs.get("_prefix_sum_helper")
-    if not isinstance(helper, _PrefixSumHelper) or not helper.is_compatible(prepared):
-        konto_series = prepared.get("konto", pd.Series("", index=prepared.index))
-        helper = _PrefixSumHelper(konto_series.astype(str).str.strip())
-        prepared.attrs["_prefix_sum_helper"] = helper
+    konto_series = prepared.get("konto", pd.Series("", index=prepared.index))
+    helper = _PrefixSumHelper(konto_series.astype(str).str.strip())
 
     def _provider(col: str) -> "pd.Series":
         if col in prepared.columns:
