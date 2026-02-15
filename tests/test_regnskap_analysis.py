@@ -12,6 +12,7 @@ from nordlys.regnskap import (
     prepare_regnskap_dataframe,
 )
 from nordlys.regnskap.analysis import _clean_value
+from nordlys.regnskap import prep as prep_module
 from nordlys.regnskap.prep import sum_column_by_prefix
 
 
@@ -311,6 +312,36 @@ def test_sum_column_by_prefix_fungerer_uten_tunge_attrs_cache():
     assert first_sum == pytest.approx(110.0)
     assert second_sum == pytest.approx(98.0)
     assert copied.shape == prepared.shape
+
+
+def test_sum_column_by_prefix_gjenbruker_cache_for_samme_dataframe(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    df = pd.DataFrame(
+        [
+            {"Konto": "1000", "UB Debet": 100.0},
+            {"Konto": "1005", "UB Debet": 10.0},
+            {"Konto": "2000", "UB Debet": 5.0},
+        ]
+    )
+
+    prepared = prepare_regnskap_dataframe(df)
+    original_to_numeric = prep_module.pd.to_numeric
+    calls = 0
+
+    def counting_to_numeric(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return original_to_numeric(*args, **kwargs)
+
+    monkeypatch.setattr(prep_module.pd, "to_numeric", counting_to_numeric)
+
+    first_sum = sum_column_by_prefix(prepared, "UB", ["10"])
+    second_sum = sum_column_by_prefix(prepared, "UB", ["10"])
+
+    assert first_sum == pytest.approx(110.0)
+    assert second_sum == pytest.approx(110.0)
+    assert calls == 1
 
 
 def test_clean_value_rounds_negative_numbers_to_nearest_integer():
