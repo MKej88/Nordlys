@@ -522,7 +522,7 @@ class MvaDeviationPage(QWidget):
                 )
             if not has_account:
                 continue
-            observed_vat_code = ", ".join(sorted(vat_codes)) if vat_codes else "Ingen"
+            observed_vat_code = " + ".join(sorted(vat_codes)) if vat_codes else "Ingen"
             counter_text = (
                 ", ".join(sorted(counter_accounts)) if counter_accounts else "—"
             )
