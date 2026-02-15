@@ -16,5 +16,5 @@ xmlschema>=2.2 ; extra == "xsd"
 
 # Utviklerverktøy
 ruff>=0.4
-black>=24.0
+black==25.12.0
 mypy>=1.8
