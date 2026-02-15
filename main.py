@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
-from nordlys.ui.pyside_app import run
+
+def main() -> None:
+    """Start programmet med sen import av GUI-modulen."""
+
+    from nordlys.ui.pyside_app import run
+
+    run()
 
 if __name__ == "__main__":
-    run()
+    main()

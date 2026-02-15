@@ -9,8 +9,6 @@ from typing import Optional, Tuple, TYPE_CHECKING
 from PySide6.QtCore import QTimer, Qt, QtMsgType, qInstallMessageHandler
 from PySide6.QtWidgets import QApplication, QMainWindow, QTreeWidgetItem
 
-from ..saft.periods import format_header_period
-
 if TYPE_CHECKING:  # pragma: no cover - kun for typekontroll
     from ..core.task_runner import TaskRunner
     from .data_controller import SaftDataController
@@ -125,6 +123,8 @@ class NordlysWindow(QMainWindow):
 
     # region Hjelpere
     def _update_header_fields(self) -> None:
+        from ..saft.periods import format_header_period
+
         if self._dataset_store is None:
             header = None
             industry = None
