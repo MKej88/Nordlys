@@ -163,7 +163,7 @@ def _collect_voucher_account_entries(
                 accumulator.account_name = _normalize_text(line.account_name)
             if not accumulator.description:
                 accumulator.description = _normalize_text(line.description)
-            accumulator.vat_codes.add(_normalize_vat_code(line.vat_code))
+            accumulator.vat_codes.update(_normalize_vat_codes(line.vat_code))
             accumulator.amount += _safe_amount(line.debit) - _safe_amount(line.credit)
 
         if not per_account:
@@ -193,16 +193,16 @@ def _collect_voucher_account_entries(
     return entries
 
 
-def _normalize_vat_code(value: Optional[str]) -> str:
+def _normalize_vat_codes(value: Optional[str]) -> set[str]:
     text = _normalize_text(value)
     if not text:
-        return _MISSING_VAT_CODE
+        return {_MISSING_VAT_CODE}
+
     parts = [_normalize_text(part) for part in text.split(",")]
     non_empty_parts = [part for part in parts if part]
     if not non_empty_parts:
-        return _MISSING_VAT_CODE
-    unique_parts = sorted(set(non_empty_parts))
-    return ", ".join(unique_parts)
+        return {_MISSING_VAT_CODE}
+    return set(non_empty_parts)
 
 
 def _normalize_text(value: Optional[str]) -> str:

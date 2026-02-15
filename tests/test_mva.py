@@ -168,6 +168,48 @@ def test_find_vat_deviations_aggregates_multiple_lines_per_voucher_account() -> 
     assert deviation.observed_vat_code == "1 + 2"
 
 
+def test_find_vat_deviations_treats_combined_and_split_vat_codes_equally() -> None:
+    vouchers = [
+        _voucher(
+            tx_id="1",
+            doc="B1",
+            tx_date=date(2025, 3, 10),
+            supplier="Nord AS",
+            vat_code="1",
+        ),
+        _voucher(
+            tx_id="2",
+            doc="B2",
+            tx_date=date(2025, 3, 11),
+            supplier="Vest AS",
+            vat_code="2",
+        ),
+        CostVoucher(
+            transaction_id="3",
+            document_number="B3",
+            transaction_date=date(2025, 3, 12),
+            supplier_id="LEV-Sor",
+            supplier_name="Sor AS",
+            description="Bilag B3",
+            amount=2000.0,
+            lines=[
+                VoucherLine(
+                    account="6320",
+                    account_name="Leie lokaler",
+                    description="Linje 1",
+                    vat_code="1, 2",
+                    debit=1000.0,
+                    credit=0.0,
+                )
+            ],
+        ),
+    ]
+
+    deviations = find_vat_deviations(vouchers)
+
+    assert deviations == []
+
+
 def test_summarize_vat_deviations_groups_per_account() -> None:
     vouchers = [
         _voucher(
