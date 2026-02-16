@@ -19,7 +19,7 @@ def _icon_path(filename: str) -> str:
 _APPLICATION_STYLESHEET_TEMPLATE = Template(
     """
 QWidget { font-family: 'Roboto', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; font-size: 14px; color: #0f172a; }
-QMainWindow { background-color: #e9effb; }
+QMainWindow { background-color: #e6edf9; }
 #navPanel { background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:0, stop:0 #0b1120, stop:1 #0f172a); color: #e2e8f0; border-right: 1px solid rgba(148, 163, 184, 0.08); border-top-right-radius: 22px; border-bottom-right-radius: 22px; }
 #logoLabel { font-size: 26px; font-weight: 700; letter-spacing: 0.6px; color: #f8fafc; }
 #navTree { background: transparent; border: none; color: #dbeafe; font-size: 14px; }
@@ -33,6 +33,17 @@ QPushButton:focus { outline: none; }
 QPushButton:disabled { background-color: #94a3b8; color: #e5e7eb; }
 QPushButton:hover:!disabled { background-color: #1e40af; }
 QPushButton:pressed { background-color: #1d4ed8; }
+QPushButton[variant='ghost'] {
+    background: rgba(37, 99, 235, 0.08);
+    color: #1d4ed8;
+    border: 1px solid rgba(37, 99, 235, 0.2);
+}
+QPushButton[variant='ghost']:hover:!disabled {
+    background: rgba(37, 99, 235, 0.16);
+}
+QPushButton[variant='ghost']:pressed {
+    background: rgba(37, 99, 235, 0.24);
+}
 QPushButton[secondary='true'] {
     background: #f8fafc;
     color: #1d4ed8;
@@ -71,7 +82,7 @@ QPushButton#tableActionButton:hover:!disabled {
 QPushButton#tableActionButton:pressed {
     background: #bfdbfe;
 }
-#card { background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 #ffffff, stop:1 #f8fbff); border-radius: 20px; border: 1px solid rgba(148, 163, 184, 0.32); }
+#card { background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 #ffffff, stop:1 #f7faff); border-radius: 20px; border: 1px solid rgba(148, 163, 184, 0.3); }
 #cardTitle { font-size: 20px; font-weight: 700; color: #0f172a; letter-spacing: 0.2px; }
 #cardSubtitle { color: #475569; font-size: 13px; line-height: 1.5; }
 #taskProgressDialog { background-color: rgba(15, 23, 42, 0.95); border-radius: 28px; }
@@ -177,6 +188,10 @@ QLineEdit:focus, QPlainTextEdit:focus, QTextEdit:focus {
     border-color: #2563eb;
     background-color: #ffffff;
 }
+QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus {
+    border-color: #2563eb;
+    background-color: #ffffff;
+}
 QLineEdit[invalid='true'], QPlainTextEdit[invalid='true'], QTextEdit[invalid='true'] {
     border-color: #dc2626;
     background-color: #fff1f2;
@@ -192,6 +207,32 @@ QScrollBar:horizontal { background: rgba(148, 163, 184, 0.18); height: 12px; mar
 QScrollBar::handle:horizontal { background: #2563eb; min-width: 24px; border-radius: 6px; }
 QScrollBar::handle:horizontal:hover { background: #1d4ed8; }
 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
+QGroupBox {
+    border: 1px solid rgba(148, 163, 184, 0.34);
+    border-radius: 12px;
+    margin-top: 14px;
+    padding: 10px;
+    background: rgba(255, 255, 255, 0.55);
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 12px;
+    padding: 0 6px;
+    color: #334155;
+    font-weight: 600;
+}
+QFrame[variant='panel'] {
+    border: 1px solid rgba(148, 163, 184, 0.3);
+    border-radius: 14px;
+    background: rgba(248, 250, 252, 0.85);
+}
+QLabel[muted='true'] {
+    color: #64748b;
+}
+QLabel[helper='true'] {
+    color: #475569;
+    font-size: 12px;
+}
 """
 )
 

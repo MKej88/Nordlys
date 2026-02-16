@@ -31,3 +31,21 @@ def test_build_stylesheet_includes_invalid_input_state() -> None:
     stylesheet = build_stylesheet()
 
     assert "QLineEdit[invalid='true']" in stylesheet
+
+
+def test_build_stylesheet_includes_ghost_button_variant() -> None:
+    stylesheet = build_stylesheet()
+
+    assert "QPushButton[variant='ghost']" in stylesheet
+
+
+def test_build_stylesheet_includes_groupbox_style() -> None:
+    stylesheet = build_stylesheet()
+
+    assert "QGroupBox::title" in stylesheet
+
+
+def test_build_stylesheet_includes_combo_focus_state() -> None:
+    stylesheet = build_stylesheet()
+
+    assert "QComboBox:focus" in stylesheet
