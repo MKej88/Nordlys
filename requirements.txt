@@ -1,4 +1,4 @@
-# Kjerneavhengigheter for Nordlys
+# Kjerneavhengigheter for Nordlys (runtime)
 pandas>=1.5
 PySide6>=6.5
 requests>=2.31
@@ -10,11 +10,5 @@ xlsxwriter>=3.0
 reportlab>=3.6
 
 # Kvalitetssikring og validering
-pytest>=7.4
 # Valgfritt: aktiver XSD-validering ved å installere xmlschema separat
 xmlschema>=2.2 ; extra == "xsd"
-
-# Utviklerverktøy
-ruff>=0.4
-black==25.12.0
-mypy>=1.8

@@ -57,10 +57,16 @@ Menyen i venstre side består av:
    .venv\Scripts\activate
    ```
 
-2. Installer avhengigheter:
+2. Installer avhengigheter for vanlig bruk (raskest):
 
    ```bash
    pip install -r requirements.txt
+   ```
+
+3. Hvis du også skal kjøre tester/lint lokalt, installer utviklerpakker:
+
+   ```bash
+   pip install -r requirements-dev.txt
    ```
 
 ## Starte programmet
@@ -126,6 +132,8 @@ Kjør tester med:
 ```bash
 pytest
 ```
+
+Tips: Bruk `requirements-dev.txt` når du trenger test/lint-verktøy lokalt.
 
 ## Struktur (kort)
 
