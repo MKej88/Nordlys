@@ -378,23 +378,22 @@ def load_saft_files(
         total_weight = sum(weights) if weights else float(total)
         if total_weight == 0:
             total_weight = float(total)
+        weighted_progress_sum = 0.0
         last_messages: List[str] = [f"Laster {Path(path).name} …" for path in paths]
         overall_progress = 0
 
         def _progress_factory(index: int) -> Callable[[int, str], None]:
             def _inner(percent: int, message: str) -> None:
-                nonlocal overall_progress
+                nonlocal overall_progress, weighted_progress_sum
                 normalized = max(0.0, min(100.0, float(percent)))
                 clean_message = message.strip()
                 with progress_lock:
+                    previous_value = progress_values[index]
                     progress_values[index] = normalized
+                    weighted_progress_sum += (normalized - previous_value) * weights[index]
                     if clean_message:
                         last_messages[index] = clean_message
-                    weighted_sum = sum(
-                        value * weight
-                        for value, weight in zip(progress_values, weights)
-                    )
-                    overall = int(round(weighted_sum / total_weight))
+                    overall = int(round(weighted_progress_sum / total_weight))
                     if overall < overall_progress:
                         overall = overall_progress
                     else:
@@ -448,13 +447,11 @@ def load_saft_files(
                 if progress_callback is not None:
                     error_message = f"Feil ved import av {file_label}: {exc}"
                     with progress_lock:
+                        previous_value = progress_values[index]
                         progress_values[index] = 100.0
+                        weighted_progress_sum += (100.0 - previous_value) * weights[index]
                         last_messages[index] = error_message
-                        weighted_sum = sum(
-                            value * weight
-                            for value, weight in zip(progress_values, weights)
-                        )
-                        overall = int(round(weighted_sum / total_weight))
+                        overall = int(round(weighted_progress_sum / total_weight))
                         if overall < overall_progress:
                             overall = overall_progress
                         else:
