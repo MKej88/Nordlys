@@ -390,7 +390,9 @@ def load_saft_files(
                 with progress_lock:
                     previous_value = progress_values[index]
                     progress_values[index] = normalized
-                    weighted_progress_sum += (normalized - previous_value) * weights[index]
+                    weighted_progress_sum += (normalized - previous_value) * weights[
+                        index
+                    ]
                     if clean_message:
                         last_messages[index] = clean_message
                     overall = int(round(weighted_progress_sum / total_weight))
@@ -449,7 +451,9 @@ def load_saft_files(
                     with progress_lock:
                         previous_value = progress_values[index]
                         progress_values[index] = 100.0
-                        weighted_progress_sum += (100.0 - previous_value) * weights[index]
+                        weighted_progress_sum += (100.0 - previous_value) * weights[
+                            index
+                        ]
                         last_messages[index] = error_message
                         overall = int(round(weighted_progress_sum / total_weight))
                         if overall < overall_progress:
