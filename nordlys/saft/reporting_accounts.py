@@ -176,7 +176,9 @@ def extract_cost_vouchers(
             ),
         )
         transaction_id = _first_text(transaction, ("n1:TransactionID",))
-        description = _first_text(transaction, ("n1:Description",))
+        description = _first_text(
+            transaction, ("n1:VoucherDescription", "n1:Description")
+        )
 
         vouchers.append(
             CostVoucher(
@@ -298,7 +300,9 @@ def extract_all_vouchers(
             ),
         )
         transaction_id = _first_text(transaction, ("n1:TransactionID",))
-        description = _first_text(transaction, ("n1:Description",))
+        description = _first_text(
+            transaction, ("n1:VoucherDescription", "n1:Description")
+        )
 
         vouchers.append(
             CostVoucher(

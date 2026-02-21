@@ -23,7 +23,7 @@ from nordlys.saft import (
     SaftValidationResult,
     validate_saft_against_xsd,
 )
-from nordlys.saft.reporting_accounts import extract_cost_vouchers
+from nordlys.saft.reporting_accounts import extract_all_vouchers, extract_cost_vouchers
 from nordlys.saft.header import SaftHeader
 from nordlys.saft.customer_analysis import (
     _parse_date,
@@ -2479,3 +2479,35 @@ def test_extract_cost_vouchers_includes_asset_transactions():
         any(line.account.startswith("12") for line in voucher.lines)
         for voucher in vouchers
     )
+
+
+def test_extract_all_vouchers_uses_voucher_description_when_available() -> None:
+    xml = """
+    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <GeneralLedgerEntries>
+        <Journal>
+          <Transaction>
+            <TransactionID>TX-1</TransactionID>
+            <TransactionDate>2023-03-01</TransactionDate>
+            <VoucherDescription>Inngående faktura</VoucherDescription>
+            <Description>Skal ikke brukes</Description>
+            <Line>
+              <AccountID>4000</AccountID>
+              <DebitAmount>100</DebitAmount>
+            </Line>
+            <Line>
+              <AccountID>2400</AccountID>
+              <CreditAmount>100</CreditAmount>
+            </Line>
+          </Transaction>
+        </Journal>
+      </GeneralLedgerEntries>
+    </AuditFile>
+    """
+    root = ET.fromstring(xml)
+    ns = {"n1": root.tag.split("}")[0][1:]}
+
+    vouchers = extract_all_vouchers(root, ns, year=2023)
+
+    assert len(vouchers) == 1
+    assert vouchers[0].description == "Inngående faktura"

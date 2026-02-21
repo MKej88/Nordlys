@@ -94,8 +94,10 @@ def test_build_statement_rows_uses_transaction_id_when_bilag_missing() -> None:
 
     statement_rows = build_statement_rows(rows)
 
-    bilag_values = [row.bilag for row in statement_rows if row.source is not None]
+    rows_with_source = [row for row in statement_rows if row.source is not None]
+    bilag_values = [row.bilag for row in rows_with_source]
     assert "TX-42" in bilag_values
+    assert rows_with_source[0].bilagstype == "Utgående faktura"
 
 
 def test_build_statement_rows_uses_balances_for_ib_and_ub() -> None:
