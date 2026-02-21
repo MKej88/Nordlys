@@ -113,3 +113,26 @@ def test_voucher_search_uses_same_columns_as_voucher_popup(qapp: QApplication) -
     ]
     assert page.table.item(0, 0).text() == "1500"
     assert page.table.item(0, 1).text() == "Kundefordringer"
+
+
+def test_empty_state_vises_i_resultatpanel(qapp: QApplication) -> None:
+    page = HovedbokPage()
+    page.set_vouchers([_voucher()])
+    _set_balances(page)
+
+    page.apply_filter()
+
+    assert page.result_stack.currentWidget() is not page.table
+    assert page.status_label.text() == "Søk på konto eller bilag for å vise føringer."
+
+
+def test_voucher_search_must_match_full_voucher_number(qapp: QApplication) -> None:
+    page = HovedbokPage()
+    page.set_vouchers([_voucher()])
+    _set_balances(page)
+
+    page.voucher_search_input.setText("10")
+    page.apply_filter()
+
+    assert page.table.rowCount() == 0
+    assert page.status_label.text() == "Fant ingen føringer for bilag: 10"
