@@ -124,3 +124,15 @@ def test_empty_state_vises_i_resultatpanel(qapp: QApplication) -> None:
 
     assert page.result_stack.currentWidget() is not page.table
     assert page.status_label.text() == "Søk på konto eller bilag for å vise føringer."
+
+
+def test_voucher_search_must_match_full_voucher_number(qapp: QApplication) -> None:
+    page = HovedbokPage()
+    page.set_vouchers([_voucher()])
+    _set_balances(page)
+
+    page.voucher_search_input.setText("10")
+    page.apply_filter()
+
+    assert page.table.rowCount() == 0
+    assert page.status_label.text() == "Fant ingen føringer for bilag: 10"

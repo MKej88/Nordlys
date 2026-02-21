@@ -197,8 +197,8 @@ class HovedbokPage(QWidget):
             rows = [
                 row
                 for row in rows
-                if voucher_query in row.bilagsnr.lower()
-                or voucher_query in row.transaksjons_id.lower()
+                if voucher_query == row.bilagsnr.lower()
+                or voucher_query == row.transaksjons_id.lower()
             ]
 
         self._render_rows(
