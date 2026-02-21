@@ -87,3 +87,29 @@ def test_apply_filter_rejects_account_not_in_balance(qapp: QApplication) -> None
 
     assert page.status_label.text() == "Konto ikke finnes: 1500"
     assert page.account_name_label.text() == ""
+
+
+def test_voucher_search_uses_same_columns_as_voucher_popup(qapp: QApplication) -> None:
+    page = HovedbokPage()
+    page.set_vouchers([_voucher()])
+    _set_balances(page)
+
+    page.voucher_search_input.setText("B-10")
+    page.apply_filter()
+
+    headers = [
+        page.table.horizontalHeaderItem(index).text()
+        for index in range(page.table.columnCount())
+    ]
+    assert headers == [
+        "Konto",
+        "Kontonavn",
+        "Bilagstype",
+        "Beskrivelse",
+        "Mva",
+        "Mva-beløp",
+        "Debet",
+        "Kredit",
+    ]
+    assert page.table.item(0, 0).text() == "1500"
+    assert page.table.item(0, 1).text() == "Kundefordringer"

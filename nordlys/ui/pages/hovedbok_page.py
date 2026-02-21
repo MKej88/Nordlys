@@ -44,6 +44,7 @@ class HovedbokPage(QWidget):
 
         self._all_rows: List[LedgerRow] = []
         self._statement_rows: List[StatementRow] = []
+        self._table_source_rows: List[LedgerRow | None] = []
         self._account_balances: Dict[str, Tuple[float, float]] = {}
         self._account_names: Dict[str, str] = {}
 
@@ -185,6 +186,7 @@ class HovedbokPage(QWidget):
 
     def _clear_results(self) -> None:
         self._statement_rows = []
+        self._table_source_rows = []
         self.table.hide()
         self.table.setRowCount(0)
 
@@ -216,6 +218,15 @@ class HovedbokPage(QWidget):
                 )
             return
 
+        if voucher_query:
+            self._render_voucher_rows(rows)
+        else:
+            self._render_statement_rows(rows)
+
+        self.table.show()
+        self.status_label.setText(f"Viser {len(rows)} føringer.")
+
+    def _render_statement_rows(self, rows: Sequence[LedgerRow]) -> None:
         self._statement_rows = build_statement_rows(
             rows, account_balances=self._account_balances
         )
@@ -242,11 +253,38 @@ class HovedbokPage(QWidget):
             "Beløp",
             "Akkumulert beløp",
         ]
+        self._table_source_rows = [row.source for row in self._statement_rows]
 
         populate_table(self.table, columns, table_rows, money_cols=(5, 6, 7))
         self._mark_balance_rows_bold()
-        self.table.show()
-        self.status_label.setText(f"Viser {len(rows)} føringer.")
+
+    def _render_voucher_rows(self, rows: Sequence[LedgerRow]) -> None:
+        self._statement_rows = []
+        self._table_source_rows = list(rows)
+        table_rows = [
+            (
+                row.konto,
+                row.kontonavn,
+                row.bilagstype,
+                row.beskrivelse,
+                row.mva,
+                row.mva_belop,
+                row.debet,
+                row.kredit,
+            )
+            for row in rows
+        ]
+        columns = [
+            "Konto",
+            "Kontonavn",
+            "Bilagstype",
+            "Beskrivelse",
+            "Mva",
+            "Mva-beløp",
+            "Debet",
+            "Kredit",
+        ]
+        populate_table(self.table, columns, table_rows, money_cols=(5, 6, 7))
 
     def _mark_balance_rows_bold(self) -> None:
         for row_idx, row in enumerate(self._statement_rows):
@@ -261,14 +299,12 @@ class HovedbokPage(QWidget):
                 item.setFont(font)
 
     def _open_voucher_dialog(self, row_index: int, _column: int) -> None:
-        if row_index < 0 or row_index >= len(self._statement_rows):
+        if row_index < 0 or row_index >= len(self._table_source_rows):
             return
 
-        statement_row = self._statement_rows[row_index]
-        if statement_row.source is None:
+        selected_row = self._table_source_rows[row_index]
+        if selected_row is None:
             return
-
-        selected_row = statement_row.source
         voucher_rows = rows_for_voucher(self._all_rows, selected_row)
         if not voucher_rows:
             return
