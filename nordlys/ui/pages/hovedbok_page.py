@@ -23,7 +23,6 @@ from ...saft.ledger import (
     StatementRow,
     build_ledger_rows,
     build_statement_rows,
-    filter_ledger_rows,
     rows_for_voucher,
 )
 from ...saft.models import CostVoucher
@@ -38,7 +37,7 @@ __all__ = ["HovedbokPage"]
 
 
 class HovedbokPage(QWidget):
-    """Viser alle føringer og lar brukeren filtrere på konto."""
+    """Viser alle føringer og lar brukeren filtrere på konto og bilag."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -46,10 +45,11 @@ class HovedbokPage(QWidget):
         self._all_rows: List[LedgerRow] = []
         self._statement_rows: List[StatementRow] = []
         self._account_balances: Dict[str, Tuple[float, float]] = {}
+        self._account_names: Dict[str, str] = {}
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(12)
+        layout.setSpacing(10)
 
         title_label = QLabel("Hovedbok")
         title_label.setObjectName("pageTitle")
@@ -58,9 +58,19 @@ class HovedbokPage(QWidget):
         controls = QHBoxLayout()
         controls.setSpacing(8)
 
+        controls.addWidget(QLabel("Konto"))
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Søk konto, f.eks. 3002")
+        self.search_input.setPlaceholderText("F.eks. 1920")
         self.search_input.returnPressed.connect(self.apply_filter)
+        controls.addWidget(self.search_input, 2)
+
+        controls.addWidget(QLabel("Bilag"))
+        self.voucher_search_input = QLineEdit()
+        self.voucher_search_input.setPlaceholderText(
+            "Søk bilagsnr eller transaksjonsnr"
+        )
+        self.voucher_search_input.returnPressed.connect(self.apply_filter)
+        controls.addWidget(self.voucher_search_input, 2)
 
         self.search_button = QPushButton("Søk")
         self.search_button.clicked.connect(self.apply_filter)
@@ -68,13 +78,15 @@ class HovedbokPage(QWidget):
         self.reset_button = QPushButton("Nullstill")
         self.reset_button.clicked.connect(self._reset_filter)
 
-        controls.addWidget(QLabel("Konto"))
-        controls.addWidget(self.search_input, 1)
         controls.addWidget(self.search_button)
         controls.addWidget(self.reset_button)
         layout.addLayout(controls)
 
-        self.status_label = QLabel("Søk på konto for å vise føringer.")
+        self.account_name_label = QLabel("")
+        self.account_name_label.setObjectName("mutedText")
+        layout.addWidget(self.account_name_label)
+
+        self.status_label = QLabel("Søk på konto eller bilag for å vise føringer.")
         self.status_label.setObjectName("mutedText")
         layout.addWidget(self.status_label)
 
@@ -87,13 +99,11 @@ class HovedbokPage(QWidget):
         layout.addWidget(self.table, 1)
 
     def set_account_balances(self, df: "pd.DataFrame | None") -> None:
-        """Lagrer IB/UB per konto fra saldobalansen."""
+        """Lagrer IB/UB og navn per konto fra saldobalansen."""
 
         self._account_balances = {}
-        if df is None or df.empty:
-            return
-
-        if "Konto" not in df.columns:
+        self._account_names = {}
+        if df is None or df.empty or "Konto" not in df.columns:
             return
 
         ib_series = self._net_series(df, "IB")
@@ -111,6 +121,13 @@ class HovedbokPage(QWidget):
             ub = float(ub_series.get(idx, 0.0))
             self._account_balances[account] = (ib, ub)
 
+            account_name = ""
+            if "Kontonavn" in df.columns:
+                raw_name = df.at[idx, "Kontonavn"]
+                if raw_name is not None and not pd.isna(raw_name):
+                    account_name = str(raw_name).strip()
+            self._account_names[account] = account_name
+
     def set_vouchers(self, vouchers: Sequence[CostVoucher]) -> None:
         """Lagrer bilag, men viser ikke føringer før brukeren søker."""
 
@@ -118,28 +135,66 @@ class HovedbokPage(QWidget):
         self._clear_results()
 
     def apply_filter(self) -> None:
-        """Filtrerer tabellen basert på søketeksten."""
+        """Filtrerer tabellen basert på konto og/eller bilag."""
 
-        query = self.search_input.text().strip()
-        if not query:
+        account_query = self.search_input.text().strip()
+        voucher_query = self.voucher_search_input.text().strip().lower()
+
+        if not account_query and not voucher_query:
             self._clear_results()
-            self.status_label.setText("Søk på konto for å vise føringer.")
+            self.status_label.setText("Søk på konto eller bilag for å vise føringer.")
             return
 
-        filtered = filter_ledger_rows(self._all_rows, query)
-        self._render_rows(filtered, query=query)
+        rows = self._all_rows
+        if account_query:
+            if account_query not in self._account_balances:
+                self._clear_results()
+                self.account_name_label.setText("")
+                self.status_label.setText(f"Konto ikke finnes: {account_query}")
+                return
+
+            rows = [row for row in rows if row.konto == account_query]
+            account_name = self._account_names.get(account_query, "")
+            if account_name:
+                self.account_name_label.setText(
+                    f"Konto: {account_query} – {account_name}"
+                )
+            else:
+                self.account_name_label.setText(f"Konto: {account_query}")
+        else:
+            self.account_name_label.setText("")
+
+        if voucher_query:
+            rows = [
+                row
+                for row in rows
+                if voucher_query in row.bilagsnr.lower()
+                or voucher_query in row.transaksjons_id.lower()
+            ]
+
+        self._render_rows(
+            rows, account_query=account_query, voucher_query=voucher_query
+        )
 
     def _reset_filter(self) -> None:
         self.search_input.clear()
+        self.voucher_search_input.clear()
+        self.account_name_label.setText("")
         self._clear_results()
-        self.status_label.setText("Søk på konto for å vise føringer.")
+        self.status_label.setText("Søk på konto eller bilag for å vise føringer.")
 
     def _clear_results(self) -> None:
         self._statement_rows = []
         self.table.hide()
         self.table.setRowCount(0)
 
-    def _render_rows(self, rows: Sequence[LedgerRow], *, query: str) -> None:
+    def _render_rows(
+        self,
+        rows: Sequence[LedgerRow],
+        *,
+        account_query: str,
+        voucher_query: str,
+    ) -> None:
         if not self._all_rows:
             self._clear_results()
             self.status_label.setText("Ingen føringer lastet inn.")
@@ -147,7 +202,18 @@ class HovedbokPage(QWidget):
 
         if not rows:
             self._clear_results()
-            self.status_label.setText(f"Fant ingen føringer for søk: {query}")
+            if account_query and voucher_query:
+                self.status_label.setText(
+                    f"Fant ingen føringer for konto {account_query} og bilag {voucher_query}."
+                )
+            elif voucher_query:
+                self.status_label.setText(
+                    f"Fant ingen føringer for bilag: {voucher_query}"
+                )
+            else:
+                self.status_label.setText(
+                    f"Fant ingen føringer for konto: {account_query}"
+                )
             return
 
         self._statement_rows = build_statement_rows(
@@ -180,10 +246,21 @@ class HovedbokPage(QWidget):
         ]
 
         populate_table(self.table, columns, table_rows, money_cols=(6, 7, 8))
+        self._mark_balance_rows_bold()
         self.table.show()
-        self.status_label.setText(
-            f"Viser {len(rows)} føringer med IB/UB for søk: {query}"
-        )
+        self.status_label.setText(f"Viser {len(rows)} føringer.")
+
+    def _mark_balance_rows_bold(self) -> None:
+        for row_idx, row in enumerate(self._statement_rows):
+            if row.source is not None:
+                continue
+            for col_idx in range(self.table.columnCount()):
+                item = self.table.item(row_idx, col_idx)
+                if item is None:
+                    continue
+                font = item.font()
+                font.setBold(True)
+                item.setFont(font)
 
     def _open_voucher_dialog(self, row_index: int, _column: int) -> None:
         if row_index < 0 or row_index >= len(self._statement_rows):
