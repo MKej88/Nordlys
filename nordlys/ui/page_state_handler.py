@@ -89,6 +89,7 @@ class PageStateHandler:
             widget.set_dataframe(self._dataset_store.saft_df)
         elif key == "plan.hovedbok" and isinstance(widget, HovedbokPage):
             self.hovedbok_page = widget
+            widget.set_account_balances(self._dataset_store.saft_df)
             widget.set_vouchers(self._dataset_store.all_vouchers)
         elif key == "plan.kontroll" and isinstance(widget, ComparisonPage):
             self.kontroll_page = widget

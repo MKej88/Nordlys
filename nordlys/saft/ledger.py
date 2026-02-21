@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
-from typing import Iterable, List, Sequence
+from typing import Iterable, List, Mapping, Sequence
 
 from .models import CostVoucher
 
@@ -29,8 +29,11 @@ class LedgerRow:
     transaksjons_id: str
     konto: str
     kontonavn: str
-    tekst: str
+    bilagstype: str
+    beskrivelse: str
     motkontoer: str
+    mva: str
+    mva_belop: float
     debet: float
     kredit: float
 
@@ -67,6 +70,7 @@ def build_ledger_rows(vouchers: Sequence[CostVoucher]) -> List[LedgerRow]:
         dato = _format_date(voucher.transaction_date)
         bilagsnr = (voucher.document_number or "").strip() or "—"
         transaksjons_id = (voucher.transaction_id or "").strip() or "—"
+        bilagstype = (voucher.description or "").strip() or "—"
 
         accounts = [line.account.strip() for line in voucher.lines if line.account]
         unique_accounts = sorted({account for account in accounts if account})
@@ -74,10 +78,14 @@ def build_ledger_rows(vouchers: Sequence[CostVoucher]) -> List[LedgerRow]:
         for line in voucher.lines:
             konto = (line.account or "").strip() or "—"
             kontonavn = (line.account_name or "").strip() or "—"
-            tekst = (line.description or voucher.description or "").strip() or "—"
+            beskrivelse = (line.description or "").strip() or "—"
+            mva = (line.vat_code or "").strip() or ""
 
             motkontoer = [acc for acc in unique_accounts if acc != konto]
             motkonto_txt = ", ".join(motkontoer) if motkontoer else "—"
+
+            line_amount = float(line.debit) - float(line.credit)
+            mva_belop = line_amount if mva else 0.0
 
             rows.append(
                 LedgerRow(
@@ -86,8 +94,11 @@ def build_ledger_rows(vouchers: Sequence[CostVoucher]) -> List[LedgerRow]:
                     transaksjons_id=transaksjons_id,
                     konto=konto,
                     kontonavn=kontonavn,
-                    tekst=tekst,
+                    bilagstype=bilagstype,
+                    beskrivelse=beskrivelse,
                     motkontoer=motkonto_txt,
+                    mva=mva,
+                    mva_belop=mva_belop,
                     debet=float(line.debit),
                     kredit=float(line.credit),
                 )
@@ -142,7 +153,10 @@ def rows_for_voucher(
     return [row for row in rows if voucher_key_for_row(row) == selected_key]
 
 
-def build_statement_rows(rows: Sequence[LedgerRow]) -> List[StatementRow]:
+def build_statement_rows(
+    rows: Sequence[LedgerRow],
+    account_balances: Mapping[str, tuple[float, float]] | None = None,
+) -> List[StatementRow]:
     """Bygger kontoutskrift-rader med IB i start og UB i slutt."""
 
     if not rows:
@@ -156,6 +170,24 @@ def build_statement_rows(rows: Sequence[LedgerRow]) -> List[StatementRow]:
     opening_date = f"{year}-01-01" if year is not None else "—"
     closing_date = f"{year}-12-31" if year is not None else "—"
 
+    account_keys = sorted(
+        {row.konto for row in sorted_rows if row.konto and row.konto != "—"}
+    )
+
+    opening_balance = 0.0
+    closing_balance = 0.0
+    if account_balances and account_keys:
+        for account in account_keys:
+            balances = account_balances.get(account)
+            if balances is None:
+                continue
+            opening_balance += float(balances[0])
+            closing_balance += float(balances[1])
+    else:
+        movements = sum(float(row.debet) - float(row.kredit) for row in sorted_rows)
+        opening_balance = 0.0
+        closing_balance = movements
+
     statement: List[StatementRow] = [
         StatementRow(
             dato=opening_date,
@@ -164,23 +196,22 @@ def build_statement_rows(rows: Sequence[LedgerRow]) -> List[StatementRow]:
             beskrivelse="",
             mva="",
             mva_belop=0.0,
-            belop=0.0,
+            belop=opening_balance,
             source=None,
         )
     ]
 
-    total = 0.0
     for row in sorted_rows:
         amount = float(row.debet) - float(row.kredit)
-        total += amount
+        bilag = row.bilagsnr if row.bilagsnr != "—" else row.transaksjons_id
         statement.append(
             StatementRow(
                 dato=row.dato,
-                bilag=row.bilagsnr,
-                tekst=row.tekst,
-                beskrivelse=row.kontonavn,
-                mva="",
-                mva_belop=0.0,
+                bilag=bilag,
+                tekst=row.bilagstype,
+                beskrivelse=row.beskrivelse,
+                mva=row.mva,
+                mva_belop=row.mva_belop,
                 belop=amount,
                 source=row,
             )
@@ -194,7 +225,7 @@ def build_statement_rows(rows: Sequence[LedgerRow]) -> List[StatementRow]:
             beskrivelse="",
             mva="",
             mva_belop=0.0,
-            belop=total,
+            belop=closing_balance,
             source=None,
         )
     )

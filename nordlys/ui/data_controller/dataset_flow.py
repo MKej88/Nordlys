@@ -93,6 +93,7 @@ class DatasetFlowController:
         if pages.saldobalanse_page:
             pages.saldobalanse_page.set_dataframe(saft_df)
         if pages.hovedbok_page:
+            pages.hovedbok_page.set_account_balances(saft_df)
             pages.hovedbok_page.set_vouchers(store.all_vouchers)
         pages.clear_comparison_tables()
         if pages.dashboard_page:
@@ -286,6 +287,7 @@ class DatasetFlowController:
             pages.regnskap_page.set_dataframe(None, None)
             pages.regnskap_page.set_summary_history([])
         if pages.hovedbok_page:
+            pages.hovedbok_page.set_account_balances(None)
             pages.hovedbok_page.set_vouchers([])
         if pages.vesentlig_page:
             pages.vesentlig_page.update_summary(

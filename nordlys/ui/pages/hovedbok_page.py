@@ -2,21 +2,22 @@
 
 from __future__ import annotations
 
-from typing import List, Sequence
+from typing import Dict, List, Sequence, TYPE_CHECKING, Tuple
 
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
+    QHBoxLayout,
     QHeaderView,
     QLabel,
     QLineEdit,
     QPushButton,
     QSizePolicy,
-    QHBoxLayout,
     QVBoxLayout,
     QWidget,
 )
 
+from ...helpers.lazy_imports import lazy_pandas
 from ...saft.ledger import (
     LedgerRow,
     StatementRow,
@@ -29,6 +30,11 @@ from ...saft.models import CostVoucher
 from ..tables import create_table_widget, populate_table
 from ..widgets import EmptyStateWidget
 
+if TYPE_CHECKING:  # pragma: no cover
+    import pandas as pd
+else:  # pragma: no cover
+    pd = lazy_pandas()
+
 __all__ = ["HovedbokPage"]
 
 
@@ -40,6 +46,7 @@ class HovedbokPage(QWidget):
 
         self._all_rows: List[LedgerRow] = []
         self._statement_rows: List[StatementRow] = []
+        self._account_balances: Dict[str, Tuple[float, float]] = {}
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -94,6 +101,31 @@ class HovedbokPage(QWidget):
         self.table.hide()
         layout.addWidget(self.table, 1)
 
+    def set_account_balances(self, df: "pd.DataFrame | None") -> None:
+        """Lagrer IB/UB per konto fra saldobalansen."""
+
+        self._account_balances = {}
+        if df is None or df.empty:
+            return
+
+        if "Konto" not in df.columns:
+            return
+
+        ib_series = self._net_series(df, "IB")
+        ub_series = self._net_series(df, "UB")
+
+        for idx in df.index:
+            raw = df.at[idx, "Konto"]
+            if raw is None or pd.isna(raw):
+                continue
+            account = str(raw).strip()
+            if not account:
+                continue
+
+            ib = float(ib_series.get(idx, 0.0))
+            ub = float(ub_series.get(idx, 0.0))
+            self._account_balances[account] = (ib, ub)
+
     def set_vouchers(self, vouchers: Sequence[CostVoucher]) -> None:
         """Oppdaterer sideinnholdet med nye bilag."""
 
@@ -127,7 +159,9 @@ class HovedbokPage(QWidget):
             self.status_label.setText(f"Fant ingen føringer for søk: {query.strip()}")
             return
 
-        self._statement_rows = build_statement_rows(rows)
+        self._statement_rows = build_statement_rows(
+            rows, account_balances=self._account_balances
+        )
         table_rows = [
             (
                 row.dato,
@@ -202,8 +236,11 @@ class HovedbokPage(QWidget):
             (
                 row.konto,
                 row.kontonavn,
-                row.tekst,
+                row.bilagstype,
+                row.beskrivelse,
                 row.motkontoer,
+                row.mva,
+                row.mva_belop,
                 row.debet,
                 row.kredit,
             )
@@ -211,9 +248,19 @@ class HovedbokPage(QWidget):
         ]
         populate_table(
             detail_table,
-            ["Konto", "Kontonavn", "Tekst", "Motkontoer", "Debet", "Kredit"],
+            [
+                "Konto",
+                "Kontonavn",
+                "Bilagstype",
+                "Beskrivelse",
+                "Motkontoer",
+                "Mva",
+                "Mva-beløp",
+                "Debet",
+                "Kredit",
+            ],
             detail_rows,
-            money_cols=(4, 5),
+            money_cols=(6, 7, 8),
         )
         layout.addWidget(detail_table)
 
@@ -223,3 +270,18 @@ class HovedbokPage(QWidget):
         layout.addWidget(buttons)
 
         dialog.exec()
+
+    def _net_series(self, df: "pd.DataFrame", prefix: str) -> "pd.Series":
+        net_col = f"{prefix}_netto"
+        if net_col in df.columns:
+            return pd.to_numeric(df[net_col], errors="coerce").fillna(0.0)
+
+        debit_col = f"{prefix} Debet"
+        credit_col = f"{prefix} Kredit"
+        debit_series = pd.to_numeric(df.get(debit_col, 0.0), errors="coerce").fillna(
+            0.0
+        )
+        credit_series = pd.to_numeric(df.get(credit_col, 0.0), errors="coerce").fillna(
+            0.0
+        )
+        return debit_series - credit_series
