@@ -23,7 +23,6 @@ from ...saft.ledger import (
     StatementRow,
     build_ledger_rows,
     build_statement_rows,
-    filter_ledger_rows,
     rows_for_voucher,
 )
 from ...saft.models import CostVoucher
@@ -148,8 +147,20 @@ class HovedbokPage(QWidget):
 
         rows = self._all_rows
         if account_query:
-            rows = filter_ledger_rows(rows, account_query)
-            self._set_account_label(rows, account_query)
+            if account_query not in self._account_balances:
+                self._clear_results()
+                self.account_name_label.setText("")
+                self.status_label.setText(f"Konto ikke finnes: {account_query}")
+                return
+
+            rows = [row for row in rows if row.konto == account_query]
+            account_name = self._account_names.get(account_query, "")
+            if account_name:
+                self.account_name_label.setText(
+                    f"Konto: {account_query} – {account_name}"
+                )
+            else:
+                self.account_name_label.setText(f"Konto: {account_query}")
         else:
             self.account_name_label.setText("")
 
@@ -163,31 +174,6 @@ class HovedbokPage(QWidget):
 
         self._render_rows(
             rows, account_query=account_query, voucher_query=voucher_query
-        )
-
-    def _set_account_label(self, rows: Sequence[LedgerRow], account_query: str) -> None:
-        matched_accounts = sorted(
-            {row.konto for row in rows if row.konto and row.konto != "—"}
-        )
-        if not matched_accounts:
-            self.account_name_label.setText("")
-            return
-
-        if len(matched_accounts) == 1:
-            account = matched_accounts[0]
-            account_name = self._account_names.get(account, "")
-            if not account_name:
-                account_name = next(
-                    (row.kontonavn for row in rows if row.konto == account), ""
-                )
-            if account_name and account_name != "—":
-                self.account_name_label.setText(f"Konto: {account} – {account_name}")
-            else:
-                self.account_name_label.setText(f"Konto: {account}")
-            return
-
-        self.account_name_label.setText(
-            f"Kontosøk: {account_query} ({len(matched_accounts)} kontoer)"
         )
 
     def _reset_filter(self) -> None:
@@ -309,7 +295,6 @@ class HovedbokPage(QWidget):
                 row.kontonavn,
                 row.bilagstype,
                 row.beskrivelse,
-                row.motkontoer,
                 row.mva,
                 row.mva_belop,
                 row.debet,
@@ -324,14 +309,13 @@ class HovedbokPage(QWidget):
                 "Kontonavn",
                 "Bilagstype",
                 "Beskrivelse",
-                "Motkontoer",
                 "Mva",
                 "Mva-beløp",
                 "Debet",
                 "Kredit",
             ],
             detail_rows,
-            money_cols=(6, 7, 8),
+            money_cols=(5, 6, 7),
         )
         layout.addWidget(detail_table)
 

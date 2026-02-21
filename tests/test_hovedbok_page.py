@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Generator
 
+import pandas as pd
 import pytest
 
 try:  # pragma: no cover - miljøavhengig
@@ -52,23 +53,37 @@ def _voucher() -> CostVoucher:
     )
 
 
-def test_apply_filter_supports_partial_account_number(qapp: QApplication) -> None:
+def _set_balances(page: HovedbokPage) -> None:
+    balance_df = pd.DataFrame(
+        {
+            "Konto": ["3000"],
+            "Kontonavn": ["Salgsinntekt"],
+            "IB_netto": [0.0],
+            "UB_netto": [-1000.0],
+        }
+    )
+    page.set_account_balances(balance_df)
+
+
+def test_apply_filter_shows_rows_for_account_in_balance(qapp: QApplication) -> None:
     page = HovedbokPage()
     page.set_vouchers([_voucher()])
+    _set_balances(page)
 
-    page.search_input.setText("300")
+    page.search_input.setText("3000")
     page.apply_filter()
 
     assert page.status_label.text() == "Viser 1 føringer."
     assert page.account_name_label.text() == "Konto: 3000 – Salgsinntekt"
 
 
-def test_apply_filter_supports_account_name_fragment(qapp: QApplication) -> None:
+def test_apply_filter_rejects_account_not_in_balance(qapp: QApplication) -> None:
     page = HovedbokPage()
     page.set_vouchers([_voucher()])
+    _set_balances(page)
 
-    page.search_input.setText("kundeford")
+    page.search_input.setText("1500")
     page.apply_filter()
 
-    assert page.status_label.text() == "Viser 1 føringer."
-    assert page.account_name_label.text() == "Konto: 1500 – Kundefordringer"
+    assert page.status_label.text() == "Konto ikke finnes: 1500"
+    assert page.account_name_label.text() == ""
