@@ -57,6 +57,12 @@ def test_build_ledger_rows_maps_bilagstype_beskrivelse_and_mva() -> None:
     assert sales_row.mva_belop == -1000.0
 
 
+def test_build_ledger_rows_replaces_na_bilagstype() -> None:
+    rows = build_ledger_rows([_voucher(description="N/A")])
+
+    assert rows[0].bilagstype == "Ukjent bilagstype"
+
+
 def test_filter_ledger_rows_supports_account_and_name_search() -> None:
     rows = build_ledger_rows([_voucher()])
 
@@ -67,6 +73,9 @@ def test_filter_ledger_rows_supports_account_and_name_search() -> None:
     name_filtered = filter_ledger_rows(rows, "kundeford")
     assert len(name_filtered) == 1
     assert name_filtered[0].konto == "1500"
+
+    empty_filtered = filter_ledger_rows(rows, "")
+    assert empty_filtered == []
 
 
 def test_rows_for_voucher_returns_all_lines_for_same_voucher() -> None:
@@ -102,5 +111,17 @@ def test_build_statement_rows_uses_balances_for_ib_and_ub() -> None:
 
     assert statement_rows[0].tekst == "Inngående saldo"
     assert statement_rows[0].belop == 0.0
+    assert statement_rows[0].akkumulert_belop == 0.0
     assert statement_rows[-1].tekst == "Utgående saldo"
     assert statement_rows[-1].belop == 0.0
+
+
+def test_build_statement_rows_has_running_total() -> None:
+    rows = build_ledger_rows([_voucher()])
+
+    statement_rows = build_statement_rows(rows)
+
+    movement_rows = [row for row in statement_rows if row.source is not None]
+    running_values = [row.akkumulert_belop for row in movement_rows]
+    assert 1000.0 in running_values
+    assert 0.0 in running_values

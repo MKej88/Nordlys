@@ -58,6 +58,7 @@ class StatementRow:
     mva: str
     mva_belop: float
     belop: float
+    akkumulert_belop: float
     source: LedgerRow | None
 
 
@@ -68,18 +69,18 @@ def build_ledger_rows(vouchers: Sequence[CostVoucher]) -> List[LedgerRow]:
 
     for voucher in vouchers:
         dato = _format_date(voucher.transaction_date)
-        bilagsnr = (voucher.document_number or "").strip() or "—"
-        transaksjons_id = (voucher.transaction_id or "").strip() or "—"
-        bilagstype = (voucher.description or "").strip() or "—"
+        bilagsnr = _clean_text(voucher.document_number, fallback="—")
+        transaksjons_id = _clean_text(voucher.transaction_id, fallback="—")
+        bilagstype = _clean_text(voucher.description, fallback="Ukjent bilagstype")
 
         accounts = [line.account.strip() for line in voucher.lines if line.account]
         unique_accounts = sorted({account for account in accounts if account})
 
         for line in voucher.lines:
-            konto = (line.account or "").strip() or "—"
-            kontonavn = (line.account_name or "").strip() or "—"
-            beskrivelse = (line.description or "").strip() or "—"
-            mva = (line.vat_code or "").strip() or ""
+            konto = _clean_text(line.account, fallback="—")
+            kontonavn = _clean_text(line.account_name, fallback="—")
+            beskrivelse = _clean_text(line.description, fallback="—")
+            mva = _clean_text(line.vat_code, fallback="")
 
             motkontoer = [acc for acc in unique_accounts if acc != konto]
             motkonto_txt = ", ".join(motkontoer) if motkontoer else "—"
@@ -113,7 +114,7 @@ def filter_ledger_rows(rows: Iterable[LedgerRow], query: str) -> List[LedgerRow]
 
     cleaned = query.strip()
     if not cleaned:
-        return list(rows)
+        return []
 
     lowered = cleaned.lower()
     digit_query = "".join(char for char in cleaned if char.isdigit())
@@ -197,12 +198,15 @@ def build_statement_rows(
             mva="",
             mva_belop=0.0,
             belop=opening_balance,
+            akkumulert_belop=opening_balance,
             source=None,
         )
     ]
 
+    running_balance = opening_balance
     for row in sorted_rows:
         amount = float(row.debet) - float(row.kredit)
+        running_balance += amount
         bilag = row.bilagsnr if row.bilagsnr != "—" else row.transaksjons_id
         statement.append(
             StatementRow(
@@ -213,6 +217,7 @@ def build_statement_rows(
                 mva=row.mva,
                 mva_belop=row.mva_belop,
                 belop=amount,
+                akkumulert_belop=running_balance,
                 source=row,
             )
         )
@@ -226,6 +231,7 @@ def build_statement_rows(
             mva="",
             mva_belop=0.0,
             belop=closing_balance,
+            akkumulert_belop=closing_balance,
             source=None,
         )
     )
@@ -245,3 +251,14 @@ def _year_from_date(value: str) -> int | None:
         return int(value[:4])
     except ValueError:
         return None
+
+
+def _clean_text(value: object | None, *, fallback: str) -> str:
+    if value is None:
+        return fallback
+    text = str(value).strip()
+    if not text:
+        return fallback
+    if text.lower() in {"na", "n/a", "none", "null"}:
+        return fallback
+    return text
