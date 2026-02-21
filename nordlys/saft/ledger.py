@@ -53,6 +53,7 @@ class StatementRow:
 
     dato: str
     bilag: str
+    bilagstype: str
     tekst: str
     beskrivelse: str
     mva: str
@@ -193,6 +194,7 @@ def build_statement_rows(
         StatementRow(
             dato=opening_date,
             bilag="",
+            bilagstype="",
             tekst="Inngående saldo",
             beskrivelse="",
             mva="",
@@ -212,8 +214,9 @@ def build_statement_rows(
             StatementRow(
                 dato=row.dato,
                 bilag=bilag,
-                tekst=row.bilagstype,
-                beskrivelse=row.beskrivelse,
+                bilagstype=row.bilagstype,
+                tekst=row.beskrivelse,
+                beskrivelse=row.kontonavn,
                 mva=row.mva,
                 mva_belop=row.mva_belop,
                 belop=amount,
@@ -226,6 +229,7 @@ def build_statement_rows(
         StatementRow(
             dato=closing_date,
             bilag="",
+            bilagstype="",
             tekst="Utgående saldo",
             beskrivelse="",
             mva="",

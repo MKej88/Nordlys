@@ -28,7 +28,6 @@ from ...saft.ledger import (
 )
 from ...saft.models import CostVoucher
 from ..tables import create_table_widget, populate_table
-from ..widgets import EmptyStateWidget
 
 if TYPE_CHECKING:  # pragma: no cover
     import pandas as pd
@@ -50,19 +49,11 @@ class HovedbokPage(QWidget):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(16)
+        layout.setSpacing(12)
 
         title_label = QLabel("Hovedbok")
         title_label.setObjectName("pageTitle")
         layout.addWidget(title_label)
-
-        subtitle_label = QLabel(
-            "Søk konto for å åpne kontoutskrift. Dobbeltklikk på bilagslinje "
-            "for å se motkontoer i bilagsdetalj."
-        )
-        subtitle_label.setObjectName("pageSubtitle")
-        subtitle_label.setWordWrap(True)
-        layout.addWidget(subtitle_label)
 
         controls = QHBoxLayout()
         controls.setSpacing(8)
@@ -86,12 +77,6 @@ class HovedbokPage(QWidget):
         self.status_label = QLabel("Søk på konto for å vise føringer.")
         self.status_label.setObjectName("mutedText")
         layout.addWidget(self.status_label)
-
-        self.empty_state = EmptyStateWidget(
-            "Ingen føringer valgt",
-            "Skriv kontonummer eller kontonavn og trykk Søk.",
-        )
-        layout.addWidget(self.empty_state)
 
         self.table = create_table_widget()
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
@@ -153,7 +138,6 @@ class HovedbokPage(QWidget):
         self._statement_rows = []
         self.table.hide()
         self.table.setRowCount(0)
-        self.empty_state.show()
 
     def _render_rows(self, rows: Sequence[LedgerRow], *, query: str) -> None:
         if not self._all_rows:
@@ -173,6 +157,7 @@ class HovedbokPage(QWidget):
             (
                 row.dato,
                 row.bilag,
+                row.bilagstype,
                 row.tekst,
                 row.beskrivelse,
                 row.mva,
@@ -185,6 +170,7 @@ class HovedbokPage(QWidget):
         columns = [
             "Dato",
             "Bilag",
+            "Bilagstype",
             "Tekst",
             "Beskrivelse",
             "Mva",
@@ -193,9 +179,8 @@ class HovedbokPage(QWidget):
             "Akkumulert beløp",
         ]
 
-        populate_table(self.table, columns, table_rows, money_cols=(5, 6, 7))
+        populate_table(self.table, columns, table_rows, money_cols=(6, 7, 8))
         self.table.show()
-        self.empty_state.hide()
         self.status_label.setText(
             f"Viser {len(rows)} føringer med IB/UB for søk: {query}"
         )
