@@ -1,0 +1,268 @@
+"""Hjelpere for enkel hovedbokvisning per konto."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import date
+from typing import Iterable, List, Mapping, Sequence
+
+from .models import CostVoucher
+
+__all__ = [
+    "LedgerRow",
+    "LedgerVoucherKey",
+    "StatementRow",
+    "build_ledger_rows",
+    "filter_ledger_rows",
+    "voucher_key_for_row",
+    "rows_for_voucher",
+    "build_statement_rows",
+]
+
+
+@dataclass(frozen=True)
+class LedgerRow:
+    """Én linje i hovedbokvisningen."""
+
+    dato: str
+    bilagsnr: str
+    transaksjons_id: str
+    konto: str
+    kontonavn: str
+    bilagstype: str
+    beskrivelse: str
+    motkontoer: str
+    mva: str
+    mva_belop: float
+    debet: float
+    kredit: float
+
+
+@dataclass(frozen=True)
+class LedgerVoucherKey:
+    """Identifiserer ett bilag i hovedbokvisningen."""
+
+    dato: str
+    bilagsnr: str
+    transaksjons_id: str
+
+
+@dataclass(frozen=True)
+class StatementRow:
+    """Én rad i kontoutskriftvisningen (inkludert IB/UB)."""
+
+    dato: str
+    bilag: str
+    bilagstype: str
+    tekst: str
+    beskrivelse: str
+    mva: str
+    mva_belop: float
+    belop: float
+    akkumulert_belop: float
+    source: LedgerRow | None
+
+
+def build_ledger_rows(vouchers: Sequence[CostVoucher]) -> List[LedgerRow]:
+    """Bygger en flat liste med posteringer fra alle bilag."""
+
+    rows: List[LedgerRow] = []
+
+    for voucher in vouchers:
+        dato = _format_date(voucher.transaction_date)
+        bilagsnr = _clean_text(voucher.document_number, fallback="—")
+        transaksjons_id = _clean_text(voucher.transaction_id, fallback="—")
+        bilagstype = _clean_text(voucher.description, fallback="Ukjent bilagstype")
+
+        accounts = [line.account.strip() for line in voucher.lines if line.account]
+        unique_accounts = sorted({account for account in accounts if account})
+
+        for line in voucher.lines:
+            konto = _clean_text(line.account, fallback="—")
+            kontonavn = _clean_text(line.account_name, fallback="—")
+            beskrivelse = _clean_text(line.description, fallback="—")
+            mva = _clean_text(line.vat_code, fallback="")
+
+            motkontoer = [acc for acc in unique_accounts if acc != konto]
+            motkonto_txt = ", ".join(motkontoer) if motkontoer else "—"
+
+            line_amount = float(line.debit) - float(line.credit)
+            mva_belop = line_amount if mva else 0.0
+
+            rows.append(
+                LedgerRow(
+                    dato=dato,
+                    bilagsnr=bilagsnr,
+                    transaksjons_id=transaksjons_id,
+                    konto=konto,
+                    kontonavn=kontonavn,
+                    bilagstype=bilagstype,
+                    beskrivelse=beskrivelse,
+                    motkontoer=motkonto_txt,
+                    mva=mva,
+                    mva_belop=mva_belop,
+                    debet=float(line.debit),
+                    kredit=float(line.credit),
+                )
+            )
+
+    rows.sort(key=lambda row: (row.dato, row.bilagsnr, row.transaksjons_id, row.konto))
+    return rows
+
+
+def filter_ledger_rows(rows: Iterable[LedgerRow], query: str) -> List[LedgerRow]:
+    """Filtrerer hovedboklinjer på kontonummer eller kontonavn."""
+
+    cleaned = query.strip()
+    if not cleaned:
+        return []
+
+    lowered = cleaned.lower()
+    digit_query = "".join(char for char in cleaned if char.isdigit())
+
+    filtered: List[LedgerRow] = []
+    for row in rows:
+        konto = row.konto.strip()
+        konto_digits = "".join(char for char in konto if char.isdigit())
+
+        if digit_query:
+            konto_match = konto_digits.startswith(digit_query)
+        else:
+            konto_match = lowered in konto.lower()
+
+        if konto_match or lowered in row.kontonavn.lower():
+            filtered.append(row)
+
+    return filtered
+
+
+def voucher_key_for_row(row: LedgerRow) -> LedgerVoucherKey:
+    """Bygger en bilagsnøkkel for én hovedboklinje."""
+
+    return LedgerVoucherKey(
+        dato=row.dato,
+        bilagsnr=row.bilagsnr,
+        transaksjons_id=row.transaksjons_id,
+    )
+
+
+def rows_for_voucher(
+    rows: Iterable[LedgerRow], selected_row: LedgerRow
+) -> List[LedgerRow]:
+    """Returnerer alle linjer som tilhører samme bilag som valgt rad."""
+
+    selected_key = voucher_key_for_row(selected_row)
+    return [row for row in rows if voucher_key_for_row(row) == selected_key]
+
+
+def build_statement_rows(
+    rows: Sequence[LedgerRow],
+    account_balances: Mapping[str, tuple[float, float]] | None = None,
+) -> List[StatementRow]:
+    """Bygger kontoutskrift-rader med IB i start og UB i slutt."""
+
+    if not rows:
+        return []
+
+    sorted_rows = sorted(
+        rows,
+        key=lambda row: (row.dato, row.bilagsnr, row.transaksjons_id, row.konto),
+    )
+    year = _year_from_date(sorted_rows[0].dato)
+    opening_date = f"{year}-01-01" if year is not None else "—"
+    closing_date = f"{year}-12-31" if year is not None else "—"
+
+    account_keys = sorted(
+        {row.konto for row in sorted_rows if row.konto and row.konto != "—"}
+    )
+
+    opening_balance = 0.0
+    closing_balance = 0.0
+    if account_balances and account_keys:
+        for account in account_keys:
+            balances = account_balances.get(account)
+            if balances is None:
+                continue
+            opening_balance += float(balances[0])
+            closing_balance += float(balances[1])
+    else:
+        movements = sum(float(row.debet) - float(row.kredit) for row in sorted_rows)
+        opening_balance = 0.0
+        closing_balance = movements
+
+    statement: List[StatementRow] = [
+        StatementRow(
+            dato=opening_date,
+            bilag="",
+            bilagstype="",
+            tekst="Inngående saldo",
+            beskrivelse="",
+            mva="",
+            mva_belop=0.0,
+            belop=opening_balance,
+            akkumulert_belop=opening_balance,
+            source=None,
+        )
+    ]
+
+    running_balance = opening_balance
+    for row in sorted_rows:
+        amount = float(row.debet) - float(row.kredit)
+        running_balance += amount
+        bilag = row.bilagsnr if row.bilagsnr != "—" else row.transaksjons_id
+        statement.append(
+            StatementRow(
+                dato=row.dato,
+                bilag=bilag,
+                bilagstype=row.bilagstype,
+                tekst=row.beskrivelse,
+                beskrivelse=row.kontonavn,
+                mva=row.mva,
+                mva_belop=row.mva_belop,
+                belop=amount,
+                akkumulert_belop=running_balance,
+                source=row,
+            )
+        )
+
+    statement.append(
+        StatementRow(
+            dato=closing_date,
+            bilag="",
+            bilagstype="",
+            tekst="Utgående saldo",
+            beskrivelse="",
+            mva="",
+            mva_belop=0.0,
+            belop=closing_balance,
+            akkumulert_belop=closing_balance,
+            source=None,
+        )
+    )
+    return statement
+
+
+def _format_date(value: date | None) -> str:
+    if value is None:
+        return "—"
+    return value.isoformat()
+
+
+def _year_from_date(value: str) -> int | None:
+    if len(value) < 4:
+        return None
+    try:
+        return int(value[:4])
+    except ValueError:
+        return None
+
+
+def _clean_text(value: object | None, *, fallback: str) -> str:
+    if value is None:
+        return fallback
+    text = str(value).strip()
+    if not text:
+        return fallback
+    if text.lower() in {"na", "n/a", "none", "null"}:
+        return fallback
+    return text

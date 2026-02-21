@@ -19,6 +19,7 @@ from .pages import (
 from .pages.dashboard_page import DashboardPage
 from .pages.dataframe_page import DataFramePage
 from .pages.import_page import ImportPage
+from .pages.hovedbok_page import HovedbokPage
 from .pages.revision_pages import (
     ChecklistPage,
     CostVoucherReviewPage,
@@ -58,6 +59,7 @@ class PageStateHandler:
         self.import_page: Optional[ImportPage] = None
         self.dashboard_page: Optional[DashboardPage] = None
         self.saldobalanse_page: Optional[DataFramePage] = None
+        self.hovedbok_page: Optional[HovedbokPage] = None
         self.kontroll_page: Optional[ComparisonPage] = None
         self.regnskap_page: Optional[RegnskapsanalysePage] = None
         self.vesentlig_page: Optional[SummaryPage] = None
@@ -85,6 +87,10 @@ class PageStateHandler:
         elif key == "plan.saldobalanse" and isinstance(widget, DataFramePage):
             self.saldobalanse_page = widget
             widget.set_dataframe(self._dataset_store.saft_df)
+        elif key == "plan.hovedbok" and isinstance(widget, HovedbokPage):
+            self.hovedbok_page = widget
+            widget.set_account_balances(self._dataset_store.saft_df)
+            widget.set_vouchers(self._dataset_store.all_vouchers)
         elif key == "plan.kontroll" and isinstance(widget, ComparisonPage):
             self.kontroll_page = widget
             widget.update_comparison(self._latest_comparison_rows)
