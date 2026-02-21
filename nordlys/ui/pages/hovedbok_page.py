@@ -4,15 +4,18 @@ from __future__ import annotations
 
 from typing import Dict, List, Sequence, TYPE_CHECKING, Tuple
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
+    QFrame,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QLineEdit,
     QPushButton,
     QSizePolicy,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -83,21 +86,46 @@ class HovedbokPage(QWidget):
         controls.addWidget(self.reset_button)
         layout.addLayout(controls)
 
+        self.result_panel = QFrame()
+        self.result_panel.setObjectName("card")
+        self.result_panel.setFrameShape(QFrame.StyledPanel)
+        self.result_panel.setAttribute(Qt.WA_StyledBackground, True)
+        self.result_panel.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+        panel_layout = QVBoxLayout(self.result_panel)
+        panel_layout.setContentsMargins(18, 14, 18, 14)
+        panel_layout.setSpacing(10)
+
         self.account_name_label = QLabel("")
         self.account_name_label.setObjectName("mutedText")
-        layout.addWidget(self.account_name_label)
+        panel_layout.addWidget(self.account_name_label)
+
+        self.result_stack = QStackedWidget()
+        self.result_stack.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        panel_layout.addWidget(self.result_stack, 1)
+
+        empty_widget = QWidget()
+        empty_layout = QVBoxLayout(empty_widget)
+        empty_layout.setContentsMargins(0, 0, 0, 0)
+        empty_layout.addStretch(1)
 
         self.status_label = QLabel("Søk på konto eller bilag for å vise føringer.")
         self.status_label.setObjectName("mutedText")
-        layout.addWidget(self.status_label)
+        self.status_label.setWordWrap(True)
+        self.status_label.setAlignment(Qt.AlignCenter)
+        empty_layout.addWidget(self.status_label)
+        empty_layout.addStretch(1)
+
+        self.result_stack.addWidget(empty_widget)
 
         self.table = create_table_widget()
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
         self.table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.table.setSortingEnabled(False)
         self.table.cellDoubleClicked.connect(self._open_voucher_dialog)
-        self.table.hide()
-        layout.addWidget(self.table, 1)
+        self.result_stack.addWidget(self.table)
+        self.result_stack.setCurrentWidget(empty_widget)
+        layout.addWidget(self.result_panel, 1)
 
     def set_account_balances(self, df: "pd.DataFrame | None") -> None:
         """Lagrer IB/UB og navn per konto fra saldobalansen."""
@@ -187,8 +215,8 @@ class HovedbokPage(QWidget):
     def _clear_results(self) -> None:
         self._statement_rows = []
         self._table_source_rows = []
-        self.table.hide()
         self.table.setRowCount(0)
+        self.result_stack.setCurrentIndex(0)
 
     def _render_rows(
         self,
@@ -223,7 +251,7 @@ class HovedbokPage(QWidget):
         else:
             self._render_statement_rows(rows)
 
-        self.table.show()
+        self.result_stack.setCurrentWidget(self.table)
         self.status_label.setText(f"Viser {len(rows)} føringer.")
 
     def _render_statement_rows(self, rows: Sequence[LedgerRow]) -> None:
