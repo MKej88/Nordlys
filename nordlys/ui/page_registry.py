@@ -12,6 +12,7 @@ from .page_manager import PageManager
 if TYPE_CHECKING:  # pragma: no cover - kun for typekontroll
     from .pages import (
         ComparisonPage,
+        HovedbokPage,
         RegnskapsanalysePage,
         SammenstillingsanalysePage,
         SummaryPage,
@@ -84,6 +85,11 @@ class PageRegistry:
             "plan.saldobalanse",
             self._build_saldobalanse_page,
             attr="saldobalanse_page",
+        )
+        self._manager.register_lazy_page(
+            "plan.hovedbok",
+            self._build_hovedbok_page,
+            attr="hovedbok_page",
         )
         self._manager.register_lazy_page(
             "plan.kontroll",
@@ -171,6 +177,11 @@ class PageRegistry:
             header_mode=QHeaderView.ResizeToContents,
             full_window=True,
         )
+
+    def _build_hovedbok_page(self) -> HovedbokPage:
+        from .pages.hovedbok_page import HovedbokPage
+
+        return HovedbokPage()
 
     def _build_kontroll_page(self) -> ComparisonPage:
         from .pages import ComparisonPage

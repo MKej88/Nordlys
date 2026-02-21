@@ -28,6 +28,7 @@ class NavigationBuilder:
 
         planning_root = nav.add_root("Planlegging")
         nav.add_child(planning_root, "Saldobalanse", "plan.saldobalanse")
+        nav.add_child(planning_root, "Hovedbok", "plan.hovedbok")
         nav.add_child(planning_root, "Kontroll IB", "plan.kontroll")
         nav.add_child(planning_root, "Regnskapsanalyse", "plan.regnskapsanalyse")
         nav.add_child(planning_root, "Vesentlighetsvurdering", "plan.vesentlighet")
