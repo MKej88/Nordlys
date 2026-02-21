@@ -165,9 +165,7 @@ class HovedbokPage(QWidget):
             rows, account_query=account_query, voucher_query=voucher_query
         )
 
-    def _set_account_label(
-        self, rows: Sequence[LedgerRow], account_query: str
-    ) -> None:
+    def _set_account_label(self, rows: Sequence[LedgerRow], account_query: str) -> None:
         matched_accounts = sorted(
             {row.konto for row in rows if row.konto and row.konto != "—"}
         )
