@@ -4,29 +4,30 @@ from __future__ import annotations
 
 from typing import List, Sequence
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
-    QHBoxLayout,
     QHeaderView,
     QLabel,
     QLineEdit,
     QPushButton,
     QSizePolicy,
+    QHBoxLayout,
     QVBoxLayout,
     QWidget,
 )
 
 from ...saft.ledger import (
     LedgerRow,
+    StatementRow,
     build_ledger_rows,
+    build_statement_rows,
     filter_ledger_rows,
     rows_for_voucher,
 )
 from ...saft.models import CostVoucher
 from ..tables import create_table_widget, populate_table
-from ..widgets import CardFrame, EmptyStateWidget
+from ..widgets import EmptyStateWidget
 
 __all__ = ["HovedbokPage"]
 
@@ -38,24 +39,29 @@ class HovedbokPage(QWidget):
         super().__init__()
 
         self._all_rows: List[LedgerRow] = []
-        self._visible_rows: List[LedgerRow] = []
+        self._statement_rows: List[StatementRow] = []
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(24)
+        layout.setSpacing(16)
 
-        self.card = CardFrame(
-            "Hovedbok",
-            "Søk på konto for å se alle føringer. Dobbeltklikk på en linje "
-            "for å åpne bilaget med motkontoer.",
+        title_label = QLabel("Hovedbok")
+        title_label.setObjectName("pageTitle")
+        layout.addWidget(title_label)
+
+        subtitle_label = QLabel(
+            "Kontoutskrift med IB/UB. Dobbeltklikk på bilagslinje for å se "
+            "motkontoer i bilagsdetalj."
         )
+        subtitle_label.setObjectName("pageSubtitle")
+        subtitle_label.setWordWrap(True)
+        layout.addWidget(subtitle_label)
 
         controls = QHBoxLayout()
         controls.setSpacing(8)
 
-        self.search_label = QLabel("Konto")
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("F.eks. 3000 eller Salgsinntekt")
+        self.search_input.setPlaceholderText("Søk konto, f.eks. 3002")
         self.search_input.returnPressed.connect(self.apply_filter)
 
         self.search_button = QPushButton("Søk")
@@ -64,36 +70,29 @@ class HovedbokPage(QWidget):
         self.reset_button = QPushButton("Nullstill")
         self.reset_button.clicked.connect(self._reset_filter)
 
-        controls.addWidget(self.search_label)
+        controls.addWidget(QLabel("Konto"))
         controls.addWidget(self.search_input, 1)
         controls.addWidget(self.search_button)
         controls.addWidget(self.reset_button)
+        layout.addLayout(controls)
 
         self.status_label = QLabel("Ingen føringer lastet inn.")
         self.status_label.setObjectName("mutedText")
+        layout.addWidget(self.status_label)
 
         self.empty_state = EmptyStateWidget(
             "Ingen føringer å vise",
-            "Importer SAF-T og søk på konto for å se posteringene.",
+            "Importer SAF-T og søk på konto for å se kontoutskrift.",
         )
+        layout.addWidget(self.empty_state)
 
         self.table = create_table_widget()
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.table.setSortingEnabled(True)
+        self.table.setSortingEnabled(False)
         self.table.cellDoubleClicked.connect(self._open_voucher_dialog)
         self.table.hide()
-
-        controls_widget = QWidget()
-        controls_widget.setLayout(controls)
-
-        self.card.add_widget(controls_widget)
-        self.card.add_widget(self.status_label)
-        self.card.add_widget(self.empty_state)
-        self.card.add_widget(self.table)
-
-        layout.addWidget(self.card)
-        layout.addStretch(1)
+        layout.addWidget(self.table, 1)
 
     def set_vouchers(self, vouchers: Sequence[CostVoucher]) -> None:
         """Oppdaterer sideinnholdet med nye bilag."""
@@ -113,9 +112,8 @@ class HovedbokPage(QWidget):
         self._render_rows(self._all_rows)
 
     def _render_rows(self, rows: Sequence[LedgerRow], *, query: str = "") -> None:
-        self._visible_rows = list(rows)
-
         if not self._all_rows:
+            self._statement_rows = []
             self.empty_state.show()
             self.table.hide()
             self.table.setRowCount(0)
@@ -123,60 +121,63 @@ class HovedbokPage(QWidget):
             return
 
         if not rows:
+            self._statement_rows = []
             self.empty_state.show()
             self.table.hide()
-            if query.strip():
-                self.status_label.setText(
-                    f"Fant ingen føringer for søk: {query.strip()}"
-                )
-            else:
-                self.status_label.setText("Ingen føringer å vise.")
+            self.status_label.setText(f"Fant ingen føringer for søk: {query.strip()}")
             return
 
+        self._statement_rows = build_statement_rows(rows)
         table_rows = [
             (
                 row.dato,
-                row.bilagsnr,
-                row.transaksjons_id,
-                row.konto,
-                row.kontonavn,
+                row.bilag,
                 row.tekst,
-                row.debet,
-                row.kredit,
+                row.beskrivelse,
+                "",
+                "",
+                "",
+                row.mva,
+                row.mva_belop,
+                row.belop,
             )
-            for row in rows
+            for row in self._statement_rows
         ]
         columns = [
             "Dato",
             "Bilag",
-            "Transaksjon",
-            "Konto",
-            "Kontonavn",
             "Tekst",
-            "Debet",
-            "Kredit",
+            "Beskrivelse",
+            "Prosjektkode",
+            "Prosjekt",
+            "Avdelingskode",
+            "Mva",
+            "Mva-beløp",
+            "Beløp",
         ]
 
-        populate_table(self.table, columns, table_rows, money_cols=(6, 7))
+        populate_table(self.table, columns, table_rows, money_cols=(8, 9))
         self.table.show()
         self.empty_state.hide()
 
         if query.strip():
             self.status_label.setText(
-                f"Viser {len(rows)} føringer for søk: {query.strip()}"
+                f"Viser {len(rows)} føringer med IB/UB for søk: {query.strip()}"
             )
         else:
             self.status_label.setText(
-                f"Viser {len(rows)} føringer. Skriv konto for å filtrere."
+                f"Viser {len(rows)} føringer med IB/UB. Søk på konto for filtrering."
             )
 
-        self.table.sortItems(0, Qt.AscendingOrder)
-
     def _open_voucher_dialog(self, row_index: int, _column: int) -> None:
-        if row_index < 0 or row_index >= len(self._visible_rows):
+        if row_index < 0 or row_index >= len(self._statement_rows):
             return
 
-        selected_row = self._visible_rows[row_index]
+        statement_row = self._statement_rows[row_index]
+        if statement_row.source is None:
+            return
+
+        selected_row = statement_row.source
         voucher_rows = rows_for_voucher(self._all_rows, selected_row)
         if not voucher_rows:
             return

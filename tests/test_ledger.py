@@ -4,6 +4,7 @@ from datetime import date
 
 from nordlys.saft.ledger import (
     build_ledger_rows,
+    build_statement_rows,
     filter_ledger_rows,
     rows_for_voucher,
     voucher_key_for_row,
@@ -72,3 +73,16 @@ def test_rows_for_voucher_returns_all_lines_for_same_voucher() -> None:
     assert len(voucher_rows) == 2
     keys = {voucher_key_for_row(row) for row in voucher_rows}
     assert len(keys) == 1
+
+
+def test_build_statement_rows_adds_ib_and_ub() -> None:
+    rows = build_ledger_rows([_voucher()])
+
+    statement_rows = build_statement_rows(rows)
+
+    assert len(statement_rows) == 4
+    assert statement_rows[0].tekst == "Inngående saldo"
+    assert statement_rows[0].dato == "2024-01-01"
+    assert statement_rows[-1].tekst == "Utgående saldo"
+    assert statement_rows[-1].dato == "2024-12-31"
+    assert statement_rows[-1].belop == 0.0

@@ -11,10 +11,12 @@ from .models import CostVoucher
 __all__ = [
     "LedgerRow",
     "LedgerVoucherKey",
+    "StatementRow",
     "build_ledger_rows",
     "filter_ledger_rows",
     "voucher_key_for_row",
     "rows_for_voucher",
+    "build_statement_rows",
 ]
 
 
@@ -40,6 +42,20 @@ class LedgerVoucherKey:
     dato: str
     bilagsnr: str
     transaksjons_id: str
+
+
+@dataclass(frozen=True)
+class StatementRow:
+    """Én rad i kontoutskriftvisningen (inkludert IB/UB)."""
+
+    dato: str
+    bilag: str
+    tekst: str
+    beskrivelse: str
+    mva: str
+    mva_belop: float
+    belop: float
+    source: LedgerRow | None
 
 
 def build_ledger_rows(vouchers: Sequence[CostVoucher]) -> List[LedgerRow]:
@@ -126,7 +142,75 @@ def rows_for_voucher(
     return [row for row in rows if voucher_key_for_row(row) == selected_key]
 
 
+def build_statement_rows(rows: Sequence[LedgerRow]) -> List[StatementRow]:
+    """Bygger kontoutskrift-rader med IB i start og UB i slutt."""
+
+    if not rows:
+        return []
+
+    sorted_rows = sorted(
+        rows,
+        key=lambda row: (row.dato, row.bilagsnr, row.transaksjons_id, row.konto),
+    )
+    year = _year_from_date(sorted_rows[0].dato)
+    opening_date = f"{year}-01-01" if year is not None else "—"
+    closing_date = f"{year}-12-31" if year is not None else "—"
+
+    statement: List[StatementRow] = [
+        StatementRow(
+            dato=opening_date,
+            bilag="",
+            tekst="Inngående saldo",
+            beskrivelse="",
+            mva="",
+            mva_belop=0.0,
+            belop=0.0,
+            source=None,
+        )
+    ]
+
+    total = 0.0
+    for row in sorted_rows:
+        amount = float(row.debet) - float(row.kredit)
+        total += amount
+        statement.append(
+            StatementRow(
+                dato=row.dato,
+                bilag=row.bilagsnr,
+                tekst=row.tekst,
+                beskrivelse=row.kontonavn,
+                mva="",
+                mva_belop=0.0,
+                belop=amount,
+                source=row,
+            )
+        )
+
+    statement.append(
+        StatementRow(
+            dato=closing_date,
+            bilag="",
+            tekst="Utgående saldo",
+            beskrivelse="",
+            mva="",
+            mva_belop=0.0,
+            belop=total,
+            source=None,
+        )
+    )
+    return statement
+
+
 def _format_date(value: date | None) -> str:
     if value is None:
         return "—"
     return value.isoformat()
+
+
+def _year_from_date(value: str) -> int | None:
+    if len(value) < 4:
+        return None
+    try:
+        return int(value[:4])
+    except ValueError:
+        return None
