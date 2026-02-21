@@ -91,7 +91,7 @@ class HovedbokPage(QWidget):
         layout.addWidget(self.status_label)
 
         self.table = create_table_widget()
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
         self.table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.table.setSortingEnabled(False)
         self.table.cellDoubleClicked.connect(self._open_voucher_dialog)
@@ -225,7 +225,6 @@ class HovedbokPage(QWidget):
                 row.bilag,
                 row.bilagstype,
                 row.tekst,
-                row.beskrivelse,
                 row.mva,
                 row.mva_belop,
                 row.belop,
@@ -238,14 +237,13 @@ class HovedbokPage(QWidget):
             "Bilag",
             "Bilagstype",
             "Tekst",
-            "Beskrivelse",
             "Mva",
             "Mva-beløp",
             "Beløp",
             "Akkumulert beløp",
         ]
 
-        populate_table(self.table, columns, table_rows, money_cols=(6, 7, 8))
+        populate_table(self.table, columns, table_rows, money_cols=(5, 6, 7))
         self._mark_balance_rows_bold()
         self.table.show()
         self.status_label.setText(f"Viser {len(rows)} føringer.")
