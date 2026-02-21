@@ -10,8 +10,11 @@ from .models import CostVoucher
 
 __all__ = [
     "LedgerRow",
+    "LedgerVoucherKey",
     "build_ledger_rows",
     "filter_ledger_rows",
+    "voucher_key_for_row",
+    "rows_for_voucher",
 ]
 
 
@@ -28,6 +31,15 @@ class LedgerRow:
     motkontoer: str
     debet: float
     kredit: float
+
+
+@dataclass(frozen=True)
+class LedgerVoucherKey:
+    """Identifiserer ett bilag i hovedbokvisningen."""
+
+    dato: str
+    bilagsnr: str
+    transaksjons_id: str
 
 
 def build_ledger_rows(vouchers: Sequence[CostVoucher]) -> List[LedgerRow]:
@@ -83,7 +95,6 @@ def filter_ledger_rows(rows: Iterable[LedgerRow], query: str) -> List[LedgerRow]
     for row in rows:
         konto = row.konto.strip()
         konto_digits = "".join(char for char in konto if char.isdigit())
-        konto_match = False
 
         if digit_query:
             konto_match = konto_digits.startswith(digit_query)
@@ -94,6 +105,25 @@ def filter_ledger_rows(rows: Iterable[LedgerRow], query: str) -> List[LedgerRow]
             filtered.append(row)
 
     return filtered
+
+
+def voucher_key_for_row(row: LedgerRow) -> LedgerVoucherKey:
+    """Bygger en bilagsnøkkel for én hovedboklinje."""
+
+    return LedgerVoucherKey(
+        dato=row.dato,
+        bilagsnr=row.bilagsnr,
+        transaksjons_id=row.transaksjons_id,
+    )
+
+
+def rows_for_voucher(
+    rows: Iterable[LedgerRow], selected_row: LedgerRow
+) -> List[LedgerRow]:
+    """Returnerer alle linjer som tilhører samme bilag som valgt rad."""
+
+    selected_key = voucher_key_for_row(selected_row)
+    return [row for row in rows if voucher_key_for_row(row) == selected_key]
 
 
 def _format_date(value: date | None) -> str:

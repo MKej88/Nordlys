@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from datetime import date
 
-from nordlys.saft.ledger import build_ledger_rows, filter_ledger_rows
+from nordlys.saft.ledger import (
+    build_ledger_rows,
+    filter_ledger_rows,
+    rows_for_voucher,
+    voucher_key_for_row,
+)
 from nordlys.saft.models import CostVoucher, VoucherLine
 
 
@@ -56,3 +61,14 @@ def test_filter_ledger_rows_supports_account_and_name_search() -> None:
     name_filtered = filter_ledger_rows(rows, "kundeford")
     assert len(name_filtered) == 1
     assert name_filtered[0].konto == "1500"
+
+
+def test_rows_for_voucher_returns_all_lines_for_same_voucher() -> None:
+    rows = build_ledger_rows([_voucher()])
+
+    selected = rows[0]
+    voucher_rows = rows_for_voucher(rows, selected)
+
+    assert len(voucher_rows) == 2
+    keys = {voucher_key_for_row(row) for row in voucher_rows}
+    assert len(keys) == 1

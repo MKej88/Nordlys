@@ -6,6 +6,8 @@ from typing import List, Sequence
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QDialog,
+    QDialogButtonBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -16,7 +18,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ...saft.ledger import LedgerRow, build_ledger_rows, filter_ledger_rows
+from ...saft.ledger import (
+    LedgerRow,
+    build_ledger_rows,
+    filter_ledger_rows,
+    rows_for_voucher,
+)
 from ...saft.models import CostVoucher
 from ..tables import create_table_widget, populate_table
 from ..widgets import CardFrame, EmptyStateWidget
@@ -31,6 +38,7 @@ class HovedbokPage(QWidget):
         super().__init__()
 
         self._all_rows: List[LedgerRow] = []
+        self._visible_rows: List[LedgerRow] = []
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -38,7 +46,8 @@ class HovedbokPage(QWidget):
 
         self.card = CardFrame(
             "Hovedbok",
-            "Søk på konto for å se alle føringer med debet, kredit og motkonto.",
+            "Søk på konto for å se alle føringer. Dobbeltklikk på en linje "
+            "for å åpne bilaget med motkontoer.",
         )
 
         controls = QHBoxLayout()
@@ -72,6 +81,7 @@ class HovedbokPage(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
         self.table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.table.setSortingEnabled(True)
+        self.table.cellDoubleClicked.connect(self._open_voucher_dialog)
         self.table.hide()
 
         controls_widget = QWidget()
@@ -103,6 +113,8 @@ class HovedbokPage(QWidget):
         self._render_rows(self._all_rows)
 
     def _render_rows(self, rows: Sequence[LedgerRow], *, query: str = "") -> None:
+        self._visible_rows = list(rows)
+
         if not self._all_rows:
             self.empty_state.show()
             self.table.hide()
@@ -129,7 +141,6 @@ class HovedbokPage(QWidget):
                 row.konto,
                 row.kontonavn,
                 row.tekst,
-                row.motkontoer,
                 row.debet,
                 row.kredit,
             )
@@ -142,12 +153,11 @@ class HovedbokPage(QWidget):
             "Konto",
             "Kontonavn",
             "Tekst",
-            "Motkontoer",
             "Debet",
             "Kredit",
         ]
 
-        populate_table(self.table, columns, table_rows, money_cols=(7, 8))
+        populate_table(self.table, columns, table_rows, money_cols=(6, 7))
         self.table.show()
         self.empty_state.hide()
 
@@ -161,3 +171,54 @@ class HovedbokPage(QWidget):
             )
 
         self.table.sortItems(0, Qt.AscendingOrder)
+
+    def _open_voucher_dialog(self, row_index: int, _column: int) -> None:
+        if row_index < 0 or row_index >= len(self._visible_rows):
+            return
+
+        selected_row = self._visible_rows[row_index]
+        voucher_rows = rows_for_voucher(self._all_rows, selected_row)
+        if not voucher_rows:
+            return
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"Bilag {selected_row.bilagsnr}")
+        dialog.resize(900, 500)
+
+        layout = QVBoxLayout(dialog)
+        info = QLabel(
+            f"Dato: {selected_row.dato}   "
+            f"Bilag: {selected_row.bilagsnr}   "
+            f"Transaksjon: {selected_row.transaksjons_id}"
+        )
+        layout.addWidget(info)
+
+        detail_table = create_table_widget()
+        detail_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeToContents
+        )
+        detail_rows = [
+            (
+                row.konto,
+                row.kontonavn,
+                row.tekst,
+                row.motkontoer,
+                row.debet,
+                row.kredit,
+            )
+            for row in voucher_rows
+        ]
+        populate_table(
+            detail_table,
+            ["Konto", "Kontonavn", "Tekst", "Motkontoer", "Debet", "Kredit"],
+            detail_rows,
+            money_cols=(4, 5),
+        )
+        layout.addWidget(detail_table)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Close)
+        buttons.rejected.connect(dialog.reject)
+        buttons.accepted.connect(dialog.accept)
+        layout.addWidget(buttons)
+
+        dialog.exec()
