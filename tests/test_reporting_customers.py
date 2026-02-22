@@ -7,7 +7,9 @@ from nordlys.saft.reporting_customers import (
     TransactionScope,
     _build_share_basis,
     _transaction_in_scope,
+    build_aged_receivables,
 )
+from xml.etree import ElementTree as ET
 
 
 def test_transaction_in_scope_date_range_filters_by_bounds() -> None:
@@ -88,3 +90,62 @@ def test_build_share_basis_merges_vat_and_gross_shares() -> None:
 
     assert share_basis_no_vat == gross
     assert share_total_no_vat == Decimal("300")
+
+
+def test_build_aged_receivables_buckets_open_items() -> None:
+    xml_text = """
+    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <MasterFiles>
+        <Customer>
+          <CustomerID>C1</CustomerID>
+          <Name>Kunde 1</Name>
+        </Customer>
+      </MasterFiles>
+      <GeneralLedgerEntries>
+        <Journal>
+          <Transaction>
+            <TransactionDate>2024-01-10</TransactionDate>
+            <Line>
+              <RecordID>1</RecordID>
+              <AccountID>1500</AccountID>
+              <CustomerID>C1</CustomerID>
+              <DebitAmount>1000.00</DebitAmount>
+              <CreditAmount>0.00</CreditAmount>
+            </Line>
+          </Transaction>
+          <Transaction>
+            <TransactionDate>2024-02-10</TransactionDate>
+            <Line>
+              <RecordID>2</RecordID>
+              <AccountID>1500</AccountID>
+              <CustomerID>C1</CustomerID>
+              <DebitAmount>0.00</DebitAmount>
+              <CreditAmount>400.00</CreditAmount>
+            </Line>
+          </Transaction>
+          <Transaction>
+            <TransactionDate>2024-03-15</TransactionDate>
+            <Line>
+              <RecordID>3</RecordID>
+              <AccountID>1500</AccountID>
+              <CustomerID>C1</CustomerID>
+              <DebitAmount>500.00</DebitAmount>
+              <CreditAmount>0.00</CreditAmount>
+            </Line>
+          </Transaction>
+        </Journal>
+      </GeneralLedgerEntries>
+    </AuditFile>
+    """
+    root = ET.fromstring(xml_text)
+    ns = {"n1": "urn:StandardAuditFile-Taxation-Financial:NO"}
+
+    aged = build_aged_receivables(root, ns, as_of_date=date(2024, 4, 1))
+
+    assert len(aged.index) == 1
+    row = aged.iloc[0]
+    assert row["Kundenr"] == "C1"
+    assert row["Kundenavn"] == "Kunde 1"
+    assert row["61-90"] == 600.0
+    assert row["0-30"] == 500.0
+    assert row["Sum"] == 1100.0

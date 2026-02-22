@@ -146,6 +146,7 @@ class PageStateHandler:
                 self._dataset_store.bank_analysis,
                 self._dataset_store.bank_mismatch_rows(),
             )
+            widget.set_aged_receivables(self._dataset_store.aged_receivables)
         elif key == "rev.innkjop" and isinstance(widget, PurchasesApPage):
             self.purchases_ap_page = widget
             widget.set_controls_enabled(self._dataset_store.has_supplier_data)

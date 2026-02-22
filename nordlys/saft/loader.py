@@ -58,6 +58,7 @@ class SaftLoadResult:
     sales_ar_correlation: Optional["saft_customers.SalesReceivableCorrelation"]
     receivable_analysis: Optional["saft_customers.ReceivablePostingAnalysis"]
     bank_analysis: Optional["saft_customers.BankPostingAnalysis"]
+    aged_receivables: Optional[pd.DataFrame]
     cost_vouchers: List["saft_customers.CostVoucher"]
     analysis_year: Optional[int]
     summary: Optional[Dict[str, float]]
@@ -287,6 +288,11 @@ def load_saft_file(
             year=analysis.analysis_year,
             trial_balance=dataframe,
         )
+        aged_receivables = saft_customers.build_aged_receivables(
+            parsed.root,
+            parsed.namespaces,
+            as_of_date=analysis.analysis_end_date,
+        )
 
         _report_progress(75, f"Validerer og beriker data for {file_name}")
 
@@ -322,6 +328,7 @@ def load_saft_file(
         trial_balance_error=trial_balance_error,
         validation=validation,
         bank_analysis=bank_analysis,
+        aged_receivables=aged_receivables,
         brreg_json=enrichment.brreg_json,
         brreg_map=enrichment.brreg_map,
         brreg_error=enrichment.brreg_error,

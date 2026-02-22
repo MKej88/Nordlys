@@ -10,6 +10,7 @@ from .saft.analytics import (
     analyze_receivable_postings,
     analyze_sales_receivable_correlation,
     build_account_name_map,
+    build_aged_receivables,
     build_customer_name_map,
     build_parent_map,
     build_supplier_name_map,
@@ -52,5 +53,6 @@ __all__ = [
     "BankPostingAnalysis",
     "analyze_receivable_postings",
     "analyze_bank_postings",
+    "build_aged_receivables",
     "save_outputs",
 ]

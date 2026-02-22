@@ -41,6 +41,7 @@ __all__ = [
     "analyze_receivable_postings",
     "BankPostingAnalysis",
     "analyze_bank_postings",
+    "build_aged_receivables",
 ]
 
 _DESCRIPTION_BUCKET_NAMES: set[str] = set(DESCRIPTION_BUCKET_MAP)
@@ -128,6 +129,179 @@ class BankPostingAnalysis:
             - self.closing_balance
         )
         return round(total, 2)
+
+
+@dataclass
+class _OpenReceivableItem:
+    """Representerer en åpen kundefordringspost før aldersfordeling."""
+
+    tx_date: date
+    amount: Decimal
+
+
+def _settle_customer_receivables(
+    postings: List[Tuple[date, Decimal]],
+) -> List[_OpenReceivableItem]:
+    """Matcher innbetalinger mot fakturaer med enkel FIFO-logikk."""
+
+    open_items: List[_OpenReceivableItem] = []
+    for tx_date, amount in sorted(postings, key=lambda row: row[0]):
+        if amount > 0:
+            open_items.append(_OpenReceivableItem(tx_date=tx_date, amount=amount))
+            continue
+
+        remaining_credit = abs(amount)
+        for item in open_items:
+            if remaining_credit <= 0:
+                break
+            if item.amount <= 0:
+                continue
+            consumed = min(item.amount, remaining_credit)
+            item.amount -= consumed
+            remaining_credit -= consumed
+
+    return [item for item in open_items if item.amount > 0]
+
+
+def _bucket_for_age(age_days: int) -> str:
+    """Returnerer navnet på aldersintervall for en åpen post."""
+
+    if age_days <= 30:
+        return "0-30"
+    if age_days <= 60:
+        return "31-60"
+    if age_days <= 90:
+        return "61-90"
+    if age_days <= 120:
+        return "91-120"
+    return "121+"
+
+
+def build_aged_receivables(
+    root: ET.Element,
+    ns: NamespaceMap,
+    *,
+    as_of_date: Optional[date] = None,
+) -> "pd.DataFrame":
+    """Bygger aldersfordelt reskontro fra SAF-T transaksjoner.
+
+    Metoden ser på linjer på kontoklasse 15 med CustomerID og matcher
+    innbetalinger mot fakturalinjer med enkel FIFO per kunde.
+    """
+
+    pd = _require_pandas()
+    description_customer_map = _build_description_customer_map(root, ns)
+    customer_name_map = build_customer_name_map(root, ns)
+    postings_by_customer: Dict[str, List[Tuple[date, Decimal]]] = defaultdict(list)
+    detected_max_date: Optional[date] = None
+
+    for transaction in _iter_transactions(root, ns):
+        scope = _build_transaction_scope(transaction, ns)
+        if scope.date is None:
+            continue
+        tx_date = scope.date
+        if detected_max_date is None or tx_date > detected_max_date:
+            detected_max_date = tx_date
+
+        lines = _findall(transaction, "n1:Line", ns)
+        transaction_customer_id = _resolve_transaction_customer(
+            transaction,
+            ns,
+            lines,
+            scope,
+            description_customer_map,
+        )
+
+        for line in lines:
+            account_element = _find(line, "n1:AccountID", ns)
+            account_text = _clean_text(
+                account_element.text if account_element is not None else None
+            )
+            if not account_text:
+                continue
+            normalized_digits = _normalize_account_key(account_text)
+            normalized = normalized_digits or account_text
+            if not normalized.startswith("15"):
+                continue
+
+            customer_id = _extract_line_customer_id(line, ns) or transaction_customer_id
+            if not customer_id:
+                continue
+
+            amount = get_amount(line, "DebitAmount", ns) - get_amount(
+                line, "CreditAmount", ns
+            )
+            if amount == 0:
+                continue
+            postings_by_customer[customer_id].append((tx_date, amount))
+
+    effective_as_of = as_of_date or detected_max_date
+    if effective_as_of is None:
+        return pd.DataFrame(
+            columns=[
+                "Kundenr",
+                "Kundenavn",
+                "0-30",
+                "31-60",
+                "61-90",
+                "91-120",
+                "121+",
+                "Sum",
+            ]
+        )
+
+    rows: List[Dict[str, float | str]] = []
+    for customer_id, postings in postings_by_customer.items():
+        open_items = _settle_customer_receivables(postings)
+        if not open_items:
+            continue
+
+        bucket_totals: Dict[str, Decimal] = {
+            "0-30": Decimal("0"),
+            "31-60": Decimal("0"),
+            "61-90": Decimal("0"),
+            "91-120": Decimal("0"),
+            "121+": Decimal("0"),
+        }
+        for item in open_items:
+            age_days = max((effective_as_of - item.tx_date).days, 0)
+            bucket = _bucket_for_age(age_days)
+            bucket_totals[bucket] += item.amount
+
+        total = sum(bucket_totals.values(), Decimal("0"))
+        if total <= 0:
+            continue
+
+        rows.append(
+            {
+                "Kundenr": customer_id,
+                "Kundenavn": customer_name_map.get(customer_id, customer_id),
+                "0-30": _format_decimal(bucket_totals["0-30"]),
+                "31-60": _format_decimal(bucket_totals["31-60"]),
+                "61-90": _format_decimal(bucket_totals["61-90"]),
+                "91-120": _format_decimal(bucket_totals["91-120"]),
+                "121+": _format_decimal(bucket_totals["121+"]),
+                "Sum": _format_decimal(total),
+            }
+        )
+
+    if not rows:
+        return pd.DataFrame(
+            columns=[
+                "Kundenr",
+                "Kundenavn",
+                "0-30",
+                "31-60",
+                "61-90",
+                "91-120",
+                "121+",
+                "Sum",
+            ]
+        )
+
+    dataframe = pd.DataFrame(rows)
+    dataframe = dataframe.sort_values(by="Sum", ascending=False, ignore_index=True)
+    return dataframe
 
 
 def _build_description_customer_map(

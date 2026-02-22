@@ -71,6 +71,7 @@ class SaftDatasetStore:
             "saft_customers.ReceivablePostingAnalysis"
         ] = None
         self._bank_analysis: Optional["saft_customers.BankPostingAnalysis"] = None
+        self._aged_receivables: Optional[pd.DataFrame] = None
         self._cost_vouchers: List["saft_customers.CostVoucher"] = []
         self._all_vouchers: List["saft_customers.CostVoucher"] = []
         self._trial_balance: Optional[Dict[str, object]] = None
@@ -181,6 +182,7 @@ class SaftDatasetStore:
         self._sales_ar_correlation = result.sales_ar_correlation
         self._receivable_analysis = result.receivable_analysis
         self._bank_analysis = result.bank_analysis
+        self._aged_receivables = result.aged_receivables
         self._cost_vouchers = list(result.cost_vouchers)
         self._all_vouchers = (
             list(result.all_vouchers)
@@ -612,6 +614,12 @@ class SaftDatasetStore:
     def bank_analysis(self) -> Optional["saft_customers.BankPostingAnalysis"]:
         return self._bank_analysis
 
+    @property
+    def aged_receivables(self) -> Optional[pd.DataFrame]:
+        """Returnerer aldersfordelt kundefordringsreskontro."""
+
+        return self._aged_receivables
+
     def bank_mismatch_rows(
         self,
     ) -> List[Tuple[str, str, str, float, float, float, str, str]]:
@@ -707,6 +715,7 @@ class SaftDatasetStore:
         self._sales_ar_correlation = None
         self._receivable_analysis = None
         self._bank_analysis = None
+        self._aged_receivables = None
         self._cost_vouchers = []
         self._all_vouchers = []
         self._trial_balance = None

@@ -219,6 +219,7 @@ class DatasetFlowController:
             pages.sales_ar_page.set_bank_overview(
                 store.bank_analysis, store.bank_mismatch_rows()
             )
+            pages.sales_ar_page.set_aged_receivables(store.aged_receivables)
         if pages.purchases_ap_page:
             pages.purchases_ap_page.set_controls_enabled(store.has_supplier_data)
             pages.purchases_ap_page.clear_top_suppliers()
@@ -305,6 +306,7 @@ class DatasetFlowController:
             pages.sales_ar_page.clear_credit_notes()
             pages.sales_ar_page.clear_receivable_overview()
             pages.sales_ar_page.set_bank_overview(None, [])
+            pages.sales_ar_page.set_aged_receivables(None)
         if pages.purchases_ap_page:
             pages.purchases_ap_page.set_controls_enabled(False)
             pages.purchases_ap_page.clear_top_suppliers()

@@ -2547,6 +2547,55 @@ class SalesArPage(QWidget):
             self.receivable_missing_table, self.receivable_missing_empty, False
         )
 
+    def set_aged_receivables(self, aged_receivables: Optional["pd.DataFrame"]) -> None:
+        """Viser aldersfordelt reskontro i egen tabell."""
+
+        if aged_receivables is None or aged_receivables.empty:
+            self.aged_receivables_table.setRowCount(0)
+            self._toggle_empty_state(
+                self.aged_receivables_table,
+                self.aged_receivables_empty,
+                False,
+            )
+            return
+
+        rows: List[Tuple[str, str, float, float, float, float, float, float]] = []
+        for _, row in aged_receivables.iterrows():
+            rows.append(
+                (
+                    str(row.get("Kundenr", "")),
+                    str(row.get("Kundenavn", "")),
+                    float(row.get("0-30", 0.0)),
+                    float(row.get("31-60", 0.0)),
+                    float(row.get("61-90", 0.0)),
+                    float(row.get("91-120", 0.0)),
+                    float(row.get("121+", 0.0)),
+                    float(row.get("Sum", 0.0)),
+                )
+            )
+
+        populate_table(
+            self.aged_receivables_table,
+            [
+                "Kundenr",
+                "Kundenavn",
+                "0-30",
+                "31-60",
+                "61-90",
+                "91-120",
+                "121+",
+                "Sum",
+            ],
+            rows,
+            money_cols={2, 3, 4, 5, 6, 7},
+        )
+        self._toggle_empty_state(
+            self.aged_receivables_table,
+            self.aged_receivables_empty,
+            True,
+        )
+        self.aged_receivables_table.setSortingEnabled(True)
+
     def set_bank_overview(
         self,
         analysis: Optional["saft_customers.BankPostingAnalysis"],
@@ -3001,10 +3050,62 @@ class SalesArPage(QWidget):
 
         self.receivable_card.add_layout(missing_layout)
 
+        aged_title = QLabel("Aldersfordelt reskontro")
+        aged_title.setObjectName("analysisSectionTitle")
+
+        self.aged_receivables_empty = EmptyStateWidget(
+            "Ingen åpne poster",
+            "Fant ingen åpne kundefordringer å aldersfordele.",
+            icon="📭",
+        )
+        self.aged_receivables_empty.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Minimum
+        )
+
+        self.aged_receivables_table = create_table_widget()
+        self.aged_receivables_table.setColumnCount(8)
+        self.aged_receivables_table.setHorizontalHeaderLabels(
+            [
+                "Kundenr",
+                "Kundenavn",
+                "0-30",
+                "31-60",
+                "61-90",
+                "91-120",
+                "121+",
+                "Sum",
+            ]
+        )
+        aged_header = self.aged_receivables_table.horizontalHeader()
+        aged_header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        aged_header.setSectionResizeMode(1, QHeaderView.Stretch)
+        for idx in range(2, 8):
+            aged_header.setSectionResizeMode(idx, QHeaderView.ResizeToContents)
+        self.aged_receivables_table.setSortingEnabled(True)
+        self.aged_receivables_table.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Expanding
+        )
+        self.aged_receivables_table.hide()
+
+        aged_layout = QVBoxLayout()
+        aged_layout.setContentsMargins(0, 0, 0, 0)
+        aged_layout.setSpacing(4)
+        aged_layout.addWidget(aged_title, 0, Qt.AlignLeft | Qt.AlignTop)
+        aged_layout.addWidget(
+            self.aged_receivables_empty, 0, Qt.AlignLeft | Qt.AlignTop
+        )
+        aged_layout.addWidget(self.aged_receivables_table)
+        aged_layout.setStretch(2, 1)
+
+        self.receivable_card.add_layout(aged_layout)
+
         page_layout.addWidget(self.receivable_card)
         self._update_receivable_summary(None)
         self._toggle_empty_state(
             self.receivable_missing_table, self.receivable_missing_empty, False
+        )
+        self._toggle_empty_state(
+            self.aged_receivables_table, self.aged_receivables_empty, False
         )
 
         return page

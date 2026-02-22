@@ -42,6 +42,7 @@ def _make_result(
         sales_ar_correlation=None,
         receivable_analysis=None,
         bank_analysis=None,
+        aged_receivables=None,
         cost_vouchers=[],
         analysis_year=analysis_year,
         summary=summary or {},
