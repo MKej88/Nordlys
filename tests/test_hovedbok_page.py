@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 try:  # pragma: no cover - miljøavhengig
+    from PySide6.QtCore import QItemSelectionModel
     from PySide6.QtWidgets import QApplication
 except (ImportError, OSError) as exc:  # pragma: no cover - miljøavhengig
     pytest.skip(f"PySide6 er ikke tilgjengelig: {exc}", allow_module_level=True)
@@ -136,3 +137,35 @@ def test_voucher_search_must_match_full_voucher_number(qapp: QApplication) -> No
 
     assert page.table.rowCount() == 0
     assert page.status_label.text() == "Fant ingen føringer for bilag: 10"
+
+
+def test_markering_viser_lopende_summering_for_bilag(qapp: QApplication) -> None:
+    page = HovedbokPage()
+    page.set_vouchers([_voucher()])
+    _set_balances(page)
+
+    page.voucher_search_input.setText("B-10")
+    page.apply_filter()
+
+    selection_model = page.table.selectionModel()
+    assert selection_model is not None
+
+    first_row = page.table.model().index(0, 0)
+    selection_model.select(
+        first_row,
+        QItemSelectionModel.Select | QItemSelectionModel.Rows,
+    )
+    assert (
+        page.selection_summary_label.text()
+        == "Markert 1 linjer · Debet: 1 000 · Kredit: 0"
+    )
+
+    second_row = page.table.model().index(1, 0)
+    selection_model.select(
+        second_row,
+        QItemSelectionModel.Select | QItemSelectionModel.Rows,
+    )
+    assert (
+        page.selection_summary_label.text()
+        == "Markert 2 linjer · Debet: 1 000 · Kredit: 1 000"
+    )

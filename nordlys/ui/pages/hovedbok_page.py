@@ -6,6 +6,7 @@ from typing import Dict, List, Sequence, TYPE_CHECKING, Tuple
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QDialog,
     QDialogButtonBox,
     QFrame,
@@ -29,7 +30,7 @@ from ...saft.ledger import (
     rows_for_voucher,
 )
 from ...saft.models import CostVoucher
-from ..tables import create_table_widget, populate_table
+from ..tables import create_table_widget, format_money_norwegian, populate_table
 
 if TYPE_CHECKING:  # pragma: no cover
     import pandas as pd
@@ -122,8 +123,15 @@ class HovedbokPage(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
         self.table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.table.setSortingEnabled(False)
+        self.table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.table.cellDoubleClicked.connect(self._open_voucher_dialog)
+        self.table.itemSelectionChanged.connect(self._update_selection_summary)
         self.result_stack.addWidget(self.table)
+
+        self.selection_summary_label = QLabel("")
+        self.selection_summary_label.setObjectName("mutedText")
+        panel_layout.addWidget(self.selection_summary_label)
+
         self.result_stack.setCurrentWidget(empty_widget)
         layout.addWidget(self.result_panel, 1)
 
@@ -216,7 +224,57 @@ class HovedbokPage(QWidget):
         self._statement_rows = []
         self._table_source_rows = []
         self.table.setRowCount(0)
+        self.selection_summary_label.setText("")
         self.result_stack.setCurrentIndex(0)
+
+    def _selection_amount_columns(self) -> tuple[int, ...]:
+        headers = [
+            self.table.horizontalHeaderItem(index).text()
+            for index in range(self.table.columnCount())
+        ]
+        if "Beløp" in headers:
+            return (headers.index("Beløp"),)
+        if "Debet" in headers and "Kredit" in headers:
+            return (headers.index("Debet"), headers.index("Kredit"))
+        return tuple()
+
+    def _update_selection_summary(self) -> None:
+        amount_columns = self._selection_amount_columns()
+        if not amount_columns:
+            self.selection_summary_label.setText("")
+            return
+
+        selection_model = self.table.selectionModel()
+        if selection_model is None:
+            self.selection_summary_label.setText("")
+            return
+
+        selected_rows = {index.row() for index in selection_model.selectedRows()}
+        if not selected_rows:
+            self.selection_summary_label.setText("")
+            return
+
+        values: dict[int, float] = {column: 0.0 for column in amount_columns}
+        for row_index in selected_rows:
+            for column_index in amount_columns:
+                item = self.table.item(row_index, column_index)
+                if item is None:
+                    continue
+                numeric_value = item.data(Qt.UserRole)
+                if isinstance(numeric_value, float):
+                    values[column_index] += numeric_value
+
+        headers = [
+            self.table.horizontalHeaderItem(index).text()
+            for index in range(self.table.columnCount())
+        ]
+        summary_parts = [
+            f"{headers[column]}: {format_money_norwegian(values[column])}"
+            for column in amount_columns
+        ]
+        self.selection_summary_label.setText(
+            f"Markert {len(selected_rows)} linjer · " + " · ".join(summary_parts)
+        )
 
     def _render_rows(
         self,
@@ -253,6 +311,7 @@ class HovedbokPage(QWidget):
 
         self.result_stack.setCurrentWidget(self.table)
         self.status_label.setText(f"Viser {len(rows)} føringer.")
+        self._update_selection_summary()
 
     def _render_statement_rows(self, rows: Sequence[LedgerRow]) -> None:
         self._statement_rows = build_statement_rows(
