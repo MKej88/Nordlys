@@ -1,22 +1,51 @@
 # Nordlys
 
-Nordlys er et skrivebordsprogram i Python for gjennomgang av SAF-T-regnskap.
-Programmet hjelper deg med import, kontroll og enkel analyse i ett og samme
-vindu.
+Nordlys er et skrivebordsprogram (Python + PySide6) for revisjonsnær gjennomgang
+av SAF-T-regnskap. Målet er å gjøre import, kontroll og analyse enklere, raskere
+og mer oversiktlig i ett samlet verktøy.
 
-## Hva programmet gjør nå
+## Innhold
 
-- Leser én eller flere SAF-T XML-filer.
-- Kjører import i bakgrunnen med fremdriftslinje.
-- Viser saldobalanse, nøkkeltall og sammenstillinger.
-- Bygger kunde-/leverandøranalyser og utvalg av kostnadsbilag.
-- Henter Brønnøysund-data og foreslår bransjegruppe når org.nr finnes.
-- Eksporterer data til Excel og PDF.
-- Støtter sammenligning med forrige år når filer hører til samme selskap.
+- [Hvorfor Nordlys](#hvorfor-nordlys)
+- [Funksjoner](#funksjoner)
+- [Systemkrav](#systemkrav)
+- [Installasjon](#installasjon)
+- [Kom i gang](#kom-i-gang)
+- [Miljøvariabler](#miljøvariabler)
+- [Bransjeoppslag i terminal](#bransjeoppslag-i-terminal)
+- [Eksport](#eksport)
+- [Kvalitetssikring (test og lint)](#kvalitetssikring-test-og-lint)
+- [Prosjektstruktur](#prosjektstruktur)
 
-## Navigasjon i appen
+## Hvorfor Nordlys
 
-Menyen i venstre side består av:
+Nordlys er laget for deg som jobber med revisjon, regnskap eller økonomisk
+kontroll, og som vil:
+
+- lese og kontrollere SAF-T-data uten manuell filgraving,
+- få rask innsikt i saldobalanse, nøkkeltall og avvik,
+- sammenligne perioder/år på en strukturert måte,
+- eksportere funn til rapportformat (Excel/PDF).
+
+## Funksjoner
+
+### Kjernefunksjoner
+
+- Import av én eller flere SAF-T XML-filer.
+- Bakgrunnsimport med fremdriftslinje.
+- Visning av saldobalanse, nøkkeltall og sammenstillinger.
+- Sammenligning med forrige år når filer gjelder samme selskap.
+
+### Analyse og databerikelse
+
+- Kunde- og leverandøranalyser.
+- Utvalg av kostnadsbilag.
+- Oppslag mot Brønnøysundregistrene.
+- Forslag til bransjegruppe når organisasjonsnummer finnes.
+
+### Navigasjon i appen
+
+Venstremenyen i appen består av:
 
 - **Import**
 - **Dashboard**
@@ -36,13 +65,13 @@ Menyen i venstre side består av:
   - Salg og kundefordringer
   - MVA
 
-## Krav
+## Systemkrav
 
 - Python **3.11**
 - Operativsystem med støtte for PySide6
-- Internett hvis du vil hente data fra Brønnøysundregistrene
+- Internett (valgfritt, men nødvendig for Brønnøysund-oppslag)
 
-## Installering
+## Installasjon
 
 1. Opprett virtuelt miljø:
 
@@ -57,52 +86,54 @@ Menyen i venstre side består av:
    .venv\Scripts\activate
    ```
 
-2. Installer avhengigheter for vanlig bruk (raskest):
+2. Installer avhengigheter for vanlig bruk:
 
    ```bash
    pip install -r requirements.txt
    ```
 
-3. Hvis du også skal kjøre tester/lint lokalt, installer utviklerpakker:
+3. Installer utvikleravhengigheter ved behov (test/lint):
 
    ```bash
    pip install -r requirements-dev.txt
    ```
 
-## Starte programmet
+## Kom i gang
+
+Start programmet:
 
 ```bash
 python main.py
 ```
 
-## Valgfrie miljøvariabler
+## Miljøvariabler
 
-Disse kan settes før oppstart:
+Du kan styre ytelse og UI-oppsett med følgende variabler:
 
 - `NORDLYS_SAFT_STREAMING=1`  
-  Slår på streaming av hovedbok/prøvebalanse for store filer.
+  Aktiverer streaming av hovedbok/prøvebalanse for store filer.
 - `NORDLYS_SAFT_STREAMING_VALIDATE=1`  
   Validerer SAF-T under streaming (krever `xmlschema`).
 - `NORDLYS_SAFT_HEAVY_PARALLEL=1`  
-  Gir mer parallell behandling av tunge filer.
+  Aktiverer mer parallell behandling av tunge filer.
 - `NORDLYS_NAV_WIDTH=<tall>`  
   Overstyrer bredden på venstremenyen.
 
-## Kommandolinje for bransjeoppslag
+## Bransjeoppslag i terminal
 
-Du kan bruke bransjeklassifisering uten å starte GUI:
+Du kan bruke bransjeklassifisering uten GUI:
 
 ```bash
 python -m nordlys.industry_groups_cli --orgnr 123456789
 ```
 
-Du kan også lese direkte fra SAF-T-fil:
+Les fra SAF-T-fil:
 
 ```bash
 python -m nordlys.industry_groups_cli --saft sti/til/fil.xml
 ```
 
-Eller overstyre navn i oppslag:
+Overstyr navn i oppslag:
 
 ```bash
 python -m nordlys.industry_groups_cli --orgnr 123456789 --navn "Eksempel AS"
@@ -110,32 +141,49 @@ python -m nordlys.industry_groups_cli --orgnr 123456789 --navn "Eksempel AS"
 
 ## Eksport
 
-Fra appen kan du eksportere:
+Nordlys støtter eksport til både Excel og PDF.
 
-- **Excel** med blant annet:
-  - Saldobalanse
-  - NS4102-sammendrag
-  - Salg per kunde
-  - Innkjøp per leverandør
-  - Brønnøysund-data (rå JSON + mapping)
-  - Utvalgte kostnadsbilag
-- **PDF** med kort sammendrag:
-  - Hovedtall
-  - Toppkunder
-  - Topp leverandører
-  - Utvalgte kostnadsbilag
+### Excel
 
-## Test
+Inkluderer blant annet:
 
-Kjør tester med:
+- Saldobalanse
+- NS4102-sammendrag
+- Salg per kunde
+- Innkjøp per leverandør
+- Brønnøysund-data (rå JSON + mapping)
+- Utvalgte kostnadsbilag
+
+### PDF
+
+Kort sammendrag med:
+
+- Hovedtall
+- Toppkunder
+- Topp leverandører
+- Utvalgte kostnadsbilag
+
+## Kvalitetssikring (test og lint)
+
+Kjør alle tester:
 
 ```bash
 pytest
 ```
 
-Tips: Bruk `requirements-dev.txt` når du trenger test/lint-verktøy lokalt.
+Kjør lint med Ruff:
 
-## Struktur (kort)
+```bash
+ruff check .
+```
+
+Formater kode med Black:
+
+```bash
+black .
+```
+
+## Prosjektstruktur
 
 ```text
 Nordlys/
