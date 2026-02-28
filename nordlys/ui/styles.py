@@ -18,20 +18,20 @@ def _icon_path(filename: str) -> str:
 
 _APPLICATION_STYLESHEET_TEMPLATE = Template(
     """
-QWidget { font-family: 'Roboto', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; font-size: 14px; color: #0f172a; }
-QMainWindow { background-color: #e9effb; }
-#navPanel { background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:0, stop:0 #0b1120, stop:1 #0f172a); color: #e2e8f0; border-right: 1px solid rgba(148, 163, 184, 0.08); border-top-right-radius: 22px; border-bottom-right-radius: 22px; }
+QWidget { font-family: -apple-system, 'SF Pro Text', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; font-size: 14px; color: #111827; }
+QMainWindow { background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:0, y2:1, stop:0 #f7f9fc, stop:1 #edf2f9); }
+#navPanel { background: qlineargradient(spread:pad, x1:0, y1:0, x2:0, y2:1, stop:0 #111827, stop:1 #1f2937); color: #e5e7eb; border-right: 1px solid rgba(255, 255, 255, 0.08); border-top-right-radius: 24px; border-bottom-right-radius: 24px; }
 #logoLabel { font-size: 26px; font-weight: 700; letter-spacing: 0.6px; color: #f8fafc; }
 #navTree { background: transparent; border: none; color: #dbeafe; font-size: 14px; }
 #navTree:focus { outline: none; border: none; }
 QTreeWidget::item:focus { outline: none; }
-#navTree::item { height: 34px; padding: 6px 8px 6px 6px; border-radius: 10px; margin: 1px 0; }
-#navTree::item:selected { background-color: rgba(59, 130, 246, 0.35); color: #f8fafc; font-weight: 600; }
-#navTree::item:hover { background-color: rgba(59, 130, 246, 0.18); }
-QPushButton { background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 #2563eb, stop:1 #1d4ed8); color: #f8fafc; border-radius: 10px; padding: 10px 20px; font-weight: 600; letter-spacing: 0.2px; border: 1px solid rgba(30, 64, 175, 0.45); }
+#navTree::item { height: 36px; padding: 7px 10px 7px 8px; border-radius: 12px; margin: 2px 0; }
+#navTree::item:selected { background-color: rgba(96, 165, 250, 0.35); color: #f8fafc; font-weight: 600; }
+#navTree::item:hover { background-color: rgba(148, 197, 255, 0.2); }
+QPushButton { background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 #3b82f6, stop:1 #2563eb); color: #f8fafc; border-radius: 12px; padding: 10px 20px; font-weight: 600; letter-spacing: 0.2px; border: 1px solid rgba(29, 78, 216, 0.38); }
 QPushButton:focus { outline: none; }
 QPushButton:disabled { background-color: #94a3b8; color: #e5e7eb; }
-QPushButton:hover:!disabled { background-color: #1e40af; }
+QPushButton:hover:!disabled { background-color: #2563eb; }
 QPushButton:pressed { background-color: #1d4ed8; }
 QPushButton[secondary='true'] {
     background: #f8fafc;
@@ -71,7 +71,7 @@ QPushButton#tableActionButton:hover:!disabled {
 QPushButton#tableActionButton:pressed {
     background: #bfdbfe;
 }
-#card { background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 #ffffff, stop:1 #f8fbff); border-radius: 20px; border: 1px solid rgba(148, 163, 184, 0.32); }
+#card { background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 #ffffff, stop:1 #f9fbff); border-radius: 22px; border: 1px solid rgba(148, 163, 184, 0.28); }
 #cardTitle { font-size: 20px; font-weight: 700; color: #0f172a; letter-spacing: 0.2px; }
 #cardSubtitle { color: #475569; font-size: 13px; line-height: 1.5; }
 #taskProgressDialog { background-color: rgba(15, 23, 42, 0.95); border-radius: 28px; }
@@ -112,7 +112,7 @@ QPlainTextEdit#logText {
 }
 #analysisSectionTitle { font-size: 16px; font-weight: 700; color: #0f172a; letter-spacing: 0.2px; border-bottom: 2px solid rgba(37, 99, 235, 0.35); padding-bottom: 6px; }
 #analysisSectionTitle[tightSpacing="true"] { padding-bottom: 0px; margin-bottom: 0px; }
-#pageTitle { font-size: 30px; font-weight: 800; color: #0f172a; letter-spacing: 0.6px; }
+#pageTitle { font-size: 30px; font-weight: 700; color: #0f172a; letter-spacing: 0.4px; }
 QLabel#pageSubtitle { color: #1e293b; font-size: 15px; }
 #statusLabel { color: #1f2937; font-size: 14px; line-height: 1.6; }
 QLabel[meta='true'] { font-weight: 600; }
@@ -159,15 +159,15 @@ QToolTip { background-color: #0f172a; color: #f8fafc; border: none; padding: 8px
 QTabWidget::pane { border: 1px solid rgba(148, 163, 184, 0.32); border-radius: 14px; background: #f4f7ff; margin-top: 12px; padding: 12px; }
 QTabWidget::tab-bar { left: 12px; }
 QTabWidget#fixedAssetTabs::pane { border: none; background: transparent; margin-top: 12px; padding: 0; }
-QTabBar::tab { background: rgba(148, 163, 184, 0.18); color: #0f172a; padding: 10px 20px; border-radius: 10px; margin-right: 8px; font-weight: 600; }
-QTabBar::tab:selected { background: #2563eb; color: #f8fafc; }
-QTabBar::tab:hover { background: rgba(37, 99, 235, 0.35); color: #0f172a; }
+QTabBar::tab { background: rgba(148, 163, 184, 0.14); color: #0f172a; padding: 10px 20px; border-radius: 12px; margin-right: 8px; font-weight: 600; }
+QTabBar::tab:selected { background: #3b82f6; color: #f8fafc; }
+QTabBar::tab:hover { background: rgba(96, 165, 250, 0.35); color: #0f172a; }
 QTabBar::tab:!selected { border: 1px solid rgba(148, 163, 184, 0.35); }
 #analysisDivider { background-color: rgba(148, 163, 184, 0.45); border-radius: 2px; margin: 4px 0; }
 QLineEdit, QPlainTextEdit, QTextEdit {
     background-color: #ffffff;
-    border: 1px solid rgba(148, 163, 184, 0.5);
-    border-radius: 10px;
+    border: 1px solid rgba(148, 163, 184, 0.45);
+    border-radius: 12px;
     padding: 10px 12px;
     color: #0f172a;
     selection-background-color: rgba(37, 99, 235, 0.25);
