@@ -63,7 +63,9 @@ def test_selection_status_overview_updates_with_decision(qapp: QApplication) -> 
     assert module.selection_status_table.item(0, 2).text() == "Godkjent"
 
 
-def test_clicking_status_overview_row_shows_selected_voucher(qapp: QApplication) -> None:
+def test_clicking_status_overview_row_shows_selected_voucher(
+    qapp: QApplication,
+) -> None:
     module = _CostVoucherReviewModule(
         QWidget(),
         "Bilagskontroll",
