@@ -45,8 +45,9 @@ def _voucher(number: str, supplier: str, amount: float) -> CostVoucher:
 
 
 def test_selection_status_overview_updates_with_decision(qapp: QApplication) -> None:
+    parent = QWidget()
     module = _CostVoucherReviewModule(
-        QWidget(),
+        parent,
         "Bilagskontroll",
         "Test",
         is_specific=False,
@@ -66,8 +67,9 @@ def test_selection_status_overview_updates_with_decision(qapp: QApplication) -> 
 def test_clicking_status_overview_row_shows_selected_voucher(
     qapp: QApplication,
 ) -> None:
+    parent = QWidget()
     module = _CostVoucherReviewModule(
-        QWidget(),
+        parent,
         "Bilagskontroll",
         "Test",
         is_specific=False,
