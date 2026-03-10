@@ -743,16 +743,32 @@ class _CostVoucherReviewModule(QWidget):
         selection_layout.setContentsMargins(0, 0, 0, 0)
         selection_layout.setSpacing(24)
 
-        selection_content_row = QHBoxLayout()
-        selection_content_row.setContentsMargins(0, 0, 0, 0)
-        selection_content_row.setSpacing(24)
-        selection_content_row.setAlignment(Qt.AlignTop)
-
         self.detail_card = CardFrame("Gjennomgang av bilag")
         self.detail_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.lbl_progress = QLabel("Ingen bilag valgt.")
         self.lbl_progress.setObjectName("statusLabel")
         self.detail_card.add_widget(self.lbl_progress)
+
+        selection_stats_layout = QHBoxLayout()
+        selection_stats_layout.setContentsMargins(0, 0, 0, 0)
+        selection_stats_layout.setSpacing(12)
+        self.selection_badge_total_amount = StatBadge(
+            "Sum inngående faktura",
+            "Beløp fra innlastet fil",
+        )
+        self.selection_badge_reviewed_amount = StatBadge(
+            "Sum kontrollert",
+            "Kostnad på vurderte bilag",
+        )
+        self.selection_badge_coverage = StatBadge(
+            "Dekning",
+            "Andel av sum som er kontrollert",
+        )
+        selection_stats_layout.addWidget(self.selection_badge_total_amount)
+        selection_stats_layout.addWidget(self.selection_badge_reviewed_amount)
+        selection_stats_layout.addWidget(self.selection_badge_coverage)
+        selection_stats_layout.addStretch(1)
+        self.detail_card.add_layout(selection_stats_layout)
 
         meta_grid = QGridLayout()
         meta_grid.setContentsMargins(0, 0, 0, 0)
@@ -859,37 +875,32 @@ class _CostVoucherReviewModule(QWidget):
         button_row.addWidget(self.btn_next)
         self.detail_card.add_layout(button_row)
 
-        selection_content_row.addWidget(self.detail_card, 1)
+        status_overview_label = QLabel("Statusoversikt for utvalget")
+        status_overview_label.setObjectName("infoLabel")
+        self.detail_card.add_widget(status_overview_label)
 
-        stats_column_layout = QVBoxLayout()
-        stats_column_layout.setContentsMargins(0, 0, 0, 0)
-        stats_column_layout.setSpacing(12)
-        stats_column_layout.setAlignment(Qt.AlignTop)
+        self.selection_status_table = create_table_widget()
+        self.selection_status_table.setColumnCount(3)
+        self.selection_status_table.setHorizontalHeaderLabels(
+            ["Bilag", "Leverandør", "Status"]
+        )
+        self.selection_status_table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeToContents
+        )
+        self.selection_status_table.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.Stretch
+        )
+        self.selection_status_table.horizontalHeader().setSectionResizeMode(
+            2, QHeaderView.ResizeToContents
+        )
+        self.selection_status_table.verticalHeader().setVisible(False)
+        self.selection_status_table.setSortingEnabled(False)
+        self.selection_status_table.cellClicked.connect(
+            self._on_selection_overview_row_clicked
+        )
+        self.detail_card.add_widget(self.selection_status_table)
 
-        selection_stats_layout = QHBoxLayout()
-        selection_stats_layout.setContentsMargins(0, 0, 0, 0)
-        selection_stats_layout.setSpacing(12)
-        selection_stats_layout.addStretch(1)
-        self.selection_badge_total_amount = StatBadge(
-            "Sum inngående faktura",
-            "Beløp fra innlastet fil",
-        )
-        self.selection_badge_reviewed_amount = StatBadge(
-            "Sum kontrollert",
-            "Kostnad på vurderte bilag",
-        )
-        self.selection_badge_coverage = StatBadge(
-            "Dekning",
-            "Andel av sum som er kontrollert",
-        )
-        selection_stats_layout.addWidget(self.selection_badge_total_amount)
-        selection_stats_layout.addWidget(self.selection_badge_reviewed_amount)
-        selection_stats_layout.addWidget(self.selection_badge_coverage)
-        stats_column_layout.addLayout(selection_stats_layout)
-        stats_column_layout.addStretch(1)
-        selection_content_row.addLayout(stats_column_layout)
-
-        selection_layout.addLayout(selection_content_row)
+        selection_layout.addWidget(self.detail_card, 1)
         return selection_container
 
     def _build_summary_tab(self) -> QWidget:
@@ -1350,6 +1361,7 @@ class _CostVoucherReviewModule(QWidget):
         if not self._sample:
             self.summary_table.setRowCount(0)
             self.summary_table.setVisible(False)
+            self.selection_status_table.setRowCount(0)
             self.btn_export_pdf.setEnabled(False)
             self.lbl_summary.setText("Ingen bilag kontrollert ennå.")
             self.tab_widget.setTabEnabled(2, False)
@@ -1424,8 +1436,55 @@ class _CostVoucherReviewModule(QWidget):
 
         apply_compact_row_heights(table)
         self._expand_rows_for_multiline_comments(table)
+        self._refresh_selection_status_table(changed_row, force_rebuild=needs_rebuild)
 
         self._update_coverage_badges()
+
+    def _refresh_selection_status_table(
+        self,
+        changed_row: Optional[int] = None,
+        *,
+        force_rebuild: bool = False,
+    ) -> None:
+        table = self.selection_status_table
+        row_count = len(self._sample)
+        needs_rebuild = force_rebuild or table.rowCount() != row_count
+        if needs_rebuild:
+            table.setRowCount(row_count)
+
+        if needs_rebuild or changed_row is None:
+            rows_to_update: Iterable[int] = range(row_count)
+        else:
+            rows_to_update = [changed_row]
+
+        for row in rows_to_update:
+            voucher = self._sample[row]
+            if needs_rebuild:
+                bilag_text = (
+                    voucher.document_number or voucher.transaction_id or "Bilag"
+                )
+                table.setItem(row, 0, QTableWidgetItem(bilag_text))
+                supplier_text = voucher.supplier_name or voucher.supplier_id or "–"
+                if voucher.supplier_name and voucher.supplier_id:
+                    supplier_text = f"{voucher.supplier_name} ({voucher.supplier_id})"
+                table.setItem(row, 1, QTableWidgetItem(supplier_text))
+
+            result = self._results[row] if row < len(self._results) else None
+            status_text = result.status if result else "Ikke vurdert"
+            status_item = table.item(row, 2)
+            if status_item is None:
+                status_item = QTableWidgetItem()
+                table.setItem(row, 2, status_item)
+            status_item.setText(status_text)
+
+    def _on_selection_overview_row_clicked(self, row: int, _column: int) -> None:
+        if not self._sample:
+            return
+        if row < 0 or row >= len(self._sample):
+            return
+        self._save_current_comment()
+        self._current_index = row
+        self._show_current_voucher()
 
     def _get_current_result(self) -> Optional[VoucherReviewResult]:
         if 0 <= self._current_index < len(self._results):
