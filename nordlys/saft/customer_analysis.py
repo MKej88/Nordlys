@@ -41,15 +41,15 @@ def determine_analysis_year(
     root: ET.Element,
     ns: MutableMapping[str, object],
     transaction_span: Optional[Tuple[Optional[date], Optional[date]]] = None,
+    parent_map: Optional[Dict[ET.Element, Optional[ET.Element]]] = None,
 ) -> Tuple[Optional[int], Optional[Dict[ET.Element, Optional[ET.Element]]]]:
     """Finn analyseår og parent-map basert på SAF-T-data."""
 
     period_start = _parse_date(header.period_start) if header else None
     period_end = _parse_date(header.period_end) if header else None
-    parent_map: Optional[Dict[ET.Element, Optional[ET.Element]]] = None
-
     if period_start or period_end:
-        parent_map = saft_customers.build_parent_map(root)
+        if parent_map is None:
+            parent_map = saft_customers.build_parent_map(root)
         if period_end:
             return period_end.year, parent_map
         if period_start:
@@ -90,7 +90,11 @@ def build_customer_supplier_analysis(
         root, ns, transactions=transactions
     )
     analysis_year, detected_parent_map = determine_analysis_year(
-        header, root, ns, transaction_span=(observed_start, observed_end)
+        header,
+        root,
+        ns,
+        transaction_span=(observed_start, observed_end),
+        parent_map=parent_map,
     )
     if parent_map is None:
         parent_map = detected_parent_map

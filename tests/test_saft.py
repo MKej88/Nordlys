@@ -28,6 +28,7 @@ from nordlys.saft.header import SaftHeader
 from nordlys.saft.customer_analysis import (
     _parse_date,
     build_customer_supplier_analysis,
+    determine_analysis_year,
 )
 from nordlys.saft.periods import format_header_period
 from nordlys.saft_customers import (
@@ -1944,6 +1945,44 @@ def test_build_customer_supplier_analysis_beholder_innsendt_parent_map(monkeypat
     build_customer_supplier_analysis(
         header, root, ns, parent_map=provided_parent_map, transactions=[]
     )
+
+
+def test_determine_analysis_year_beholder_innsendt_parent_map(monkeypatch):
+    xml = """
+    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <Header>
+        <SelectionCriteria>
+          <PeriodStart>2023-01-01</PeriodStart>
+          <PeriodEnd>2023-12-31</PeriodEnd>
+        </SelectionCriteria>
+      </Header>
+    </AuditFile>
+    """
+    root = ET.fromstring(xml)
+    ns = {"n1": root.tag.split("}")[0][1:]}
+    header = parse_saft_header(root)
+    provided_parent_map = {root: None}
+
+    import nordlys.saft.customer_analysis as customer_analysis
+
+    def _build_parent_map_should_not_be_called(*_args, **_kwargs):
+        raise AssertionError("build_parent_map skal ikke kalles")
+
+    monkeypatch.setattr(
+        customer_analysis.saft_customers,
+        "build_parent_map",
+        _build_parent_map_should_not_be_called,
+    )
+
+    analysis_year, returned_parent_map = determine_analysis_year(
+        header,
+        root,
+        ns,
+        parent_map=provided_parent_map,
+    )
+
+    assert analysis_year == 2023
+    assert returned_parent_map is provided_parent_map
 
 
 def test_compute_purchases_includes_all_cost_accounts():
