@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 import xml.etree.ElementTree as ET
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, cast
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Sequence, cast
 
 from ..constants import NS
 from ..helpers import lazy_pandas, text_or_none, to_float
@@ -39,7 +39,9 @@ def parse_saldobalanse(
 
     if account_elements is None:
         gl = root.find("n1:MasterFiles/n1:GeneralLedgerAccounts", NS)
-        accounts = gl.iterfind("n1:Account", NS) if gl is not None else ()
+        accounts: Iterable[ET.Element] = (
+            gl.iterfind("n1:Account", NS) if gl is not None else ()
+        )
     else:
         accounts = account_elements
 
