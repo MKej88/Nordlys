@@ -128,7 +128,9 @@ def _run_with_extraction(root: ET.Element) -> tuple[float, int]:
     ns_map = dict(NS)
     header = parse_saft_header(root)
     extracted = extract_saft_structures(root, ns_map)
-    trial_balance = parse_saldobalanse(root, account_elements=extracted.account_elements)
+    trial_balance = parse_saldobalanse(
+        root, account_elements=extracted.account_elements
+    )
     analysis = build_customer_supplier_analysis(
         header,
         root,
