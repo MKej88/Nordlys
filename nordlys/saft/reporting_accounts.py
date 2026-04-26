@@ -75,6 +75,7 @@ def extract_cost_vouchers(
     date_from: Optional[object] = None,
     date_to: Optional[object] = None,
     parent_map: Optional[Dict[ET.Element, Optional[ET.Element]]] = None,
+    transactions: Optional[Sequence[ET.Element]] = None,
 ) -> List[CostVoucher]:
     """Henter kostnadsbilag med leverandørtilknytning fra SAF-T."""
 
@@ -98,7 +99,7 @@ def extract_cost_vouchers(
                 return text
         return None
 
-    for transaction in _iter_transactions(root, ns):
+    for transaction in _iter_transactions(root, ns, transactions=transactions):
         date_element = _find(transaction, "n1:TransactionDate", ns)
         tx_date = _ensure_date(date_element.text if date_element is not None else None)
         if tx_date is None:
@@ -204,6 +205,7 @@ def extract_all_vouchers(
     date_from: Optional[object] = None,
     date_to: Optional[object] = None,
     parent_map: Optional[Dict[ET.Element, Optional[ET.Element]]] = None,
+    transactions: Optional[Sequence[ET.Element]] = None,
 ) -> List[CostVoucher]:
     """Henter alle bilag i valgt periode/år med linjer og mva-koder."""
 
@@ -228,7 +230,7 @@ def extract_all_vouchers(
                 return text
         return None
 
-    for transaction in _iter_transactions(root, ns):
+    for transaction in _iter_transactions(root, ns, transactions=transactions):
         date_element = _find(transaction, "n1:TransactionDate", ns)
         tx_date = _ensure_date(date_element.text if date_element is not None else None)
         if tx_date is None:

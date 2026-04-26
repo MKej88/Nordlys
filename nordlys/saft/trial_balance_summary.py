@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 import xml.etree.ElementTree as ET
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, cast
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, cast
 
 from ..constants import NS
 from ..helpers import lazy_pandas, text_or_none, to_float
@@ -29,14 +29,19 @@ def _lazy_numpy() -> Any:
     return _NUMPY
 
 
-def parse_saldobalanse(root: ET.Element) -> "pd.DataFrame":
+def parse_saldobalanse(
+    root: ET.Element, *, account_elements: Optional[Sequence[ET.Element]] = None
+) -> "pd.DataFrame":
     """Returnerer saldobalansen som Pandas DataFrame."""
 
     if pd is None:
         raise RuntimeError("Pandas er ikke tilgjengelig for saldobalanse-parsing.")
 
-    gl = root.find("n1:MasterFiles/n1:GeneralLedgerAccounts", NS)
-    accounts = gl.iterfind("n1:Account", NS) if gl is not None else ()
+    if account_elements is None:
+        gl = root.find("n1:MasterFiles/n1:GeneralLedgerAccounts", NS)
+        accounts = gl.iterfind("n1:Account", NS) if gl is not None else ()
+    else:
+        accounts = account_elements
 
     def get(acct: ET.Element, tag: str) -> Optional[str]:
         return text_or_none(acct.find(f"n1:{tag}", NS))
