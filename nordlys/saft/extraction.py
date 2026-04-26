@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 import xml.etree.ElementTree as ET
@@ -19,10 +20,39 @@ class SaftExtractionBundle:
     account_elements: List[ET.Element]
     customer_elements: List[ET.Element]
     supplier_elements: List[ET.Element]
-    transactions: List[ET.Element]
+    transactions: Sequence[ET.Element]
     parent_map: Dict[ET.Element, Optional[ET.Element]]
     customers: Dict[str, CustomerInfo]
     suppliers: Dict[str, SupplierInfo]
+
+
+class _JournalTransactionSequence(Sequence[ET.Element]):
+    """Sekvensvisning over transaksjoner uten å materialisere alle elementer."""
+
+    def __init__(self, journals: Sequence[ET.Element], ns: NamespaceMap) -> None:
+        self._journals = tuple(journals)
+        self._ns = ns
+
+    def __iter__(self) -> Iterator[ET.Element]:
+        for journal in self._journals:
+            yield from _findall(journal, "n1:Transaction", self._ns)
+
+    def __len__(self) -> int:
+        return sum(len(_findall(journal, "n1:Transaction", self._ns)) for journal in self._journals)
+
+    def __getitem__(self, index: int) -> ET.Element:
+        if index < 0:
+            index += len(self)
+        if index < 0:
+            raise IndexError(index)
+        offset = 0
+        for journal in self._journals:
+            transactions = _findall(journal, "n1:Transaction", self._ns)
+            next_offset = offset + len(transactions)
+            if index < next_offset:
+                return transactions[index - offset]
+            offset = next_offset
+        raise IndexError(index)
 
 
 def extract_saft_structures(root: ET.Element, ns: NamespaceMap) -> SaftExtractionBundle:
@@ -40,17 +70,16 @@ def extract_saft_structures(root: ET.Element, ns: NamespaceMap) -> SaftExtractio
         customer_elements = list(_findall(master_files, "n1:Customer", ns))
         supplier_elements = list(_findall(master_files, "n1:Supplier", ns))
 
-    transactions: List[ET.Element] = []
+    journals: List[ET.Element] = []
     entries = _find(root, "n1:GeneralLedgerEntries", ns)
     if entries is not None:
-        for journal in _findall(entries, "n1:Journal", ns):
-            transactions.extend(_findall(journal, "n1:Transaction", ns))
+        journals = list(_findall(entries, "n1:Journal", ns))
 
     return SaftExtractionBundle(
         account_elements=account_elements,
         customer_elements=customer_elements,
         supplier_elements=supplier_elements,
-        transactions=transactions,
+        transactions=_JournalTransactionSequence(journals, ns),
         parent_map=build_parent_map(root),
         customers=parse_customers_from_elements(customer_elements),
         suppliers=parse_suppliers_from_elements(supplier_elements),

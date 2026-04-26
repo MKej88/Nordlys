@@ -171,6 +171,10 @@ def test_extraction_pipeline_gjenbruker_data_og_har_forventet_ytelse():
     extracted_medium, tx_count = _run_with_extraction(
         ET.fromstring(_build_saft_xml(transaction_count=250))
     )
+    extracted = extract_saft_structures(
+        ET.fromstring(_build_saft_xml(transaction_count=5)), dict(NS)
+    )
 
     assert tx_count == 250
+    assert not isinstance(extracted.transactions, list)
     assert extracted_medium <= baseline_medium * 1.6
