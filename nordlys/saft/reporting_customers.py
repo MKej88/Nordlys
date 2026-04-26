@@ -536,6 +536,7 @@ def _compute_customer_sales_map(
     year: Optional[int],
     last_period: Optional[int],
     include_suppliers: bool = False,
+    transactions: Optional[Sequence[ET.Element]] = None,
 ) -> Tuple[Dict[str, Decimal], Dict[str, int], Dict[str, Decimal], Dict[str, int]]:
     """Returnerer netto salg per kunde og (valgfritt) kostnader per leverandør."""
 
@@ -548,7 +549,7 @@ def _compute_customer_sales_map(
     use_range = start_date is not None or end_date is not None
     description_customer_map = _build_description_customer_map(root, ns)
 
-    for transaction in _iter_transactions(root, ns):
+    for transaction in _iter_transactions(root, ns, transactions=transactions):
         lines_list = list(_findall(transaction, "n1:Line", ns))
         if not lines_list:
             continue
@@ -621,6 +622,7 @@ def compute_customer_supplier_totals(
     date_from: Optional[object] = None,
     date_to: Optional[object] = None,
     parent_map: Optional[Dict[ET.Element, Optional[ET.Element]]] = None,
+    transactions: Optional[Sequence[ET.Element]] = None,
 ) -> Tuple["pd.DataFrame", "pd.DataFrame"]:
     """Beregner kundesalg og leverandørkjøp i ett pass gjennom transaksjonene."""
 
@@ -648,6 +650,7 @@ def compute_customer_supplier_totals(
         year=year,
         last_period=last_period if not use_range else None,
         include_suppliers=True,
+        transactions=transactions,
     )
 
     lookup_map = parent_map
@@ -867,6 +870,7 @@ def extract_credit_notes(
     *,
     months: Sequence[int] = tuple(range(1, 13)),
     year: Optional[int] = None,
+    transactions: Optional[Sequence[ET.Element]] = None,
 ) -> "pd.DataFrame":
     """Henter kreditnotaer i angitte måneder for 3xxx-konti gjennom året."""
 
@@ -877,7 +881,7 @@ def extract_credit_notes(
 
     rows: List[Dict[str, object]] = []
 
-    for transaction in _iter_transactions(root, ns):
+    for transaction in _iter_transactions(root, ns, transactions=transactions):
         scope = _build_transaction_scope(transaction, ns)
         tx_date = scope.date
         if tx_date is None or tx_date.month not in month_filter:
@@ -949,6 +953,7 @@ def analyze_sales_receivable_correlation(
     date_from: Optional[date] = None,
     date_to: Optional[date] = None,
     year: Optional[int] = None,
+    transactions: Optional[Sequence[ET.Element]] = None,
 ) -> SalesReceivableCorrelation:
     """Summerer salg etter om bilaget har motpost på 1500."""
 
@@ -959,7 +964,7 @@ def analyze_sales_receivable_correlation(
 
     use_range = date_from is not None or date_to is not None
 
-    for transaction in _iter_transactions(root, ns):
+    for transaction in _iter_transactions(root, ns, transactions=transactions):
         scope = _build_transaction_scope(transaction, ns)
         if not _transaction_in_scope(
             scope,
@@ -1088,6 +1093,7 @@ def analyze_receivable_postings(
     date_to: Optional[date] = None,
     year: Optional[int] = None,
     trial_balance: Optional["pd.DataFrame"] = None,
+    transactions: Optional[Sequence[ET.Element]] = None,
 ) -> ReceivablePostingAnalysis:
     """Summerer bevegelser på konto 1500 fordelt på motposter."""
 
@@ -1105,7 +1111,7 @@ def analyze_receivable_postings(
     other_total = Decimal("0")
     other_rows: List[Dict[str, object]] = []
 
-    for transaction in _iter_transactions(root, ns):
+    for transaction in _iter_transactions(root, ns, transactions=transactions):
         scope = _build_transaction_scope(transaction, ns)
         if not _transaction_in_scope(
             scope,
@@ -1247,6 +1253,7 @@ def analyze_bank_postings(
     date_to: Optional[date] = None,
     year: Optional[int] = None,
     trial_balance: Optional["pd.DataFrame"] = None,
+    transactions: Optional[Sequence[ET.Element]] = None,
 ) -> BankPostingAnalysis:
     """Summerer bankbevegelser fordelt på motpost kundefordringer."""
 
@@ -1262,7 +1269,7 @@ def analyze_bank_postings(
     without_receivable = Decimal("0")
     mismatched_rows: List[Dict[str, object]] = []
 
-    for transaction in _iter_transactions(root, ns):
+    for transaction in _iter_transactions(root, ns, transactions=transactions):
         scope = _build_transaction_scope(transaction, ns)
         if not _transaction_in_scope(
             scope,

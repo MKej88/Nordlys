@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
-from typing import Dict
+from typing import Dict, Iterable
 
 from ..constants import NS
 from ..helpers import text_or_none
@@ -13,7 +13,9 @@ __all__ = [
     "CustomerInfo",
     "SupplierInfo",
     "parse_customers",
+    "parse_customers_from_elements",
     "parse_suppliers",
+    "parse_suppliers_from_elements",
 ]
 
 
@@ -35,11 +37,13 @@ class SupplierInfo:
     name: str
 
 
-def parse_customers(root: ET.Element) -> Dict[str, CustomerInfo]:
-    """Returnerer oppslag over kunder med kundenummer og navn."""
+def parse_customers_from_elements(
+    customer_elements: Iterable[ET.Element],
+) -> Dict[str, CustomerInfo]:
+    """Returnerer oppslag over kunder basert på ferdig uthentede XML-elementer."""
 
     customers: Dict[str, CustomerInfo] = {}
-    for element in root.findall(".//n1:MasterFiles/n1:Customer", NS):
+    for element in customer_elements:
         cid = text_or_none(element.find("n1:CustomerID", NS))
         if not cid:
             continue
@@ -65,11 +69,20 @@ def parse_customers(root: ET.Element) -> Dict[str, CustomerInfo]:
     return customers
 
 
-def parse_suppliers(root: ET.Element) -> Dict[str, SupplierInfo]:
-    """Returnerer oppslag over leverandører med nummer og navn."""
+def parse_customers(root: ET.Element) -> Dict[str, CustomerInfo]:
+    """Returnerer oppslag over kunder med kundenummer og navn."""
+
+    customer_elements = root.findall(".//n1:MasterFiles/n1:Customer", NS)
+    return parse_customers_from_elements(customer_elements)
+
+
+def parse_suppliers_from_elements(
+    supplier_elements: Iterable[ET.Element],
+) -> Dict[str, SupplierInfo]:
+    """Returnerer oppslag over leverandører fra ferdig uthentede elementer."""
 
     suppliers: Dict[str, SupplierInfo] = {}
-    for element in root.findall(".//n1:MasterFiles/n1:Supplier", NS):
+    for element in supplier_elements:
         sid = text_or_none(element.find("n1:SupplierID", NS))
         if not sid:
             continue
@@ -94,3 +107,10 @@ def parse_suppliers(root: ET.Element) -> Dict[str, SupplierInfo]:
             name=name,
         )
     return suppliers
+
+
+def parse_suppliers(root: ET.Element) -> Dict[str, SupplierInfo]:
+    """Returnerer oppslag over leverandører med nummer og navn."""
+
+    supplier_elements = root.findall(".//n1:MasterFiles/n1:Supplier", NS)
+    return parse_suppliers_from_elements(supplier_elements)

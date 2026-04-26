@@ -21,6 +21,7 @@ from .customer_analysis import (
     CustomerSupplierAnalysis,
     build_customer_supplier_analysis,
 )
+from .extraction import SaftExtractionBundle, extract_saft_structures
 from .trial_balance import TrialBalanceResult
 from .xml_helpers import NamespaceMap, _findall
 
@@ -89,8 +90,6 @@ class _SaftFutures:
     validation: Future["saft.SaftValidationResult"]
     enrichment: Future[BrregEnrichment]
     dataframe: Future["pd.DataFrame"]
-    customers: Future[Dict[str, "saft.CustomerInfo"]]
-    suppliers: Future[Dict[str, "saft.SupplierInfo"]]
     analysis: Future[CustomerSupplierAnalysis]
     trial_balance: Optional[Future["TrialBalanceResult"]]
 
@@ -113,6 +112,7 @@ def _submit_background_tasks(
     file_name: str,
     use_streaming: bool,
     parsed: _ParsedSaftContent,
+    extracted: SaftExtractionBundle,
     report_progress: Callable[[int, str], None],
 ) -> _SaftFutures:
     """Starter de mest tunge oppgavene i bakgrunnen."""
@@ -130,22 +130,24 @@ def _submit_background_tasks(
         parsed.header.file_version if parsed.header else None,
     )
     enrichment_future = executor.submit(enrich_from_header, parsed.header)
-    dataframe_future = executor.submit(saft.parse_saldobalanse, parsed.root)
-    customers_future = executor.submit(saft.parse_customers, parsed.root)
-    suppliers_future = executor.submit(saft.parse_suppliers, parsed.root)
+    dataframe_future = executor.submit(
+        saft.parse_saldobalanse,
+        parsed.root,
+        account_elements=extracted.account_elements,
+    )
     analysis_future = executor.submit(
         build_customer_supplier_analysis,
         parsed.header,
         parsed.root,
         parsed.namespaces,
+        parent_map=extracted.parent_map,
+        transactions=extracted.transactions,
     )
 
     return _SaftFutures(
         validation=validation_future,
         enrichment=enrichment_future,
         dataframe=dataframe_future,
-        customers=customers_future,
-        suppliers=suppliers_future,
         analysis=analysis_future,
         trial_balance=trial_balance_future,
     )
@@ -244,6 +246,7 @@ def load_saft_file(
 
     with ThreadPoolExecutor(max_workers=background_workers) as executor:
         parsed = _parse_saft_content(file_path)
+        extracted = extract_saft_structures(parsed.root, parsed.namespaces)
         header = parsed.header
         futures = _submit_background_tasks(
             executor,
@@ -251,12 +254,13 @@ def load_saft_file(
             file_name=file_name,
             use_streaming=use_streaming,
             parsed=parsed,
+            extracted=extracted,
             report_progress=_report_progress,
         )
 
         dataframe = futures.dataframe.result()
-        customers = futures.customers.result()
-        suppliers = futures.suppliers.result()
+        customers = extracted.customers
+        suppliers = extracted.suppliers
         _report_progress(25, f"Tolker saldobalanse for {file_name}")
 
         analysis: CustomerSupplierAnalysis = futures.analysis.result()
@@ -278,6 +282,7 @@ def load_saft_file(
             date_to=analysis.analysis_end_date,
             year=analysis.analysis_year,
             trial_balance=dataframe,
+            transactions=extracted.transactions,
         )
         bank_analysis = saft_customers.analyze_bank_postings(
             parsed.root,
@@ -286,6 +291,7 @@ def load_saft_file(
             date_to=analysis.analysis_end_date,
             year=analysis.analysis_year,
             trial_balance=dataframe,
+            transactions=extracted.transactions,
         )
 
         _report_progress(75, f"Validerer og beriker data for {file_name}")
