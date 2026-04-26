@@ -1874,6 +1874,78 @@ def test_build_customer_supplier_analysis_handles_missing_transaction_dates():
     assert totals["PERIOD-ONLY"] == pytest.approx(500.0)
 
 
+def test_build_customer_supplier_analysis_beholder_innsendt_parent_map(monkeypatch):
+    xml = """
+    <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">
+      <Header>
+        <SelectionCriteria>
+          <PeriodStart>2023-01-01</PeriodStart>
+          <PeriodEnd>2023-12-31</PeriodEnd>
+        </SelectionCriteria>
+      </Header>
+      <GeneralLedgerEntries>
+        <Journal>
+          <Transaction>
+            <TransactionDate>2023-02-15</TransactionDate>
+            <Line>
+              <AccountID>3000</AccountID>
+              <CreditAmount>100</CreditAmount>
+            </Line>
+            <Line>
+              <AccountID>1500</AccountID>
+              <DebitAmount>100</DebitAmount>
+              <CustomerID>CUST-1</CustomerID>
+            </Line>
+          </Transaction>
+        </Journal>
+      </GeneralLedgerEntries>
+    </AuditFile>
+    """
+    root = ET.fromstring(xml)
+    ns = {"n1": root.tag.split("}")[0][1:]}
+    header = parse_saft_header(root)
+    provided_parent_map = {root: None}
+    detected_parent_map = {}
+
+    import nordlys.saft.customer_analysis as customer_analysis
+
+    monkeypatch.setattr(
+        customer_analysis,
+        "determine_analysis_year",
+        lambda *_args, **_kwargs: (2023, detected_parent_map),
+    )
+
+    def _assert_parent_map(*_args, **kwargs):
+        assert kwargs["parent_map"] is provided_parent_map
+        return pd.DataFrame(), pd.DataFrame()
+
+    monkeypatch.setattr(
+        customer_analysis.saft_customers,
+        "compute_customer_supplier_totals",
+        _assert_parent_map,
+    )
+    monkeypatch.setattr(
+        customer_analysis.saft_customers, "extract_cost_vouchers", lambda *_a, **_k: []
+    )
+    monkeypatch.setattr(
+        customer_analysis.saft_customers, "extract_all_vouchers", lambda *_a, **_k: []
+    )
+    monkeypatch.setattr(
+        customer_analysis.saft_customers,
+        "extract_credit_notes",
+        lambda *_a, **_k: pd.DataFrame(),
+    )
+    monkeypatch.setattr(
+        customer_analysis.saft_customers,
+        "analyze_sales_receivable_correlation",
+        lambda *_a, **_k: None,
+    )
+
+    build_customer_supplier_analysis(
+        header, root, ns, parent_map=provided_parent_map, transactions=[]
+    )
+
+
 def test_compute_purchases_includes_all_cost_accounts():
     xml = """
     <AuditFile xmlns="urn:StandardAuditFile-Taxation-Financial:NO">

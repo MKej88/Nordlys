@@ -89,9 +89,11 @@ def build_customer_supplier_analysis(
     observed_start, observed_end = _detect_transaction_span(
         root, ns, transactions=transactions
     )
-    analysis_year, parent_map = determine_analysis_year(
+    analysis_year, detected_parent_map = determine_analysis_year(
         header, root, ns, transaction_span=(observed_start, observed_end)
     )
+    if parent_map is None:
+        parent_map = detected_parent_map
     customer_sales: Optional["pd.DataFrame"] = None
     supplier_purchases: Optional["pd.DataFrame"] = None
     cost_vouchers: List["saft_customers.CostVoucher"] = []
