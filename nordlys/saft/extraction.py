@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, overload
 import xml.etree.ElementTree as ET
 
 from .masterfiles import CustomerInfo, SupplierInfo, parse_customers_from_elements
@@ -38,24 +38,38 @@ class _JournalTransactionSequence(Sequence[ET.Element]):
             yield from _findall(journal, "n1:Transaction", self._ns)
 
     def __len__(self) -> int:
-        return sum(
-            len(_findall(journal, "n1:Transaction", self._ns))
-            for journal in self._journals
-        )
+        total = 0
+        for journal in self._journals:
+            total += len(self._transactions_for_journal(journal))
+        return total
 
-    def __getitem__(self, index: int) -> ET.Element:
+    @overload
+    def __getitem__(self, index: int) -> ET.Element: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> Sequence[ET.Element]: ...
+
+    def __getitem__(self, index: int | slice) -> ET.Element | Sequence[ET.Element]:
+        if isinstance(index, slice):
+            return list(self)[index]
+        return self._get_by_index(index)
+
+    def _get_by_index(self, index: int) -> ET.Element:
         if index < 0:
             index += len(self)
         if index < 0:
             raise IndexError(index)
         offset = 0
         for journal in self._journals:
-            transactions = _findall(journal, "n1:Transaction", self._ns)
+            transactions = self._transactions_for_journal(journal)
             next_offset = offset + len(transactions)
             if index < next_offset:
                 return transactions[index - offset]
             offset = next_offset
         raise IndexError(index)
+
+    def _transactions_for_journal(self, journal: ET.Element) -> List[ET.Element]:
+        return list(_findall(journal, "n1:Transaction", self._ns))
 
 
 def extract_saft_structures(root: ET.Element, ns: NamespaceMap) -> SaftExtractionBundle:
