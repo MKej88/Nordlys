@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Dict, List, MutableMapping, Optional, Tuple, TYPE_CHECKING
+from typing import Dict, List, MutableMapping, Optional, Sequence, Tuple, TYPE_CHECKING
 import xml.etree.ElementTree as ET
 
 from ..helpers.lazy_imports import lazy_import, lazy_pandas
@@ -41,15 +41,15 @@ def determine_analysis_year(
     root: ET.Element,
     ns: MutableMapping[str, object],
     transaction_span: Optional[Tuple[Optional[date], Optional[date]]] = None,
+    parent_map: Optional[Dict[ET.Element, Optional[ET.Element]]] = None,
 ) -> Tuple[Optional[int], Optional[Dict[ET.Element, Optional[ET.Element]]]]:
     """Finn analyseår og parent-map basert på SAF-T-data."""
 
     period_start = _parse_date(header.period_start) if header else None
     period_end = _parse_date(header.period_end) if header else None
-    parent_map: Optional[Dict[ET.Element, Optional[ET.Element]]] = None
-
     if period_start or period_end:
-        parent_map = saft_customers.build_parent_map(root)
+        if parent_map is None:
+            parent_map = saft_customers.build_parent_map(root)
         if period_end:
             return period_end.year, parent_map
         if period_start:
@@ -80,13 +80,24 @@ def build_customer_supplier_analysis(
     header: Optional["saft.SaftHeader"],
     root: ET.Element,
     ns: MutableMapping[str, object],
+    *,
+    parent_map: Optional[Dict[ET.Element, Optional[ET.Element]]] = None,
+    transactions: Optional[Sequence[ET.Element]] = None,
 ) -> CustomerSupplierAnalysis:
     """Analyser kunder og leverandører, og returner et samlet resultat."""
 
-    observed_start, observed_end = _detect_transaction_span(root, ns)
-    analysis_year, parent_map = determine_analysis_year(
-        header, root, ns, transaction_span=(observed_start, observed_end)
+    observed_start, observed_end = _detect_transaction_span(
+        root, ns, transactions=transactions
     )
+    analysis_year, detected_parent_map = determine_analysis_year(
+        header,
+        root,
+        ns,
+        transaction_span=(observed_start, observed_end),
+        parent_map=parent_map,
+    )
+    if parent_map is None:
+        parent_map = detected_parent_map
     customer_sales: Optional["pd.DataFrame"] = None
     supplier_purchases: Optional["pd.DataFrame"] = None
     cost_vouchers: List["saft_customers.CostVoucher"] = []
@@ -116,6 +127,7 @@ def build_customer_supplier_analysis(
                     date_from=effective_start,
                     date_to=effective_end,
                     parent_map=parent_map,
+                    transactions=transactions,
                 )
             )
             cost_vouchers = saft_customers.extract_cost_vouchers(
@@ -124,6 +136,7 @@ def build_customer_supplier_analysis(
                 date_from=effective_start,
                 date_to=effective_end,
                 parent_map=parent_map,
+                transactions=transactions,
             )
             all_vouchers = saft_customers.extract_all_vouchers(
                 root,
@@ -131,6 +144,7 @@ def build_customer_supplier_analysis(
                 date_from=effective_start,
                 date_to=effective_end,
                 parent_map=parent_map,
+                transactions=transactions,
             )
         elif analysis_year is not None:
             customer_sales, supplier_purchases = (
@@ -139,6 +153,7 @@ def build_customer_supplier_analysis(
                     ns,
                     year=analysis_year,
                     parent_map=parent_map,
+                    transactions=transactions,
                 )
             )
             cost_vouchers = saft_customers.extract_cost_vouchers(
@@ -146,15 +161,21 @@ def build_customer_supplier_analysis(
                 ns,
                 year=analysis_year,
                 parent_map=parent_map,
+                transactions=transactions,
             )
             all_vouchers = saft_customers.extract_all_vouchers(
                 root,
                 ns,
                 year=analysis_year,
                 parent_map=parent_map,
+                transactions=transactions,
             )
         credit_notes = saft_customers.extract_credit_notes(
-            root, ns, months=(1, 2), year=analysis_year
+            root,
+            ns,
+            months=(1, 2),
+            year=analysis_year,
+            transactions=transactions,
         )
     elif analysis_year is not None:
         if parent_map is None:
@@ -165,6 +186,7 @@ def build_customer_supplier_analysis(
                 ns,
                 year=analysis_year,
                 parent_map=parent_map,
+                transactions=transactions,
             )
         )
         cost_vouchers = saft_customers.extract_cost_vouchers(
@@ -172,15 +194,21 @@ def build_customer_supplier_analysis(
             ns,
             year=analysis_year,
             parent_map=parent_map,
+            transactions=transactions,
         )
         all_vouchers = saft_customers.extract_all_vouchers(
             root,
             ns,
             year=analysis_year,
             parent_map=parent_map,
+            transactions=transactions,
         )
         credit_notes = saft_customers.extract_credit_notes(
-            root, ns, months=(1, 2), year=analysis_year
+            root,
+            ns,
+            months=(1, 2),
+            year=analysis_year,
+            transactions=transactions,
         )
 
     if has_transaction_dates:
@@ -190,10 +218,11 @@ def build_customer_supplier_analysis(
             date_from=effective_start,
             date_to=effective_end,
             year=analysis_year,
+            transactions=transactions,
         )
     else:
         sales_ar_correlation = saft_customers.analyze_sales_receivable_correlation(
-            root, ns, year=analysis_year
+            root, ns, year=analysis_year, transactions=transactions
         )
 
     return CustomerSupplierAnalysis(
@@ -214,7 +243,10 @@ def _parse_date(value: Optional[str]) -> Optional[date]:
 
 
 def _detect_transaction_span(
-    root: ET.Element, ns: MutableMapping[str, object]
+    root: ET.Element,
+    ns: MutableMapping[str, object],
+    *,
+    transactions: Optional[Sequence[ET.Element]] = None,
 ) -> Tuple[Optional[date], Optional[date]]:
     """Finn første og siste transaksjonsdato i SAF-T-filen."""
 
@@ -223,10 +255,11 @@ def _detect_transaction_span(
         for key, value in ns.items()
         if isinstance(key, str) and isinstance(value, str)
     }
-    transactions = root.findall(
-        ".//n1:GeneralLedgerEntries/n1:Journal/n1:Transaction",
-        ns_et or None,
-    )
+    if transactions is None:
+        transactions = root.findall(
+            ".//n1:GeneralLedgerEntries/n1:Journal/n1:Transaction",
+            ns_et or None,
+        )
     first_date: Optional[date] = None
     last_date: Optional[date] = None
     for transaction in transactions:

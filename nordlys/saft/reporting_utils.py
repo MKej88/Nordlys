@@ -5,7 +5,7 @@ from __future__ import annotations
 import xml.etree.ElementTree as ET
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Iterable, Optional, TYPE_CHECKING
+from typing import Iterable, Optional, Sequence, TYPE_CHECKING
 
 from ..helpers.lazy_imports import lazy_pandas
 from .xml_helpers import _find, _findall, NamespaceMap
@@ -59,7 +59,17 @@ def _ensure_date(value: Optional[object]) -> Optional[date]:
             return None
 
 
-def _iter_transactions(root: ET.Element, ns: NamespaceMap) -> Iterable[ET.Element]:
+def _iter_transactions(
+    root: ET.Element,
+    ns: NamespaceMap,
+    *,
+    transactions: Optional[Sequence[ET.Element]] = None,
+) -> Iterable[ET.Element]:
+    if transactions is not None:
+        for transaction in transactions:
+            yield transaction
+        return
+
     entries = _find(root, "n1:GeneralLedgerEntries", ns)
     if entries is None:
         return

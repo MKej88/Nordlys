@@ -107,7 +107,8 @@ def test_loader_triggers_validation_and_enrichment_early(tmp_path, monkeypatch):
             industry_error=None,
         )
 
-    def fake_parse_saldobalanse(root) -> pd.DataFrame:
+    def fake_parse_saldobalanse(root, *, account_elements=None) -> pd.DataFrame:
+        assert account_elements is not None
         assert validation_started.wait(timeout=1)
         assert enrichment_started.wait(timeout=1)
         return pd.DataFrame(
@@ -134,7 +135,7 @@ def test_loader_triggers_validation_and_enrichment_early(tmp_path, monkeypatch):
     monkeypatch.setattr(
         loader,
         "build_customer_supplier_analysis",
-        lambda header, root, ns: CustomerSupplierAnalysis(
+        lambda header, root, ns, **kwargs: CustomerSupplierAnalysis(
             analysis_year=None,
             customer_sales=None,
             supplier_purchases=None,
@@ -210,13 +211,17 @@ def test_loader_streams_trial_balance_for_heavy_files(tmp_path, monkeypatch):
             industry_error=None,
         ),
     )
-    monkeypatch.setattr(loader.saft, "parse_saldobalanse", lambda root: pd.DataFrame())
+    monkeypatch.setattr(
+        loader.saft,
+        "parse_saldobalanse",
+        lambda root, **kwargs: pd.DataFrame(),
+    )
     monkeypatch.setattr(loader.saft, "parse_customers", lambda root: {})
     monkeypatch.setattr(loader.saft, "parse_suppliers", lambda root: {})
     monkeypatch.setattr(
         loader,
         "build_customer_supplier_analysis",
-        lambda header, root, ns: CustomerSupplierAnalysis(
+        lambda header, root, ns, **kwargs: CustomerSupplierAnalysis(
             analysis_year=None,
             customer_sales=None,
             supplier_purchases=None,
@@ -359,7 +364,7 @@ def test_loader_runs_heavy_parsers_in_background_threads(tmp_path, monkeypatch):
             industry_error=None,
         )
 
-    def fake_parse_saldobalanse(root) -> pd.DataFrame:
+    def fake_parse_saldobalanse(root, **kwargs) -> pd.DataFrame:
         _record_thread()
         return pd.DataFrame(
             {
@@ -385,7 +390,7 @@ def test_loader_runs_heavy_parsers_in_background_threads(tmp_path, monkeypatch):
         _record_thread()
         return {}
 
-    def fake_build_analysis(header, root, ns):
+    def fake_build_analysis(header, root, ns, **kwargs):
         _record_thread()
         return CustomerSupplierAnalysis(
             analysis_year=None,
