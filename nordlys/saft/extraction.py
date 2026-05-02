@@ -38,7 +38,10 @@ class _JournalTransactionSequence(Sequence[ET.Element]):
             yield from _findall(journal, "n1:Transaction", self._ns)
 
     def __len__(self) -> int:
-        return sum(len(_findall(journal, "n1:Transaction", self._ns)) for journal in self._journals)
+        return sum(
+            len(_findall(journal, "n1:Transaction", self._ns))
+            for journal in self._journals
+        )
 
     def __getitem__(self, index: int) -> ET.Element:
         if index < 0:
